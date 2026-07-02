@@ -20,6 +20,7 @@ from datetime import datetime
 from typing import Any
 
 import ray
+import torch
 from omegaconf import OmegaConf, open_dict
 from tqdm import tqdm
 

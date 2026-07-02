@@ -155,11 +155,7 @@ common_params=(
 )
 
     # Detect device
-    device_name=$(python3 - <<'EOF'
-from verl.utils.device import get_device_name
-print(get_device_name())
-EOF
-)
+    device_name=$(python3 -c 'from verl.utils.device import get_device_name; print(get_device_name())')
 
 if [ "${ACTOR_STRATEGY}" == "fsdp2" ]; then
     echo "Running fully async training with FSDP2 strategy..."

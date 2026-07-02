@@ -927,6 +927,7 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
                 await self._resume_event.wait()
 
             attempt_batch = source_batch[[rollout_index]]
+            attempt_batch.non_tensor_batch["uid"] = np.array([group_uid], dtype=object)
             attempt_batch.non_tensor_batch["hpt_rollout_index"] = np.array([rollout_index], dtype=object)
             async with self.lock:
                 safe_create_task(
