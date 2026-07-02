@@ -14,6 +14,7 @@
 
 import asyncio
 import logging
+import math
 import os
 import time
 from datetime import datetime
@@ -289,58 +290,150 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
         )
 
         # Collect samples using a simple loop calling get_sample
+        hpt_enabled = bool(self.config.get("async_hpt", {}).get("enabled", False))
         consumer_start = time.time()
-        queue_samples = []
+        serialized_queue_samples = []
         queue_len = 0
-        while len(queue_samples) < self.required_samples:
+        while len(serialized_queue_samples) < self.required_samples:
             # Get a single sample and wait until there is a sample or None is received
             sample, queue_len = await self.message_queue_client.get_sample()
 
             if sample is None:
                 print(
                     f"[FullyAsyncTrainer] Detected termination signal (None), stopping sample collection. "
-                    f"Collected {len(queue_samples)}/{self.required_samples} samples"
+                    f"Collected {len(serialized_queue_samples)}/{self.required_samples} samples"
                 )
                 break
 
-            queue_samples.append(sample)
+            serialized_queue_samples.append(sample)
 
-            if len(queue_samples) % 64 == 0:
+            if len(serialized_queue_samples) % 64 == 0:
                 print(
-                    f"[FullyAsyncTrainer] Collected {len(queue_samples)}/{self.required_samples} samples. "
+                    f"[FullyAsyncTrainer] Collected {len(serialized_queue_samples)}/{self.required_samples} samples. "
                     f"mq_len: {queue_len}"
                 )
 
-        consumer_end = time.time()
-
-        if not queue_samples or len(queue_samples) < self.required_samples:
+        if not serialized_queue_samples or len(serialized_queue_samples) < self.required_samples:
             print("[FullyAsyncTrainer] not enough samples collected after loop")
             return None, None
-        total_wait_time = consumer_end - consumer_start
 
-        print(
-            f"[FullyAsyncTrainer] Loop collection completed: {len(queue_samples)}/{self.required_samples} samples, "
-            f"total wait time: {total_wait_time:.2f} seconds. "
-            f"mq_len: {queue_len}"
-        )
-
-        queue_samples = [ray.cloudpickle.loads(x) for x in queue_samples]
         # Assemble batch - now working directly with RolloutSample objects
-        if self.config.get("async_hpt", {}).get("enabled", False):
+        if hpt_enabled:
             if self.hpt_assembler is None:
                 self.hpt_assembler = HptBatchAssembler(config=self.config, tokenizer=self.tokenizer)
+            required_multiple = self._hpt_required_training_multiple()
+            max_queue_samples = max(self.required_samples, required_multiple) * 2
+            queue_samples = [ray.cloudpickle.loads(x) for x in serialized_queue_samples]
             batch = self.hpt_assembler.assemble_rollout_samples(queue_samples)
+            while required_multiple > 1 and len(batch) % required_multiple != 0:
+                if len(serialized_queue_samples) >= max_queue_samples:
+                    raise ValueError(
+                        "HPT learner-row-aware collection could not form a trainable batch within the bounded "
+                        "queue window: "
+                        f"learner_rows={len(batch)} required_multiple={required_multiple} "
+                        f"queue_samples={len(serialized_queue_samples)} max_queue_samples={max_queue_samples}."
+                    )
+                sample, queue_len = await self.message_queue_client.get_sample()
+                if sample is None:
+                    print(
+                        "[FullyAsyncTrainer] HPT learner-row-aware collection received termination before a "
+                        "trainable batch was formed. "
+                        f"learner_rows={len(batch)} required_multiple={required_multiple} "
+                        f"queue_samples={len(serialized_queue_samples)}"
+                    )
+                    return None, None
+                serialized_queue_samples.append(sample)
+                queue_samples.append(ray.cloudpickle.loads(sample))
+                batch = self.hpt_assembler.assemble_rollout_samples(queue_samples)
+            consumer_end = time.time()
+            total_wait_time = consumer_end - consumer_start
+            print(
+                f"[FullyAsyncTrainer] Loop collection completed: {len(queue_samples)}/{self.required_samples} "
+                f"samples, learner_rows={len(batch)}, required_multiple={required_multiple}, "
+                f"total wait time: {total_wait_time:.2f} seconds. "
+                f"mq_len: {queue_len}"
+            )
+            batch.meta_info["fully_async/hpt_collected_queue_samples"] = len(queue_samples)
+            batch.meta_info["fully_async/hpt_required_training_multiple"] = required_multiple
             if self.config.trainer.balance_batch:
                 self._balance_batch(batch, metrics={})
+            self._add_hpt_async_sample_meta(batch)
             if "attention_mask" in batch.batch:
                 batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
-        elif self.config.trainer.balance_batch:
-            batch = assemble_batch_from_rollout_samples(queue_samples, self.tokenizer, self.config, self._balance_batch)
         else:
+            consumer_end = time.time()
+            total_wait_time = consumer_end - consumer_start
+            print(
+                f"[FullyAsyncTrainer] Loop collection completed: "
+                f"{len(serialized_queue_samples)}/{self.required_samples} samples, "
+                f"total wait time: {total_wait_time:.2f} seconds. "
+                f"mq_len: {queue_len}"
+            )
+            queue_samples = [ray.cloudpickle.loads(x) for x in serialized_queue_samples]
+        if not hpt_enabled and self.config.trainer.balance_batch:
+            batch = assemble_batch_from_rollout_samples(queue_samples, self.tokenizer, self.config, self._balance_batch)
+        elif not hpt_enabled:
             batch = assemble_batch_from_rollout_samples(queue_samples, self.tokenizer, self.config, None)
 
         batch.meta_info["fully_async/total_wait_time"] = total_wait_time
         return 0, batch
+
+    @staticmethod
+    def _add_hpt_async_sample_meta(batch: DataProto) -> None:
+        """Populate the async trainer metrics contract after HPT learner-row materialization."""
+
+        def normalize_versions(key: str) -> list[int]:
+            if key not in batch.non_tensor_batch:
+                raise ValueError(f"HPT async trainer batch is missing non_tensor_batch[{key!r}].")
+            values = batch.non_tensor_batch[key]
+            normalized = []
+            for value in values.tolist():
+                if hasattr(value, "item"):
+                    value = value.item()
+                normalized.append(int(value))
+            return normalized
+
+        param_version_start = normalize_versions("min_global_steps")
+        trajectory_param_versions = normalize_versions("max_global_steps")
+        if len(param_version_start) != len(trajectory_param_versions):
+            raise ValueError(
+                "HPT async trainer batch has inconsistent param-version metadata lengths: "
+                f"min_global_steps={len(param_version_start)} max_global_steps={len(trajectory_param_versions)}."
+            )
+
+        param_version_diff = [
+            abs(end - start) for start, end in zip(param_version_start, trajectory_param_versions, strict=False)
+        ]
+        partial_num = sum(1 for diff in param_version_diff if diff != 0)
+        batch.meta_info.update(
+            {
+                "param_version_diversity": len(set(trajectory_param_versions)),
+                "trajectory_param_versions": trajectory_param_versions,
+                "fully_async/partial/total_partial_num": partial_num,
+                "fully_async/partial/partial_ratio": partial_num / len(param_version_diff) if param_version_diff else 0.0,
+                "fully_async/partial/max_partial_span": max(param_version_diff) if param_version_diff else 0,
+            }
+        )
+
+    def _hpt_required_training_multiple(self) -> int:
+        """Return the learner-row multiple required by downstream trainer dispatch."""
+
+        required_multiple = 1
+        if self.config.trainer.balance_batch:
+            required_multiple = math.lcm(required_multiple, self._get_dp_size(self.actor_rollout_wg, "actor"))
+
+        actor_mini_batch_size = OmegaConf.select(
+            self.config, "actor_rollout_ref.actor.ppo_mini_batch_size", default=None
+        )
+        rollout_n = OmegaConf.select(self.config, "actor_rollout_ref.rollout.n", default=1)
+        if actor_mini_batch_size is not None:
+            required_multiple = math.lcm(required_multiple, int(actor_mini_batch_size) * int(rollout_n))
+
+        if getattr(self, "use_critic", False):
+            critic_mini_batch_size = OmegaConf.select(self.config, "critic.ppo_mini_batch_size", default=None)
+            if critic_mini_batch_size is not None:
+                required_multiple = math.lcm(required_multiple, int(critic_mini_batch_size) * int(rollout_n))
+        return required_multiple
 
     def _create_actor_rollout_classes(self):
         # create actor — always use Role.Actor (not ActorRollout) even when
