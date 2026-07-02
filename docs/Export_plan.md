@@ -64,7 +64,7 @@ this repository, not work that existed in the source OSWorld fork.
 - [x] Implement the initial DataProto-focused `hpt_assembler.py`.
 - [x] Wire `hpt_assembler.py` into trainer queue consumption behind
       `async_hpt.enabled`.
-- [ ] Implement `hpt_training.py` and HPT-aware old-logprob handling.
+- [x] Implement `hpt_training.py` and HPT-aware rollout-logprob anchoring.
 - [ ] Implement the prompt-equal HPT loss path.
 - [ ] Exclude SFT rows from rollout correction / rejection / IS weighting.
 - [ ] Export E1 trajectory scheduling and prompt-group accumulation.

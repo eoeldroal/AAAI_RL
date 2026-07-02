@@ -30,6 +30,11 @@ from torch.utils.data import Dataset, Sampler
 from tqdm import tqdm
 
 from verl import DataProto
+from verl.experimental.fully_async_policy.hpt_training import (
+    apply_hpt_rollout_logprob_anchor,
+    collect_hpt_batch_monitoring_metrics,
+    should_use_hpt_rollout_logprob_anchor,
+)
 from verl.single_controller.ray import RayClassWithInitArgs, RayWorkerGroup, ResourcePoolManager
 from verl.single_controller.ray.base import create_colocated_worker_cls
 from verl.trainer.ppo.core_algos import AdvantageEstimator, agg_loss
@@ -500,7 +505,10 @@ class SeparateRayPPOTrainer(RayPPOTrainer):
         #   Note: π_old computed once per data batch, serves as stable reference during mini-batch updates
         rollout_corr_config = self.config.algorithm.get("rollout_correction", None)
         bypass_recomputing_logprobs = rollout_corr_config and rollout_corr_config.get("bypass_mode", False)
-        if bypass_recomputing_logprobs:  # Use `rollout_log_probs`
+        if should_use_hpt_rollout_logprob_anchor(self.config, batch):
+            metrics.update(apply_hpt_rollout_logprob_anchor(batch))
+            metrics.update(collect_hpt_batch_monitoring_metrics(batch))
+        elif bypass_recomputing_logprobs:  # Use `rollout_log_probs`
             from verl.trainer.ppo.rollout_corr_helper import apply_bypass_mode
 
             apply_bypass_mode(
