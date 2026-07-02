@@ -13,6 +13,8 @@ ROLLOUT_NAME=${ROLLOUT_NAME:-"vllm"}       # vllm, sglang, or trtllm
 MODEL_ID=${MODEL_ID:-Qwen/Qwen2.5-0.5B-Instruct}
 MODEL_PATH=${MODEL_PATH:-${HOME}/models/${MODEL_ID}}
 # hf download "${MODEL_ID}" --local-dir "${MODEL_PATH}"
+TRAIN_FILES=${TRAIN_FILES:-${HOME}/data/gsm8k/train.parquet}
+VAL_FILES=${VAL_FILES:-${HOME}/data/gsm8k/test.parquet}
 
 
 rollout_mode="async"
@@ -54,16 +56,18 @@ val_top_p=0.7
 n_gpus_rollout=${N_GPUS_ROLLOUT:-$((NUM_GPUS / 2))}
 n_gpus_training=${N_GPUS_TRAINING:-$((NUM_GPUS / 2))}
 
-train_prompt_bsz=0
-gen_prompt_bsz=1
-n_resp_per_prompt=16
-train_prompt_mini_bsz=16
-total_rollout_steps=$(((128)))
-test_freq=-1
-staleness_threshold=0.5
-trigger_parameter_sync_step=4
-partial_rollout=True
-use_trainer_do_validate=False
+train_prompt_bsz=${TRAIN_PROMPT_BSZ:-0}
+gen_prompt_bsz=${GEN_PROMPT_BSZ:-1}
+n_resp_per_prompt=${N_RESP_PER_PROMPT:-16}
+train_prompt_mini_bsz=${TRAIN_PROMPT_MINI_BSZ:-16}
+total_rollout_steps=${TOTAL_ROLLOUT_STEPS:-128}
+test_freq=${TEST_FREQ:--1}
+staleness_threshold=${STALENESS_THRESHOLD:-0.5}
+trigger_parameter_sync_step=${TRIGGER_PARAMETER_SYNC_STEP:-4}
+partial_rollout=${PARTIAL_ROLLOUT:-True}
+use_trainer_do_validate=${USE_TRAINER_DO_VALIDATE:-False}
+val_before_train=${VAL_BEFORE_TRAIN:-True}
+total_epochs=${TRAINER_TOTAL_EPOCHS:-2}
 
 SKIP_ENABLE=True
 SKIP_DUMP_DIR=${SKIP_DUMP_DIR:-${HOME}/data/rollout_dump_async}
@@ -77,8 +81,8 @@ echo "Total GPUs: ${NUM_GPUS}, Rollout GPUs: ${n_gpus_rollout}, Training GPUs: $
 
 # Common parameters for both FSDP2 and Megatron
 common_params=(
-    data.train_files="${HOME}/data/gsm8k/train.parquet"
-    data.val_files="${HOME}/data/gsm8k/test.parquet"
+    data.train_files="${TRAIN_FILES}"
+    data.val_files="${VAL_FILES}"
     data.prompt_key=prompt
     data.truncation='left'
     data.max_prompt_length=${max_prompt_length}
@@ -126,7 +130,7 @@ common_params=(
     trainer.logger=['console']
     trainer.project_name='verl-test-fully-async'
     trainer.experiment_name="${exp_name}"
-    trainer.val_before_train=True
+    trainer.val_before_train=${val_before_train}
     trainer.save_freq=-1
     trainer.resume_mode=disable
     trainer.nnodes=1
@@ -135,7 +139,7 @@ common_params=(
     rollout.nnodes=1
     rollout.n_gpus_per_node=${n_gpus_rollout}
     rollout.total_rollout_steps=${total_rollout_steps}
-    trainer.total_epochs=2
+    trainer.total_epochs=${total_epochs}
     trainer.test_freq=${test_freq}
     # Fully async specific configurations
     async_training.staleness_threshold=${staleness_threshold}
