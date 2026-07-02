@@ -1,5 +1,7 @@
 # Async RL + HPT Export Implementation Plan
 
+Last updated: 07/02/2026.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Reconstruct a clean async RL + HPT framework on top of the latest upstream `verl`, while preserving the current HPT learning contract and carrying over only the structural async improvements that generalize beyond CUA.
@@ -63,7 +65,7 @@ latest completed commit:
   a5742276 Harden partial rollout recovery for HPT
 
 remaining work:
-  contract tests after the target environment is ready
+  broaden contract tests after the target environment is ready
 ```
 
 - [x] Establish the clean upstream-oriented baseline, repository principles,
@@ -83,7 +85,9 @@ remaining work:
 - [x] Exclude SFT rows from rollout correction / rejection / IS weighting.
 - [x] Export E1 trajectory scheduling and prompt-group accumulation.
 - [x] Export E3 partial rollout recovery only after HPT core is coherent.
-- [ ] Add contract tests after the target environment is ready.
+- [x] Add the first target-environment smoke/contract tests for the
+      SGLang fully-async bring-up path.
+- [ ] Broaden HPT-specific contract tests once the clean HPT recipe is active.
 
 ## 1. Export Objective
 
@@ -211,6 +215,26 @@ current ops workarounds
 ```
 
 This is operational, not semantic. It must not define the export core.
+
+Current target-environment bring-up facts:
+
+```text
+/tmp is mounted noexec on the target server.
+SGLang's NUMA wrapper path can therefore fail during scheduler launch unless
+SGLANG_NUMA_BIND_V2=0 is set.
+
+Ray worker dynamic ports use the OS ephemeral range.
+SGLang internal TP TCPStore ports and Ray WorkerGroup MASTER_PORT values must
+be kept out of that range.
+
+Ray WorkerGroup MASTER_PORT allocation must also avoid same-job reuse. Merely
+checking that a port is free and then closing the probe socket is insufficient,
+because multiple worker groups can select the same port before their rank-0
+TCPStore binds.
+```
+
+These are environment contracts for reliable smoke tests and long runs. They
+are not HPT semantics.
 
 ## 4. Target Model
 
