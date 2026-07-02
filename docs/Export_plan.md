@@ -52,6 +52,20 @@ async_hpt_gpu_util_root_cause.md:
 This section tracks the clean upstream port. Mark only work that is present in
 this repository, not work that existed in the source OSWorld fork.
 
+Current state:
+
+```text
+code port:
+  complete through HPT core + E1/E2/E3 structural async layers
+
+latest completed commit:
+  a574227670618b7f4c42db1a9e087066cbfacadc
+  a5742276 Harden partial rollout recovery for HPT
+
+remaining work:
+  contract tests after the target environment is ready
+```
+
 - [x] Establish the clean upstream-oriented baseline, repository principles,
       and export plan.
 - [x] Add the initial HPT semantic contracts:
@@ -107,7 +121,8 @@ upstream HEAD:
   91666d9 [rollout] fix: support SGLang FP8 ignored layers for Qwen3.x GatedDeltaNet in rollout (#6906)
 
 local repo:
-  18043a099e805ec72027098524994130713dbded
+  a574227670618b7f4c42db1a9e087066cbfacadc
+  a5742276 Harden partial rollout recovery for HPT
 ```
 
 Most important baseline facts:
