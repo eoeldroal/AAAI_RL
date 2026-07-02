@@ -18,6 +18,7 @@ import os
 import torch
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 
+from verl.utils.cuda_env import get_cuda_runtime_env_vars
 from verl.utils.device import get_device_capability
 
 _major, _ = get_device_capability()
@@ -76,4 +77,5 @@ def get_ppo_ray_runtime_env():
     # Always forward these at call-time, not import-time.
     for key in ("PYTHONHASHSEED", "VERL_FULL_DETERMINISM", "VLLM_BATCH_INVARIANT"):
         runtime_env["env_vars"][key] = os.environ.get(key, "0")
+    runtime_env["env_vars"].update(get_cuda_runtime_env_vars())
     return runtime_env

@@ -11,6 +11,8 @@ from typing import Any, Optional
 import torch
 import torch.cuda
 
+from verl.utils.cuda_env import get_cuda_runtime_env_vars
+
 from .platform_base import PlatformBase
 from .platform_manager import PlatformRegistry
 
@@ -149,7 +151,7 @@ class PlatformCUDA(PlatformBase):
         # in disaggregated mode. See:
         # https://docs.vllm.ai/en/latest/usage/troubleshooting.html?h=nccl_cumem_enable#known-issues
         # https://github.com/vllm-project/vllm/blob/c6b0a7d3ba03ca414be1174e9bd86a97191b7090/vllm/worker/worker_base.py#L445
-        return {"NCCL_CUMEM_ENABLE": "0"}
+        return {"NCCL_CUMEM_ENABLE": "0", **get_cuda_runtime_env_vars()}
 
     # ------------------------------------------------------------------
     # Collective communication
