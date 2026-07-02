@@ -438,13 +438,35 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
                 / (self.required_samples * self.config.async_training.trigger_parameter_sync_step)
             )
 
-            self.max_concurrent_samples = len(self.llm_server_manager.get_replicas()) * 16
-            self.max_concurrent_samples = min(self.max_concurrent_samples, self.max_required_samples)
-            self.max_queue_size = self.max_required_samples
+            max_inflight_prompt_groups = self.config.async_training.get("max_inflight_prompt_groups", None)
+            max_completed_prompt_groups = self.config.async_training.get("max_completed_prompt_groups", None)
+            if max_inflight_prompt_groups is not None:
+                max_inflight_prompt_groups = int(max_inflight_prompt_groups)
+            if max_completed_prompt_groups is not None:
+                max_completed_prompt_groups = int(max_completed_prompt_groups)
+            if max_inflight_prompt_groups is not None and max_inflight_prompt_groups <= 0:
+                raise ValueError(
+                    "async_training.max_inflight_prompt_groups must be a positive integer when set; "
+                    f"got {max_inflight_prompt_groups}"
+                )
+            if max_completed_prompt_groups is not None and max_completed_prompt_groups <= 0:
+                raise ValueError(
+                    "async_training.max_completed_prompt_groups must be a positive integer when set; "
+                    f"got {max_completed_prompt_groups}"
+                )
+
+            replica_concurrency_cap = len(self.llm_server_manager.get_replicas()) * 16
+            self.max_concurrent_samples = min(
+                replica_concurrency_cap,
+                max_inflight_prompt_groups or self.max_required_samples,
+            )
+            self.max_queue_size = max_completed_prompt_groups or self.max_required_samples
 
             print(
                 f"[FullyAsyncRollouter] required_samples : {self.required_samples} "
                 f"max_required_samples: {self.max_required_samples} "
+                f"max_inflight_prompt_groups: {max_inflight_prompt_groups} "
+                f"max_completed_prompt_groups: {max_completed_prompt_groups} "
                 f"max_queue_size: {self.max_queue_size} "
                 f"total_train_steps: {self.total_train_steps} "
                 f"total_rollout_steps: {self.total_rollout_steps} "

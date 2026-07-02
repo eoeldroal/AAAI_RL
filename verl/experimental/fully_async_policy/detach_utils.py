@@ -38,6 +38,9 @@ class RolloutSample:
     # Processing metadata
     rollout_status: dict[str, Any]
 
+    # Optional route metadata for objective-specific trainer assembly.
+    hpt_route: Any | None = None
+
 
 def prepare_single_generation_data(batch_dict, config) -> DataProto:
     """

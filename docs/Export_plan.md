@@ -47,6 +47,28 @@ async_hpt_gpu_util_root_cause.md:
   historical low-util debugging notes for the WebOS stack
 ```
 
+## Implementation Progress
+
+This section tracks the clean upstream port. Mark only work that is present in
+this repository, not work that existed in the source OSWorld fork.
+
+- [x] Establish the clean upstream-oriented baseline, repository principles,
+      and export plan.
+- [x] Add the initial HPT semantic contracts:
+      `hpt_config.py`, `hpt_payload.py`, and `hpt_gate.py`.
+- [x] Expose default-off HPT config in both fully-async recipe surfaces.
+- [x] Wire fail-closed HPT config validation into the fully-async bootstrap.
+- [x] Extend `RolloutSample` with optional HPT route metadata.
+- [x] Add nullable in-flight/completed prompt-group budget knobs while
+      preserving the existing `max_required_samples` behavior when unset.
+- [ ] Implement `hpt_assembler.py`.
+- [ ] Implement `hpt_training.py` and HPT-aware old-logprob handling.
+- [ ] Implement the prompt-equal HPT loss path.
+- [ ] Exclude SFT rows from rollout correction / rejection / IS weighting.
+- [ ] Export E1 trajectory scheduling and prompt-group accumulation.
+- [ ] Export E3 partial rollout recovery only after HPT core is coherent.
+- [ ] Add contract tests after the target environment is ready.
+
 ## 1. Export Objective
 
 This export is **not**:

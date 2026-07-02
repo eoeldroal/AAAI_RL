@@ -112,10 +112,9 @@ def extract_prompt_uid(payload: DataProto) -> str:
 
 
 def extract_group_uid(payload: DataProto, *, default: str) -> str:
-    try:
-        return _extract_single_string(payload, "uid")
-    except ValueError:
+    if "uid" not in payload.non_tensor_batch:
         return default
+    return _extract_single_string(payload, "uid")
 
 
 def count_successful_rollouts(

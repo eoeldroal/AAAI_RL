@@ -11,6 +11,11 @@ async_training:
   # Maximum samples staleness threshold
   staleness_threshold: 0.1
 
+  # Optional split between execution in-flight budget and completed queue budget.
+  # When unset, the existing fully-async max_required_samples behavior is used.
+  max_inflight_prompt_groups: null
+  max_completed_prompt_groups: null
+
   # Frequency of parameter synchronization between rollouter and trainer, 
   # One step means trainer obtains a batch of required samples
   trigger_parameter_sync_step: 4
@@ -24,6 +29,35 @@ async_training:
 
   # whether to use trainer do_validate
   use_trainer_do_validate: False
+
+async_hpt:
+
+  # Hybrid Prompt Trajectory routing is opt-in and disabled by default.
+  enabled: False
+
+  # Route to tau SFT when prompt-group success probability is <= gamma.
+  gamma: 0.0
+  beta: 1.0
+  alpha: 1.0
+
+  # Phase-1 HPT keeps prompt-equal aggregation and rollout old-logprob anchors.
+  loss_aggregation: prompt_equal
+  rl_old_logprob_source: rollout
+
+  # Tau supervision source. Required only when async_hpt.enabled=true.
+  tau_dataset_path: null
+  tau_messages_key: tau_messages
+  fail_on_missing_tau: False
+
+  # Prompt-group success score used by the rollout gate.
+  success_score_key: reward_score
+  success_threshold: 0.0
+
+  # Optional RL-only staleness extension. Null disables this policy.
+  k_max: null
+
+  trajectory_scheduler:
+    enabled: False
 
 # Rollout config
 rollout:
