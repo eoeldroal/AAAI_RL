@@ -1008,6 +1008,67 @@ def compute_offpolicy_metrics(
     return metrics
 
 
+def _compute_hpt_rollout_correction_and_add_to_batch(
+    batch: DataProto, rollout_corr_config: RolloutCorrectionConfig
+) -> tuple[DataProto, dict]:
+    """Apply rollout correction only to HPT RL rows.
+
+    HPT batches can mix RL rows and SFT rows. SFT rows are supervised examples,
+    not rollout-policy samples, so rejection sampling and importance sampling
+    must not remove or reweight their tokens.
+    """
+    response_mask = batch.batch["response_mask"]
+    hpt_is_sft = batch.batch["hpt_is_sft"].to(device=response_mask.device, dtype=torch.bool)
+    if tuple(hpt_is_sft.shape) != (response_mask.shape[0],):
+        raise ValueError(f"HPT hpt_is_sft must have shape ({response_mask.shape[0]},), got {tuple(hpt_is_sft.shape)}.")
+
+    sft_token_mask = hpt_is_sft.unsqueeze(-1).expand_as(response_mask)
+    rl_response_mask = torch.where(sft_token_mask, torch.zeros_like(response_mask), response_mask)
+
+    metrics: dict[str, float] = {
+        "rollout_corr/hpt_sft_excluded_rows": float(hpt_is_sft.sum().item()),
+        "rollout_corr/hpt_rl_rows": float((~hpt_is_sft).sum().item()),
+    }
+
+    rollout_is = rollout_corr_config.get("rollout_is", None)
+    rollout_is_threshold = rollout_corr_config.get("rollout_is_threshold", 2.0)
+    rollout_is_batch_normalize = rollout_corr_config.get("rollout_is_batch_normalize", False)
+    rollout_rs = rollout_corr_config.get("rollout_rs", None)
+    rollout_rs_threshold = rollout_corr_config.get("rollout_rs_threshold", None)
+
+    if rl_response_mask.any():
+        rollout_is_weights, modified_rl_response_mask, rollout_corr_metrics = (
+            compute_rollout_correction_and_rejection_mask(
+                old_log_prob=batch.batch["old_log_probs"],
+                rollout_log_prob=batch.batch["rollout_log_probs"],
+                response_mask=rl_response_mask,
+                rollout_is=rollout_is,
+                rollout_is_threshold=rollout_is_threshold,
+                rollout_is_batch_normalize=rollout_is_batch_normalize,
+                rollout_rs=rollout_rs,
+                rollout_rs_threshold=rollout_rs_threshold,
+            )
+        )
+        metrics.update(rollout_corr_metrics)
+    else:
+        rollout_is_weights = None
+        modified_rl_response_mask = rl_response_mask
+
+    batch.batch["response_mask"] = torch.where(sft_token_mask, response_mask, modified_rl_response_mask)
+
+    if rollout_is_weights is not None:
+        weights = rollout_is_weights.batch["rollout_is_weights"]
+        batch.batch["rollout_is_weights"] = torch.where(sft_token_mask, torch.ones_like(weights), weights)
+    elif rollout_is is not None:
+        batch.batch["rollout_is_weights"] = torch.where(
+            sft_token_mask,
+            torch.ones_like(response_mask, dtype=torch.float32),
+            torch.zeros_like(response_mask, dtype=torch.float32),
+        )
+
+    return batch, metrics
+
+
 def compute_rollout_correction_and_add_to_batch(
     batch: DataProto, rollout_corr_config: RolloutCorrectionConfig
 ) -> tuple[DataProto, dict]:
@@ -1036,6 +1097,9 @@ def compute_rollout_correction_and_add_to_batch(
     Note:
         The implementation is copied from szrlee <szrlee@gmail.com>.
     """
+    if "hpt_is_sft" in batch.batch:
+        return _compute_hpt_rollout_correction_and_add_to_batch(batch, rollout_corr_config)
+
     # Get new API parameters directly from config
     rollout_is = rollout_corr_config.get("rollout_is", None)
     rollout_is_threshold = rollout_corr_config.get("rollout_is_threshold", 2.0)
