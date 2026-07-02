@@ -61,7 +61,8 @@ this repository, not work that existed in the source OSWorld fork.
 - [x] Extend `RolloutSample` with optional HPT route metadata.
 - [x] Add nullable in-flight/completed prompt-group budget knobs while
       preserving the existing `max_required_samples` behavior when unset.
-- [ ] Implement `hpt_assembler.py`.
+- [x] Implement the initial DataProto-focused `hpt_assembler.py`.
+- [ ] Wire `hpt_assembler.py` into trainer queue consumption.
 - [ ] Implement `hpt_training.py` and HPT-aware old-logprob handling.
 - [ ] Implement the prompt-equal HPT loss path.
 - [ ] Exclude SFT rows from rollout correction / rejection / IS weighting.

@@ -22,7 +22,10 @@ from typing import Any
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from verl.experimental.agent_loop.agent_loop import AgentLoopMetrics, AgentLoopOutput
 from verl.utils.py_functional import convert_nested_value_to_list_recursive
+from verl.utils.tokenizer.chat_template import apply_chat_template
+from verl.utils.tokenizer.tokenizer import normalize_token_ids
 
 _ALLOWED_MESSAGE_ROLES = frozenset({"system", "user", "assistant", "tool"})
 
@@ -152,3 +155,92 @@ def decode_tau_messages(value: Any, *, prompt_uid: str) -> Any:
             f"for prompt_uid={prompt_uid!r}, got {type(decoded).__name__}."
         )
     return decoded
+
+
+class HptTauToAgentLoopOutputAdapter:
+    """Convert text-only tau transcripts into the existing AgentLoopOutput contract."""
+
+    def __init__(
+        self,
+        tokenizer,
+        *,
+        processor=None,
+        tools: list[dict[str, Any]] | None = None,
+        apply_chat_template_kwargs: dict[str, Any] | None = None,
+    ):
+        self.tokenizer = tokenizer
+        self.processor = processor
+        self.tools = tools
+        self.apply_chat_template_kwargs = dict(apply_chat_template_kwargs or {})
+
+    def to_agent_loop_output(self, payload: HptSftPayload) -> AgentLoopOutput:
+        self._reject_multimodal_tau(payload)
+        messages = payload.messages
+        first_assistant_idx = self._first_assistant_index(messages)
+        if first_assistant_idx <= 0:
+            raise ValueError("tau messages must contain context before the first assistant target")
+
+        prompt_ids = self._tokenize(messages[:first_assistant_idx], add_generation_prompt=True)
+        running_ids = self._tokenize(messages[: first_assistant_idx + 1], add_generation_prompt=False)
+        if running_ids[: len(prompt_ids)] != prompt_ids:
+            raise ValueError("tau tokenization is not prefix-stable at the first assistant target")
+
+        response_ids = running_ids[len(prompt_ids) :]
+        response_mask = [1] * len(response_ids)
+
+        for message_index in range(first_assistant_idx + 1, len(messages)):
+            next_running_ids = self._tokenize(messages[: message_index + 1], add_generation_prompt=False)
+            if next_running_ids[: len(running_ids)] != running_ids:
+                raise ValueError(f"tau tokenization is not prefix-stable at message index {message_index}")
+            segment = next_running_ids[len(running_ids) :]
+            response_ids.extend(segment)
+            response_mask.extend([1 if messages[message_index].get("role") == "assistant" else 0] * len(segment))
+            running_ids = next_running_ids
+
+        if len(response_ids) != len(response_mask):
+            raise ValueError("tau adapter produced misaligned response ids and response mask")
+        if sum(response_mask) <= 0:
+            raise ValueError("tau adapter produced no supervised assistant tokens")
+
+        return AgentLoopOutput(
+            prompt_ids=prompt_ids,
+            response_ids=response_ids,
+            response_mask=response_mask,
+            response_logprobs=None,
+            reward_score=None,
+            num_turns=len(messages),
+            metrics=AgentLoopMetrics(),
+            extra_fields={"hpt_prompt_uid": payload.prompt_uid},
+        )
+
+    def _tokenize(self, messages: list[dict[str, Any]], *, add_generation_prompt: bool) -> list[int]:
+        processing_class = self.processor if self.processor is not None else self.tokenizer
+        tokenized = apply_chat_template(
+            processing_class,
+            messages,
+            tokenize=True,
+            add_generation_prompt=add_generation_prompt,
+            tools=self.tools,
+            **self.apply_chat_template_kwargs,
+        )
+        return normalize_token_ids(tokenized)
+
+    @staticmethod
+    def _first_assistant_index(messages: list[dict[str, Any]]) -> int:
+        for index, message in enumerate(messages):
+            if message.get("role") == "assistant":
+                return index
+        raise ValueError("tau messages must contain at least one assistant message")
+
+    @staticmethod
+    def _reject_multimodal_tau(payload: HptSftPayload) -> None:
+        for message_index, message in enumerate(payload.messages):
+            content = message.get("content")
+            if not isinstance(content, list):
+                continue
+            for item in content:
+                if isinstance(item, dict) and item.get("type", "text") != "text":
+                    raise ValueError(
+                        "phase-1 HPT tau adapter only supports text content; "
+                        f"prompt_uid={payload.prompt_uid!r}, message_index={message_index}"
+                    )
