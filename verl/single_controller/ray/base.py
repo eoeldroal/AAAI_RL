@@ -15,6 +15,7 @@ import inspect
 import logging
 import os
 import socket
+import tempfile
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -44,6 +45,52 @@ def get_random_string(length: int) -> str:
 
     letters_digits = string.ascii_letters + string.digits
     return "".join(random.choice(letters_digits) for _ in range(length))
+
+
+def _ray_master_port_alloc_path() -> str:
+    path = os.getenv("VERL_RAY_MASTER_PORT_ALLOC_FILE")
+    if path:
+        return path
+
+    try:
+        job_id = ray.get_runtime_context().get_job_id()
+    except Exception:
+        job_id = f"pid_{os.getpid()}"
+    return os.path.join(tempfile.gettempdir(), f"verl_ray_master_ports_{job_id}.txt")
+
+
+def _allocate_ray_master_port(master_port_range: list[int]) -> int:
+    import fcntl
+
+    start, end = master_port_range
+    if start > end:
+        raise RuntimeError(f"Could not find a free port in range {master_port_range}")
+
+    alloc_path = _ray_master_port_alloc_path()
+    os.makedirs(os.path.dirname(alloc_path), exist_ok=True)
+    lock_path = f"{alloc_path}.lock"
+
+    with open(lock_path, "a+") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        allocated = set()
+        if os.path.exists(alloc_path):
+            with open(alloc_path) as alloc_file:
+                allocated = {int(line.strip()) for line in alloc_file if line.strip()}
+
+        for port in range(start, end + 1):
+            if port in allocated:
+                continue
+            try:
+                with socket.socket() as s:
+                    s.bind(("", port))
+            except OSError:
+                logger.info("Port %d is already in use, trying next port", port)
+                continue
+            with open(alloc_path, "a") as alloc_file:
+                alloc_file.write(f"{port}\n")
+            return port
+
+    raise RuntimeError(f"Could not find a free port in range {master_port_range}")
 
 
 def func_generator(self, method_name, dispatch_fn, collect_fn, execute_fn, blocking):
@@ -92,21 +139,12 @@ def get_master_addr_port(master_port_range: Optional[list[int]] = None) -> tuple
     addr = ray.util.get_node_ip_address().strip("[]")
 
     if master_port_range is None:
-        with socket.socket() as s:
-            s.bind(("", 0))
-            port = s.getsockname()[1]
-    else:
-        port = master_port_range[0]
-        while port < master_port_range[1]:
-            try:
-                with socket.socket() as s:
-                    s.bind(("", port))
-                    break
-            except OSError:
-                port += 1  # Increment port number if already in use
-                logger.info("Port %d is already in use, trying port %d", port - 1, port)
-        else:
-            raise RuntimeError(f"Could not find a free port in range {master_port_range}")
+        master_port_range = [
+            int(os.getenv("VERL_RAY_MASTER_PORT_START", "62000")),
+            int(os.getenv("VERL_RAY_MASTER_PORT_END", "65535")),
+        ]
+
+    port = _allocate_ray_master_port(master_port_range)
     return addr, str(port)
 
 

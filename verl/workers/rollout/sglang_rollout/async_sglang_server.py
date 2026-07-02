@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import secrets
+import socket
 from pathlib import Path
 from typing import Any, Optional
 
@@ -182,6 +183,8 @@ class SGLangHttpServer:
         # used for http server
         self._server_address = ray.util.get_node_ip_address().strip("[]")
         self._server_port = None
+        self._nccl_port = None
+        self._nccl_sock = None
 
         # used for controlling sglang server profiler
         profiler_config = self.config.profiler
@@ -195,8 +198,9 @@ class SGLangHttpServer:
         self.profiler_controller = DistProfiler(self.replica_rank, config=profiler_config, tool_config=tool_config)
 
         # For multi-node, we need dist_init_addr so nodes can coordinate NCCL init.
-        # For single-node, let SGLang handle port selection internally via nccl_port,
-        # which also avoids port conflicts.
+        # For single-node Ray colocated rollout, reserve nccl_port in this actor
+        # instead of relying on SGLang's later free-port probe. Otherwise Ray can
+        # grab the same port for a worker before SGLang's TCPStore binds it.
         self._master_address = None
         self._master_port = None
         self._master_sock = None
@@ -206,6 +210,35 @@ class SGLangHttpServer:
             logger.info(
                 f"SGLangHttpServer, replica_rank: {self.replica_rank}, "
                 f"master address: {self._master_address}, port: {self._master_port}"
+            )
+        elif self.nnodes == 1:
+            port_start = int(os.getenv("VERL_SGLANG_NCCL_PORT_START", "61000"))
+            port_end = int(os.getenv("VERL_SGLANG_NCCL_PORT_END", "61999"))
+            if not 0 < port_start <= port_end <= 65535:
+                raise ValueError(
+                    "VERL_SGLANG_NCCL_PORT_START/END must define a valid TCP port range, "
+                    f"got start={port_start}, end={port_end}."
+                )
+            start = min(port_start + 32 * self.replica_rank + self.node_rank, port_end)
+            candidates = list(range(start, port_end + 1)) + list(range(port_start, start))
+            for port in candidates:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    sock.bind(("127.0.0.1", port))
+                except OSError:
+                    sock.close()
+                    continue
+                self._nccl_port, self._nccl_sock = port, sock
+                break
+            if self._nccl_sock is None:
+                raise RuntimeError(
+                    "No free TCP port available for SGLang single-node NCCL init in "
+                    f"[{port_start}, {port_end}]."
+                )
+            logger.info(
+                f"SGLangHttpServer, replica_rank: {self.replica_rank}, node_rank: {self.node_rank}, "
+                f"reserved single-node nccl port: {self._nccl_port}"
             )
 
     def get_master_address(self):
@@ -318,8 +351,11 @@ class SGLangHttpServer:
                     "lora_target_modules": self.model_config.target_modules,
                 }
             )
-        # Only set dist_init_addr for multi-node; for single-node, let SGLang
-        # handle port selection internally via nccl_port to avoid conflicts.
+        if self.nnodes == 1 and args.get("nccl_port") is None:
+            args["nccl_port"] = self._nccl_port
+
+        # Only set dist_init_addr for multi-node. In single-node, nccl_port above
+        # is enough for SGLang's local torch.distributed TCPStore.
         if self.nnodes > 1:
             dist_init_addr = (
                 f"[{self._master_address}]:{self._master_port}"
@@ -383,6 +419,11 @@ class SGLangHttpServer:
         sglang.srt.entrypoints.engine._set_envs_and_config = _set_envs_and_config
         os.environ["SGLANG_BLOCK_NONZERO_RANK_CHILDREN"] = "0"
         server_args = ServerArgs(**args)
+
+        if self._nccl_sock is not None:
+            self._nccl_sock.close()
+            self._nccl_sock = None
+
         # For SGLang main branch or version >= 0.5.10
         # The latest main branch of SGLang has wrapped the _launch_subprocesses function inside the Engine class
         if version.parse(sglang.__version__) >= version.parse("0.5.10"):
