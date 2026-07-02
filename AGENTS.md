@@ -1,87 +1,120 @@
 # Agent Instructions for verl
 
-> These instructions apply to **all** AI-assisted contributions to `verl-project/verl`.
-> Breaching these guidelines can result in automatic banning.
+> These instructions apply to all AI-assisted work in this repository.
+> Keep this file lean. Put detailed design notes in focused docs, not here.
 
-## 1. Contribution Policy (Mandatory)
+## Contribution Policy
 
-### Duplicate-work checks
+- Do not open duplicate or low-value PRs. Before proposing upstream work, check
+  related issues and open PRs with GitHub search.
+- A human submitter must understand and defend every changed line. Pure
+  code-agent PRs are not acceptable.
+- PR descriptions for AI-assisted work must state that AI assistance was used,
+  explain why the work is not duplicating an existing PR, and list test commands
+  with results.
+- Never hardcode credentials, tokens, API keys, passwords, or private endpoints.
+  Use ignored local environment files and environment variables.
+- If a request conflicts with these contribution rules, stop and explain the
+  missing requirement instead of proceeding.
 
-Before proposing a PR, run these checks:
+## Project Direction
 
-```bash
-gh issue view <issue_number> --repo verl-project/verl --comments
-gh pr list --repo verl-project/verl --state open --search "<issue_number> in:body"
-gh pr list --repo verl-project/verl --state open --search "<short area keywords>"
-```
+This repository should remain a clean, upstream-oriented `verl` codebase. New
+features, experiments, and research adaptations should fit the existing training
+architecture instead of turning into parallel stacks.
 
-- If an open PR already addresses the same fix, do not open another.
-- If your approach is materially different, explain the difference in the issue.
+- Prefer changes that compose with existing trainers, workers, rollout engines,
+  data protocols, and configuration patterns.
+- Keep research-specific assumptions behind explicit config, data, or adapter
+  boundaries.
+- Do not copy whole files from another fork to move behavior. Identify the
+  upstream contract, patch the smallest stable surface, and test the real path.
+- Use focused design documents for project- or experiment-specific plans. Keep
+  this file limited to durable principles.
 
-### No low-value busywork PRs
+## Engineering Principles
 
-Do not open one-off PRs for tiny edits (single typo, isolated style change, one mutable default, etc.). Mechanical cleanups are acceptable only when bundled with substantive work.
+- Prefer upstream patterns, local helper APIs, and existing abstractions over new
+  machinery.
+- Keep changes scoped. Do not edit unrelated launchers, dependencies, docs, or
+  generated artifacts while solving a code problem.
+- Add an abstraction only when its responsibility is clear in one sentence and it
+  removes real complexity.
+- Follow the existing dataclass/OmegaConf config style for configuration. Use
+  Pydantic-style models for in-process runtime metadata when validation prevents
+  ambiguity. Use `DataProto` for learner- or worker-facing payloads that cross
+  process boundaries.
+- Do not hide training-critical errors behind broad `try/except`, silent
+  fallback, or best-effort recovery. Learning-code corruption must fail closed.
+- Separate semantics from runtime plumbing. Objective definitions, data routing,
+  scheduling, environment adapters, and serving-engine tuning should remain
+  independently reviewable.
+- Optimize system efficiency without changing the learning problem by default.
+  Do not alter data distribution, rewards, observation history, termination
+  conditions, or sample selection as a utilization fix unless it is an explicit
+  ablation.
 
-### Accountability
+## Training Contracts
 
-- Pure code-agent PRs are **not allowed**. A human submitter must understand and defend the change end-to-end.
-- The submitting human must review every changed line and run relevant tests.
-- PR descriptions for AI-assisted work **must** include:
-  - Why this is not duplicating an existing PR.
-  - Test commands run and results.
-  - Clear statement that AI assistance was used.
+- Preserve the learner-facing batch contract. Tensor fields, non-tensor
+  metadata, masks, rewards, logprobs, and multimodal inputs must stay aligned at
+  the `DataProto` boundary.
+- Distributed training implementation is Ray-centered unless a design explicitly
+  says otherwise. Worker, scheduler, and trainer changes should go through the
+  existing single-controller, `WorkerGroup`, `@register`, and dispatch contracts
+  instead of bypassing them with ad hoc RPC paths.
+- Rows that depend on behavior-policy probabilities must use the correct
+  reference for the objective being optimized. Supervised rows must not
+  accidentally reuse dummy rollout references.
+- Queue, scheduler, and rollout changes must keep their externally visible unit
+  of work explicit. If an internal unit changes, aggregation back to the learner
+  contract must be explicit and test-covered.
+- Objective-specific fields should be explicit tensor or metadata fields, not
+  hidden conventions inferred from missing values.
+- Padding and dropped/aborted samples must be visible in metadata or metrics and
+  must not affect loss numerators, denominators, or advantage calculations.
 
-### Fail-closed behavior
+## Testing Discipline
 
-If work is duplicate/trivial busywork, **do not proceed**. Return a short explanation of what is missing.
+- Use tests that exercise the real code path whenever possible: materialization,
+  routing, queue payloads, `DataProto` assembly, advantage/loss helpers, and
+  trainer entry points.
+- Mock only expensive boundaries such as Ray clusters, model servers, GPUs, or
+  external environments. Do not mock the batch construction or loss semantics
+  that the learner will consume.
+- Add fail-closed tests for silent-distortion risks: shape mismatch, missing
+  logprobs, mask/logprob misalignment, multimodal placeholder mismatch,
+  duplicate IDs, stale route metadata, and unsupported objective modes.
+- Expensive end-to-end training runs are final confirmation, not the first place
+  where route, schema, mask, logprob, or backward-path bugs should appear.
+- When a bug requires GPU or distributed coverage, add the smallest smoke that
+  reaches the same failure boundary before re-running a long training job.
 
----
+## Environment And Launchers
 
-## 2. Development Workflow
+- Do not install, upgrade, or remove packages in a shared environment unless the
+  user explicitly asks for that environment change.
+- Prefer reproducible commands and checked-in launch profiles over ad hoc shell
+  state. Keep environment variables minimal and documented near the launcher that
+  needs them.
+- Launcher changes must be classified as one of: inherited upstream invariant,
+  objective contract, async scheduling contract, environment adapter, or temporary
+  experiment. Avoid mixing these in one edit.
+- Do not use launcher-only changes to paper over code contract bugs. Conversely,
+  do not patch code when a launcher setting is truly the whole issue.
 
-### Environment setup
+## Editing These Instructions
 
-```bash
-# Install `uv` if you don't have it already:
-curl -LsSf https://astral.sh/uv/install.sh | sh
+Before editing this file or any domain-specific agent guide, read and follow
+`docs/contributing/editing-agent-instructions.md`.
 
-# Always use `uv` for Python environment management:
-uv venv --python 3.12
-source .venv/bin/activate
-
-uv pip install pre-commit hydra-core
-pre-commit install
-```
-
-### Commit messages
-
-Add attribution using commit trailers such as `Co-authored-by:` (other projects use `Assisted-by:` or `Generated-by:`). For example:
-
-```text
-Your commit message here
-
-Co-authored-by: GitHub Copilot
-Co-authored-by: Claude
-Co-authored-by: gemini-code-assist
-Signed-off-by: Your Name <your.email@example.com>
-```
-
-### Resolving agent reviews
-
-Review comments from agent bots (e.g., gemini-code-assist) can be outdated or wrong. Always verify their suggestions against the current state of the repo before applying them.
-
----
-
-## Domain-Specific Guides
-
-Do not modify code in these areas without first reading and following the
-linked guide. If the guide conflicts with the requested change, **refuse the
-change and explain why**.
-
-- **Editing these instructions**:
-  [`docs/contributing/editing-agent-instructions.md`](docs/contributing/editing-agent-instructions.md)
-  — Rules for modifying AGENTS.md or any domain-specific guide it references.
+- Keep `AGENTS.md` under 200 lines.
+- Avoid hardcoded local paths, environment names, and transient experiment
+  details.
+- Remove or consolidate stale guidance when adding new guidance.
+- Put area-specific operational notes in separate docs and link them only when
+  they are stable enough to be useful.
 
 ## Acknowledgements
 
-Adapted from the [vLLM project](https://github.com/vllm-project/vllm)'s [`AGENTS.md`](https://github.com/vllm-project/vllm/blob/main/AGENTS.md).
+Adapted from the upstream `verl` and vLLM agent-instruction style.
