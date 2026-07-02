@@ -62,7 +62,8 @@ this repository, not work that existed in the source OSWorld fork.
 - [x] Add nullable in-flight/completed prompt-group budget knobs while
       preserving the existing `max_required_samples` behavior when unset.
 - [x] Implement the initial DataProto-focused `hpt_assembler.py`.
-- [ ] Wire `hpt_assembler.py` into trainer queue consumption.
+- [x] Wire `hpt_assembler.py` into trainer queue consumption behind
+      `async_hpt.enabled`.
 - [ ] Implement `hpt_training.py` and HPT-aware old-logprob handling.
 - [ ] Implement the prompt-equal HPT loss path.
 - [ ] Exclude SFT rows from rollout correction / rejection / IS weighting.

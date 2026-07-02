@@ -29,6 +29,7 @@ from verl.experimental.fully_async_policy.detach_utils import (
     MetricsAggregator,
     assemble_batch_from_rollout_samples,
 )
+from verl.experimental.fully_async_policy.hpt_assembler import HptBatchAssembler
 from verl.experimental.fully_async_policy.message_queue import MessageQueueClient
 from verl.experimental.separation.ray_trainer import SeparateRayPPOTrainer
 from verl.single_controller.ray import RayClassWithInitArgs, RayWorkerGroup
@@ -134,6 +135,7 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
         # ==================== fully async config ====================
 
         self.message_queue_client = None
+        self.hpt_assembler = None
 
         # Statistics
         self.local_trigger_step = 1
@@ -323,7 +325,15 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
 
         queue_samples = [ray.cloudpickle.loads(x) for x in queue_samples]
         # Assemble batch - now working directly with RolloutSample objects
-        if self.config.trainer.balance_batch:
+        if self.config.get("async_hpt", {}).get("enabled", False):
+            if self.hpt_assembler is None:
+                self.hpt_assembler = HptBatchAssembler(config=self.config, tokenizer=self.tokenizer)
+            batch = self.hpt_assembler.assemble_rollout_samples(queue_samples)
+            if self.config.trainer.balance_batch:
+                self._balance_batch(batch, metrics={})
+            if "attention_mask" in batch.batch:
+                batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
+        elif self.config.trainer.balance_batch:
             batch = assemble_batch_from_rollout_samples(queue_samples, self.tokenizer, self.config, self._balance_batch)
         else:
             batch = assemble_batch_from_rollout_samples(queue_samples, self.tokenizer, self.config, None)
