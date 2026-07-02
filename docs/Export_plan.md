@@ -68,7 +68,7 @@ this repository, not work that existed in the source OSWorld fork.
 - [x] Implement the prompt-equal HPT loss path.
 - [x] Exclude SFT rows from rollout correction / rejection / IS weighting.
 - [x] Export E1 trajectory scheduling and prompt-group accumulation.
-- [ ] Export E3 partial rollout recovery only after HPT core is coherent.
+- [x] Export E3 partial rollout recovery only after HPT core is coherent.
 - [ ] Add contract tests after the target environment is ready.
 
 ## 1. Export Objective
@@ -486,9 +486,13 @@ if any trajectory attempt in a prompt group fails
 Concretely:
 
 ```text
-read timeout / infra failure / infra abort in one attempt
-  -> FailedHptPromptGroup
+explicit infra_abort marker in one attempt
+  -> close and drop the whole prompt group
   -> no partial prompt-group learner sample is emitted
+
+unexpected generation exceptions
+  -> fail closed
+  -> do not synthesize a learner sample
 ```
 
 This is part of the exported semantics, not incidental logging behavior.

@@ -251,10 +251,24 @@ class ToolAgentLoop(AgentLoopBase):
         if not agent_data.extra_fields:
             agent_data.extra_fields.update(output.extra_fields)
         else:
-            # Multi-round calls, only update the maximum max_global_steps.
+            min_global_steps = output.extra_fields.get("min_global_steps", None)
+            if min_global_steps is not None:
+                current_min = agent_data.extra_fields.get("min_global_steps")
+                agent_data.extra_fields["min_global_steps"] = (
+                    min_global_steps if current_min is None else min(current_min, min_global_steps)
+                )
             max_global_steps = output.extra_fields.get("max_global_steps", None)
-            if max_global_steps:
-                agent_data.extra_fields["max_global_steps"] = max_global_steps
+            if max_global_steps is not None:
+                current_max = agent_data.extra_fields.get("max_global_steps")
+                agent_data.extra_fields["max_global_steps"] = (
+                    max_global_steps if current_max is None else max(current_max, max_global_steps)
+                )
+            partial_rollout_resume_count = output.extra_fields.get("partial_rollout_resume_count")
+            if partial_rollout_resume_count is not None:
+                current_count = agent_data.extra_fields.get("partial_rollout_resume_count", 0)
+                agent_data.extra_fields["partial_rollout_resume_count"] = int(current_count) + int(
+                    partial_rollout_resume_count
+                )
             for key in SPEC_DECODE_EXTRA_KEYS:
                 if key in output.extra_fields and key in agent_data.extra_fields:
                     agent_data.extra_fields[key] = int(agent_data.extra_fields[key]) + int(output.extra_fields[key])

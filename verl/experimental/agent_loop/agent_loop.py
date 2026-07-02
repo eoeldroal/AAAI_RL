@@ -718,8 +718,43 @@ class AgentLoopWorker:
                 padded["attention_mask"] = padded["attention_mask"].unsqueeze(0)
         return padded
 
+    def _pad_response_logprobs(self, output: AgentLoopOutput, *, response_length: int) -> torch.Tensor | None:
+        if output.response_logprobs is None:
+            return None
+        if len(output.response_logprobs) != len(output.response_ids):
+            raise ValueError(
+                "response_logprobs length must match response_ids length before materialization: "
+                f"response_logprobs={len(output.response_logprobs)} response_ids={len(output.response_ids)}."
+            )
+
+        response_logprobs = list(output.response_logprobs[:response_length])
+        pad_size = response_length - len(response_logprobs)
+        return torch.tensor(response_logprobs + [0.0] * pad_size, dtype=torch.float32).unsqueeze(0)
+
+    def _validate_agent_loop_response_lengths(self, output: AgentLoopOutput) -> None:
+        if len(output.response_mask) != len(output.response_ids):
+            raise ValueError(
+                "response_mask length must match response_ids length before materialization: "
+                f"response_mask={len(output.response_mask)} response_ids={len(output.response_ids)}."
+            )
+        if output.response_logprobs is not None and len(output.response_logprobs) != len(output.response_ids):
+            raise ValueError(
+                "response_logprobs length must match response_ids length before materialization: "
+                f"response_logprobs={len(output.response_logprobs)} response_ids={len(output.response_ids)}."
+            )
+
+    def _should_require_response_logprobs(self, input_non_tensor_batch: dict | None = None) -> bool:
+        del input_non_tensor_batch
+        rollout_config = getattr(self, "rollout_config", None)
+        if rollout_config is None:
+            return False
+        if hasattr(rollout_config, "get"):
+            return bool(rollout_config.get("calculate_log_probs", False))
+        return bool(getattr(rollout_config, "calculate_log_probs", False))
+
     async def _agent_loop_postprocess(self, output, validate, **kwargs) -> _InternalAgentLoopOutput:
         """Perform post-processing operations on the output of each individual agent loop."""
+        self._validate_agent_loop_response_lengths(output)
         output.extra_fields["raw_prompt"] = kwargs["raw_prompt"]
 
         # Some AgentLoop may have already computed the reward score, e.g SWE-agent.
@@ -764,10 +799,7 @@ class AgentLoopWorker:
             return_attention_mask=False,
         )
 
-        response_logprobs = None
-        if output.response_logprobs is not None:
-            pad_size = self.rollout_config.response_length - len(output.response_logprobs)
-            response_logprobs = torch.tensor(output.response_logprobs + [0.0] * pad_size).unsqueeze(0)
+        response_logprobs = self._pad_response_logprobs(output, response_length=self.rollout_config.response_length)
 
         response_mask = response_mask_output["input_ids"] * response_output["attention_mask"]
         attention_mask = torch.cat([prompt_output["attention_mask"], response_output["attention_mask"]], dim=1)
@@ -1037,8 +1069,29 @@ class AgentLoopWorker:
         input_ids = torch.cat([input.input_ids for input in inputs], dim=0)
         position_ids = torch.cat([input.position_ids for input in inputs], dim=0)
         optional_outputs = {}
-        if inputs[0].response_logprobs is not None:
-            optional_outputs["rollout_log_probs"] = torch.cat([input.response_logprobs for input in inputs], dim=0)
+        has_response_logprobs = any(input.response_logprobs is not None for input in inputs)
+        expects_response_logprobs = self._should_require_response_logprobs(input_non_tensor_batch)
+        if has_response_logprobs or expects_response_logprobs:
+            generated_row_flags = (response_mask.sum(dim=1) > 0).detach().cpu().tolist()
+            missing_generated_logprob_rows = [
+                idx
+                for idx, (input, has_generated_response) in enumerate(zip(inputs, generated_row_flags, strict=True))
+                if input.response_logprobs is None and has_generated_response
+            ]
+            if missing_generated_logprob_rows:
+                raise ValueError(
+                    "rollout.calculate_log_probs=True but response_logprobs are missing for generated response rows: "
+                    f"{missing_generated_logprob_rows}"
+                )
+            optional_outputs["rollout_log_probs"] = torch.cat(
+                [
+                    input.response_logprobs
+                    if input.response_logprobs is not None
+                    else torch.zeros_like(input.response_ids, dtype=torch.float32)
+                    for input in inputs
+                ],
+                dim=0,
+            )
         if inputs[0].routed_experts is not None:
             optional_outputs["routed_experts"] = torch.cat([input.routed_experts for input in inputs], dim=0)
         if inputs[0].teacher_logprobs is not None and inputs[0].teacher_ids is not None:

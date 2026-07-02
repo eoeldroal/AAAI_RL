@@ -101,6 +101,10 @@ class HptPromptGroupAccumulator:
             )
         return completed
 
+    def discard(self, group_uid: str) -> None:
+        group_uid = _normalize_non_empty_string(group_uid, "group_uid")
+        self._groups.pop(group_uid, None)
+
     def stranded_count(self) -> int:
         return sum(len(group.attempts) for group in self._groups.values() if not group.ready)
 

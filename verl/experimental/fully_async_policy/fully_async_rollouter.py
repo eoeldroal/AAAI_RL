@@ -60,6 +60,15 @@ logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
+def _has_infra_abort_marker(generated: DataProto) -> bool:
+    if not isinstance(generated, DataProto):
+        return False
+    values = generated.non_tensor_batch.get("infra_abort")
+    if values is None:
+        return False
+    return any(bool(value) for value in np.asarray(values, dtype=object).reshape(-1))
+
+
 class FullyAsyncLLMServerManager(LLMServerManager):
     """Extension of :class:`LLMServerManager` for fully async training with hybrid scaling."""
 
@@ -940,6 +949,9 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
         attempt_batch: DataProto,
     ) -> None:
         ret = await self.async_rollout_manager.generate_sequences_single(attempt_batch)
+        if _has_infra_abort_marker(ret):
+            await self._drop_hpt_scheduler_group(group_uid, reason="infra_abort")
+            return
         result = HptTrajectoryAttemptResult(
             group_uid=group_uid,
             prompt_uid=prompt_uid,
@@ -972,6 +984,25 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
                     generated_batch=completed_group.payload,
                     group_uid=completed_group.group_uid,
                 )
+
+    async def _drop_hpt_scheduler_group(self, group_uid: str, *, reason: str) -> None:
+        state = None
+        async with self.lock:
+            if group_uid in self.hpt_closed_group_uids:
+                return
+            self.hpt_closed_group_uids.add(group_uid)
+            self.hpt_rollout_accumulator.discard(group_uid)
+            state = self.hpt_scheduler_groups.pop(group_uid, None)
+
+        if state is None:
+            return
+        rollout_sample = state["rollout_sample"]
+        self.processed_sample_count += 1
+        print(
+            "[FullyAsyncRollouter] Dropped HPT trajectory-scheduler group "
+            f"sample_id={rollout_sample.sample_id!r} group_uid={group_uid!r} reason={reason!r} "
+            "before HPT gate and queue put"
+        )
 
     async def _queue_completed_rollout_sample(
         self,
@@ -1012,6 +1043,13 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
             [group_uid] * len(source_batch), dtype=object
         )
         ret = await self.async_rollout_manager.generate_sequences_single(source_batch)
+        if self.hpt_rollout_gate is not None and _has_infra_abort_marker(ret):
+            self.processed_sample_count += 1
+            print(
+                "[FullyAsyncRollouter] Dropped infra-aborted sample group "
+                f"sample_id={rollout_sample.sample_id!r} group_uid={group_uid!r} before HPT gate and queue put"
+            )
+            return
         await self._queue_completed_rollout_sample(
             rollout_sample,
             source_batch=source_batch,

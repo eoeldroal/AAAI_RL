@@ -296,6 +296,9 @@ class FullyAsyncLLMServerClient(LLMServerClient):
             num_preempted=0,
         )
         min_global_steps, max_global_steps = None, None
+        partial_rollout_resume_count = 0
+        consecutive_empty_abort_count = 0
+        calculate_log_probs = bool(getattr(self.config.actor_rollout_ref.rollout, "calculate_log_probs", False))
 
         while True:
             # 1. generate tokens
@@ -311,6 +314,17 @@ class FullyAsyncLLMServerClient(LLMServerClient):
             )
 
             # 2. merge output into final_output
+            if calculate_log_probs:
+                if output.log_probs is None and output.token_ids:
+                    raise ValueError(
+                        "rollout.calculate_log_probs=True but generated token log_probs are missing "
+                        f"for partial rollout chunk with {len(output.token_ids)} tokens."
+                    )
+                if output.log_probs is not None and len(output.log_probs) != len(output.token_ids):
+                    raise ValueError(
+                        "rollout.calculate_log_probs=True but generated token log_probs length "
+                        f"{len(output.log_probs)} does not match token_ids length {len(output.token_ids)}."
+                    )
             final_output.token_ids.extend(output.token_ids)
             if output.log_probs is not None:
                 final_output.log_probs.extend(output.log_probs)
@@ -347,14 +361,23 @@ class FullyAsyncLLMServerClient(LLMServerClient):
             should_retry = True
             if hasattr(self.config, "async_training") and not self.config.async_training.partial_rollout:
                 should_retry = False
-            if output.stop_reason not in ("aborted", "abort") or not should_retry:
+            should_resume_partial_rollout = output.stop_reason in ("aborted", "abort") and should_retry
+            if not should_resume_partial_rollout:
                 break
+            if output.token_ids:
+                consecutive_empty_abort_count = 0
+            else:
+                if consecutive_empty_abort_count >= 1:
+                    break
+                consecutive_empty_abort_count += 1
+            partial_rollout_resume_count += 1
 
             await asyncio.sleep(1)
 
         final_output.extra_fields["global_steps"] = global_steps
         final_output.extra_fields["min_global_steps"] = min_global_steps
         final_output.extra_fields["max_global_steps"] = max_global_steps
+        final_output.extra_fields["partial_rollout_resume_count"] = partial_rollout_resume_count
         return final_output
 
 
