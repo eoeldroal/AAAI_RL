@@ -17,6 +17,7 @@ import logging
 import os
 import time
 from pprint import pformat
+from typing import Any
 
 import numpy as np
 import ray
@@ -28,6 +29,15 @@ from verl.experimental.fully_async_policy.detach_utils import (
     RolloutSample,
     prepare_single_generation_data,
     safe_create_task,
+)
+from verl.experimental.fully_async_policy.hpt_gate import (
+    assign_training_group_uid,
+    build_hpt_rollout_gate,
+    extract_prompt_uid_from_generation_batch,
+)
+from verl.experimental.fully_async_policy.hpt_rollout_accumulator import (
+    HptPromptGroupAccumulator,
+    HptTrajectoryAttemptResult,
 )
 from verl.experimental.fully_async_policy.message_queue import MessageQueueClient
 from verl.experimental.separation.ray_trainer import SeparateRayPPOTrainer
@@ -388,6 +398,7 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
         self.required_samples = config.actor_rollout_ref.actor.ppo_mini_batch_size * self.require_batches
         self.max_required_samples = None
         self.max_concurrent_samples = None
+        self.max_concurrent_trajectory_attempts = None
         # queue size
         self.max_queue_size = None
 
@@ -412,6 +423,11 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
         # Initialize async queues
         self.pending_queue = asyncio.Queue(maxsize=128)
         self.active_tasks = set()
+        self.hpt_rollout_gate = build_hpt_rollout_gate(config)
+        rollout_n = int(self.config.actor_rollout_ref.rollout.n)
+        self.hpt_rollout_accumulator = HptPromptGroupAccumulator(rollout_n=rollout_n)
+        self.hpt_scheduler_groups: dict[str, dict[str, Any]] = {}
+        self.hpt_closed_group_uids: set[str] = set()
 
     def _init_async_objects(self):
         # Initialize asyncio synchronization primitives.
@@ -460,6 +476,8 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
                 replica_concurrency_cap,
                 max_inflight_prompt_groups or self.max_required_samples,
             )
+            rollout_n = int(self.config.actor_rollout_ref.rollout.n)
+            self.max_concurrent_trajectory_attempts = self.max_concurrent_samples * rollout_n
             self.max_queue_size = max_completed_prompt_groups or self.max_required_samples
 
             print(
@@ -471,6 +489,7 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
                 f"total_train_steps: {self.total_train_steps} "
                 f"total_rollout_steps: {self.total_rollout_steps} "
                 f"max_concurrent_samples: {self.max_concurrent_samples} "
+                f"max_concurrent_trajectory_attempts: {self.max_concurrent_trajectory_attempts} "
             )
 
     def get_replicas(self):
@@ -494,7 +513,11 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
             # new samples to idle replicas instead of waiting for long-tail in-flight tasks.
             self._resume_event.set()
             # every time param change, reset staleness_samples
-            self.staleness_samples = len(self.active_tasks) + await self.message_queue_client.get_queue_size()
+            queue_size = await self.message_queue_client.get_queue_size()
+            if self._hpt_trajectory_scheduler_enabled():
+                self.staleness_samples = self.hpt_rollout_accumulator.open_group_count() + queue_size
+            else:
+                self.staleness_samples = len(self.active_tasks) + queue_size
             timing_raw = {}
             rollout_version_time = max(time.time() - self.step_start_time, 1e-6)
             if self.idle_start_time > self.step_start_time:
@@ -824,24 +847,16 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
                     "[FullyAsyncRollouter][Processor] Received end signal, waiting for remaining tasks to complete..."
                 )
                 while self.active_tasks:
-                    async with self.lock:
-                        if self.active_tasks:
-                            done_tasks, self.active_tasks = await asyncio.wait(
-                                self.active_tasks, return_when=asyncio.FIRST_COMPLETED
-                            )
-                            for task in done_tasks:
-                                await task
+                    await self._wait_for_one_active_task()
                 break
 
             # Check whether the number of concurrent tasks exceeds the limit
-            while len(self.active_tasks) >= self.max_concurrent_samples:
-                async with self.lock:
-                    if self.active_tasks:
-                        done_tasks, self.active_tasks = await asyncio.wait(
-                            self.active_tasks, return_when=asyncio.FIRST_COMPLETED
-                        )
-                        for task in done_tasks:
-                            await task
+            while len(self.active_tasks) >= self._active_task_limit():
+                await self._wait_for_one_active_task()
+
+            if self._hpt_trajectory_scheduler_enabled():
+                await self._submit_hpt_trajectory_attempts(rollout_sample)
+                continue
 
             # Submit single sample processing
             if self.paused:
@@ -853,21 +868,131 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
                     task_set=self.active_tasks,
                 )
 
-    async def _process_single_sample_streaming(self, rollout_sample: RolloutSample):
-        """Process a single sample streamingly"""
-        # Calling asynchronous generation methods
-        # Embed sample_id into prompts for skip management
-        rollout_sample.full_batch.non_tensor_batch["uid"] = np.array(
-            [f"uid_{rollout_sample.sample_id}"] * len(rollout_sample.full_batch), dtype=object
-        )
-        ret = await self.async_rollout_manager.generate_sequences_single(rollout_sample.full_batch)
-        rollout_sample.full_batch = ret
-        # Re-set uid on output — agent loop worker returns a new DataProto without the input's non_tensor_batch
-        rollout_sample.full_batch.non_tensor_batch["uid"] = np.array(
-            [f"uid_{rollout_sample.sample_id}"] * len(rollout_sample.full_batch), dtype=object
-        )
-        rollout_sample.rollout_status = await self.get_statistics()
+    async def _wait_for_one_active_task(self) -> None:
+        if not self.active_tasks:
+            return
+        done_tasks, _pending_tasks = await asyncio.wait(set(self.active_tasks), return_when=asyncio.FIRST_COMPLETED)
+        async with self.lock:
+            for task in done_tasks:
+                self.active_tasks.discard(task)
+        for task in done_tasks:
+            await task
 
+    def _hpt_trajectory_scheduler_enabled(self) -> bool:
+        trajectory_config = getattr(getattr(self.config, "async_hpt", None), "trajectory_scheduler", None)
+        return bool(
+            self.hpt_rollout_gate is not None
+            and trajectory_config is not None
+            and trajectory_config.get("enabled", False)
+        )
+
+    def _active_task_limit(self) -> int:
+        if self._hpt_trajectory_scheduler_enabled():
+            return int(self.max_concurrent_trajectory_attempts)
+        return int(self.max_concurrent_samples)
+
+    async def _submit_hpt_trajectory_attempts(self, rollout_sample: RolloutSample) -> None:
+        source_batch = rollout_sample.full_batch
+        rollout_n = int(self.config.actor_rollout_ref.rollout.n)
+        if len(source_batch) != rollout_n:
+            raise ValueError(
+                "HPT trajectory scheduler expects one RolloutSample to contain exactly rollout.n rows; "
+                f"sample_id={rollout_sample.sample_id!r} len={len(source_batch)} rollout_n={rollout_n}"
+            )
+
+        prompt_uid = extract_prompt_uid_from_generation_batch(source_batch)
+        group_uid = f"uid_{rollout_sample.sample_id}"
+        async with self.lock:
+            if group_uid in self.hpt_scheduler_groups:
+                raise ValueError(f"Duplicate HPT scheduler group_uid={group_uid!r}")
+            self.hpt_scheduler_groups[group_uid] = {
+                "rollout_sample": rollout_sample,
+                "source_batch": source_batch,
+                "prompt_uid": prompt_uid,
+            }
+
+        for rollout_index in range(rollout_n):
+            while len(self.active_tasks) >= self._active_task_limit():
+                await self._wait_for_one_active_task()
+            if self.paused:
+                await self._resume_event.wait()
+
+            attempt_batch = source_batch[[rollout_index]]
+            attempt_batch.non_tensor_batch["hpt_rollout_index"] = np.array([rollout_index], dtype=object)
+            async with self.lock:
+                safe_create_task(
+                    self._process_hpt_trajectory_attempt_streaming(
+                        group_uid=group_uid,
+                        prompt_uid=prompt_uid,
+                        rollout_index=rollout_index,
+                        attempt_batch=attempt_batch,
+                    ),
+                    name=f"{rollout_sample.sample_id}/attempt_{rollout_index}",
+                    task_set=self.active_tasks,
+                )
+
+    async def _process_hpt_trajectory_attempt_streaming(
+        self,
+        *,
+        group_uid: str,
+        prompt_uid: str,
+        rollout_index: int,
+        attempt_batch: DataProto,
+    ) -> None:
+        ret = await self.async_rollout_manager.generate_sequences_single(attempt_batch)
+        result = HptTrajectoryAttemptResult(
+            group_uid=group_uid,
+            prompt_uid=prompt_uid,
+            rollout_index=rollout_index,
+            payload=ret,
+        )
+        await self._record_hpt_trajectory_attempt_result(result)
+
+    async def _record_hpt_trajectory_attempt_result(self, result: HptTrajectoryAttemptResult) -> None:
+        ready_groups = []
+        states: dict[str, dict[str, Any]] = {}
+        async with self.lock:
+            if result.group_uid in self.hpt_closed_group_uids:
+                return
+
+            self.hpt_rollout_accumulator.add(result)
+            ready_groups = self.hpt_rollout_accumulator.pop_ready()
+            for group in ready_groups:
+                self.hpt_closed_group_uids.add(group.group_uid)
+                state = self.hpt_scheduler_groups.pop(group.group_uid, None)
+                if state is not None:
+                    states[group.group_uid] = state
+
+        for completed_group in ready_groups:
+            state = states.get(completed_group.group_uid)
+            if state is not None:
+                await self._queue_completed_rollout_sample(
+                    state["rollout_sample"],
+                    source_batch=state["source_batch"],
+                    generated_batch=completed_group.payload,
+                    group_uid=completed_group.group_uid,
+                )
+
+    async def _queue_completed_rollout_sample(
+        self,
+        rollout_sample: RolloutSample,
+        *,
+        source_batch: DataProto,
+        generated_batch: DataProto,
+        group_uid: str,
+    ) -> None:
+        if self.hpt_rollout_gate is not None:
+            self.hpt_rollout_gate.route_rollout_sample(
+                rollout_sample,
+                source_batch=source_batch,
+                generated_batch=generated_batch,
+                group_uid=group_uid,
+            )
+        else:
+            rollout_sample.full_batch = generated_batch
+            assign_training_group_uid(rollout_sample.full_batch, group_uid)
+
+        rollout_sample.rollout_status = await self.get_statistics()
         success = await self.message_queue_client.put_sample(
             sample=ray.cloudpickle.dumps(rollout_sample),
         )
@@ -876,6 +1001,23 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
         else:
             self.dropped_stale_samples += 1
         self.processed_sample_count += 1
+
+    async def _process_single_sample_streaming(self, rollout_sample: RolloutSample):
+        """Process a single sample streamingly"""
+        # Calling asynchronous generation methods
+        # Embed sample_id into prompts for skip management
+        source_batch = rollout_sample.full_batch
+        group_uid = f"uid_{rollout_sample.sample_id}"
+        source_batch.non_tensor_batch["uid"] = np.array(
+            [group_uid] * len(source_batch), dtype=object
+        )
+        ret = await self.async_rollout_manager.generate_sequences_single(source_batch)
+        await self._queue_completed_rollout_sample(
+            rollout_sample,
+            source_batch=source_batch,
+            generated_batch=ret,
+            group_uid=group_uid,
+        )
 
     async def _streaming_generation_main(self):
         """The main entry method for stream processing"""
@@ -1024,16 +1166,50 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
                 )
             return True
 
+        if self._hpt_trajectory_scheduler_enabled():
+            completed_attempt_storage = self.hpt_rollout_accumulator.completed_attempt_storage_count(
+                queue_size=queue_size
+            )
+            max_completed_attempt_storage = int(self.max_queue_size) * int(self.config.actor_rollout_ref.rollout.n)
+            if completed_attempt_storage >= max_completed_attempt_storage:
+                if not self.paused:
+                    print(
+                        "[FullyAsyncRollouter][ShouldPause] "
+                        "due to HPT completed attempt storage "
+                        f"{completed_attempt_storage} >= {max_completed_attempt_storage}"
+                    )
+                return True
+
         return False
 
     async def get_statistics(self) -> dict:
         queue_stats = await self.message_queue_client.get_statistics()
+        max_concurrent_trajectory_attempts = self.max_concurrent_trajectory_attempts
+        if max_concurrent_trajectory_attempts is None and self.max_concurrent_samples is not None:
+            max_concurrent_trajectory_attempts = int(self.max_concurrent_samples) * int(
+                self.config.actor_rollout_ref.rollout.n
+            )
 
         stats = {
             # monitor stats
             "monitor/active_tasks_size": len(self.active_tasks),
             "monitor/queue/pending_queue_size": self.pending_queue.qsize(),
             "monitor/queue/mq_queue_size": queue_stats["queue_size"],
+            "monitor/hpt/open_prompt_groups": (
+                self.hpt_rollout_accumulator.open_group_count()
+                if self._hpt_trajectory_scheduler_enabled()
+                else 0
+            ),
+            "monitor/hpt/stranded_completed_attempts": (
+                self.hpt_rollout_accumulator.stranded_count()
+                if self._hpt_trajectory_scheduler_enabled()
+                else 0
+            ),
+            "monitor/hpt/completed_attempt_storage": (
+                self.hpt_rollout_accumulator.completed_attempt_storage_count(queue_size=queue_stats["queue_size"])
+                if self._hpt_trajectory_scheduler_enabled()
+                else 0
+            ),
             # counting stats
             "count/total_generated_samples": self.total_generated_samples,
             "count/staleness_samples": self.staleness_samples,
@@ -1044,7 +1220,10 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
             "static/staleness_threshold": self.staleness_threshold,
             "static/max_queue_size": self.max_queue_size,
             "static/max_concurrent_samples": self.max_concurrent_samples,
+            "static/max_concurrent_trajectory_attempts": max_concurrent_trajectory_attempts,
         }
+        if self.hpt_rollout_gate is not None:
+            stats.update(self.hpt_rollout_gate.statistics())
 
         return stats
 

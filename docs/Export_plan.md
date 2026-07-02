@@ -67,7 +67,7 @@ this repository, not work that existed in the source OSWorld fork.
 - [x] Implement `hpt_training.py` and HPT-aware rollout-logprob anchoring.
 - [x] Implement the prompt-equal HPT loss path.
 - [x] Exclude SFT rows from rollout correction / rejection / IS weighting.
-- [ ] Export E1 trajectory scheduling and prompt-group accumulation.
+- [x] Export E1 trajectory scheduling and prompt-group accumulation.
 - [ ] Export E3 partial rollout recovery only after HPT core is coherent.
 - [ ] Add contract tests after the target environment is ready.
 

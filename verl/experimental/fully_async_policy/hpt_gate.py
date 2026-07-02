@@ -75,6 +75,43 @@ class HptRolloutGate:
     def __init__(self, *, config: AsyncHptConfig, tau_store: HptTauStore):
         self.config = config
         self.tau_store = tau_store
+        self.num_sft_routed = 0
+        self.num_rl_routed = 0
+        self.missing_tau_count = 0
+
+    def route_rollout_sample(
+        self,
+        rollout_sample: Any,
+        *,
+        source_batch: DataProto,
+        generated_batch: DataProto,
+        group_uid: str | None = None,
+    ) -> HptRouteMetadata:
+        """Attach an HPT route decision to a generated rollout sample before queue insertion."""
+
+        if not isinstance(generated_batch, DataProto):
+            raise TypeError(f"HPT rollout gate requires generated DataProto, got {type(generated_batch)!r}.")
+        group_uid = group_uid or f"uid_{rollout_sample.sample_id}"
+        prompt_uid = extract_prompt_uid_from_generation_batch(source_batch)
+        if len(generated_batch) != len(source_batch):
+            raise ValueError(
+                "HPT rollout gate requires generated rows to match source rows: "
+                f"source={len(source_batch)} generated={len(generated_batch)}."
+            )
+        assign_training_group_uid(generated_batch, group_uid)
+        ensure_generated_prompt_uid(generated_batch, prompt_uid)
+
+        decision = self.route(generated_batch, group_uid=group_uid)
+        rollout_sample.hpt_route = decision.metadata
+        if decision.metadata.is_sft:
+            rollout_sample.full_batch = decision.sft_payload
+            self.num_sft_routed += 1
+        else:
+            rollout_sample.full_batch = generated_batch
+            self.num_rl_routed += 1
+            if decision.metadata.missing_tau:
+                self.missing_tau_count += 1
+        return decision.metadata
 
     def route(self, payload: DataProto, *, group_uid: str | None = None) -> HptRouteDecision:
         prompt_uid = extract_prompt_uid(payload)
@@ -105,6 +142,46 @@ class HptRolloutGate:
             success_score_key=self.config.success_score_key,
         )
         return HptRouteDecision(metadata=metadata, sft_payload=tau_payload if route_to_sft else None)
+
+    def statistics(self) -> dict[str, int]:
+        return {
+            "hpt/num_sft_routed": self.num_sft_routed,
+            "hpt/num_rl_routed": self.num_rl_routed,
+            "hpt/missing_tau_count": self.missing_tau_count,
+        }
+
+
+def assign_training_group_uid(payload: DataProto, group_uid: str) -> None:
+    """Assign the runtime training group uid used by GRPO/PPO grouping."""
+
+    group_uid = _coerce_string(group_uid, "group_uid")
+    payload.non_tensor_batch["uid"] = np.array([group_uid] * len(payload), dtype=object)
+
+
+def ensure_generated_prompt_uid(payload: DataProto, prompt_uid: str) -> None:
+    """Ensure routed RL payload keeps the source prompt_uid for HPT assembly."""
+
+    prompt_uid = _coerce_string(prompt_uid, "prompt_uid")
+    _set_or_validate_repeated_non_tensor_value(
+        payload.non_tensor_batch,
+        key="prompt_uid",
+        value=prompt_uid,
+        expected_len=len(payload),
+    )
+
+
+def extract_prompt_uid_from_generation_batch(batch: DataProto) -> str:
+    """Read the source prompt_uid before rollout output overwrites runtime uid."""
+
+    if not isinstance(batch, DataProto):
+        raise TypeError(f"source_batch must be DataProto, got {type(batch)!r}")
+    if "prompt_uid" not in batch.non_tensor_batch:
+        raise ValueError("HPT routing requires source batch non_tensor_batch['prompt_uid'].")
+    values = _as_list(batch.non_tensor_batch["prompt_uid"])
+    prompt_uids = {_coerce_string(value, "prompt_uid") for value in values}
+    if len(prompt_uids) != 1:
+        raise ValueError(f"HPT routing expects one prompt_uid per rollout sample, got {sorted(prompt_uids)!r}.")
+    return next(iter(prompt_uids))
 
 
 def extract_prompt_uid(payload: DataProto) -> str:
@@ -165,6 +242,24 @@ def _as_list(values: Any) -> list[Any]:
     if isinstance(values, tuple):
         return list(values)
     return [values]
+
+
+def _set_or_validate_repeated_non_tensor_value(
+    non_tensor_batch: dict[str, np.ndarray],
+    *,
+    key: str,
+    value: str,
+    expected_len: int,
+) -> None:
+    existing = non_tensor_batch.get(key)
+    if existing is None:
+        non_tensor_batch[key] = np.array([value] * expected_len, dtype=object)
+        return
+    observed = [_coerce_string(item, key) for item in _as_list(existing)]
+    if len(observed) != expected_len:
+        raise ValueError(f"{key} length {len(observed)} does not match expected length {expected_len}.")
+    if any(item != value for item in observed):
+        raise ValueError(f"{key} values {sorted(set(observed))} do not match expected value {value!r}.")
 
 
 def _coerce_string(value: Any, key: str) -> str:
