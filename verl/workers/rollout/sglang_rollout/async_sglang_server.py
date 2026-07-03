@@ -233,8 +233,7 @@ class SGLangHttpServer:
                 break
             if self._nccl_sock is None:
                 raise RuntimeError(
-                    "No free TCP port available for SGLang single-node NCCL init in "
-                    f"[{port_start}, {port_end}]."
+                    f"No free TCP port available for SGLang single-node NCCL init in [{port_start}, {port_end}]."
                 )
             logger.info(
                 f"SGLangHttpServer, replica_rank: {self.replica_rank}, node_rank: {self.node_rank}, "

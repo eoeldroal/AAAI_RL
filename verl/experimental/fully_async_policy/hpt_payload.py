@@ -67,7 +67,7 @@ class HptSftPayload(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _require_assistant_message(self) -> "HptSftPayload":
+    def _require_assistant_message(self) -> HptSftPayload:
         if not any(message.get("role") == "assistant" for message in self.messages):
             raise ValueError("tau messages must contain at least one assistant message")
         return self
@@ -80,7 +80,7 @@ class HptTauStore:
         self._payloads = dict(payloads)
 
     @classmethod
-    def from_parquet(cls, path: str | Path, *, messages_key: str = "tau_messages") -> "HptTauStore":
+    def from_parquet(cls, path: str | Path, *, messages_key: str = "tau_messages") -> HptTauStore:
         messages_key = messages_key.strip()
         if not messages_key:
             raise ValueError("messages_key must not be empty")

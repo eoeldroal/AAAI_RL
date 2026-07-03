@@ -2,7 +2,6 @@ import importlib
 
 import pytest
 
-
 CUDA_STACK_ENV = {
     "CUDA_HOME": "/opt/test/cuda",
     "CUDA_PATH": "/opt/test/cuda",

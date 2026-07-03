@@ -19,7 +19,6 @@ from typing import Any, Literal
 from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-
 SUPPORTED_HPT_BASE_POLICY_LOSS_MODES = frozenset({"vanilla"})
 
 
@@ -51,9 +50,7 @@ class AsyncHptConfig(BaseModel):
     success_threshold: float = 0.0
     k_max: int | None = Field(default=None, ge=0)
     fail_on_missing_tau: bool = False
-    trajectory_scheduler: AsyncHptTrajectorySchedulerConfig = Field(
-        default_factory=AsyncHptTrajectorySchedulerConfig
-    )
+    trajectory_scheduler: AsyncHptTrajectorySchedulerConfig = Field(default_factory=AsyncHptTrajectorySchedulerConfig)
 
     @field_validator("tau_dataset_path")
     @classmethod
@@ -125,8 +122,7 @@ def validate_async_hpt_config(config: DictConfig) -> AsyncHptConfig:
     adv_estimator = OmegaConf.select(config, "algorithm.adv_estimator", default=None)
     if adv_estimator != "grpo":
         raise ValueError(
-            "async_hpt.enabled=true currently requires algorithm.adv_estimator=grpo; "
-            f"got {adv_estimator!r}"
+            f"async_hpt.enabled=true currently requires algorithm.adv_estimator=grpo; got {adv_estimator!r}"
         )
 
     norm_adv_by_std = OmegaConf.select(config, "algorithm.norm_adv_by_std_in_grpo", default=True)
@@ -161,8 +157,7 @@ def validate_async_hpt_config(config: DictConfig) -> AsyncHptConfig:
         rollout_n = int(OmegaConf.select(config, "actor_rollout_ref.rollout.n", default=0))
         if rollout_n <= 1:
             raise ValueError(
-                "async_hpt.trajectory_scheduler.enabled requires actor_rollout_ref.rollout.n > 1; "
-                f"got {rollout_n}"
+                f"async_hpt.trajectory_scheduler.enabled requires actor_rollout_ref.rollout.n > 1; got {rollout_n}"
             )
 
     return hpt_config

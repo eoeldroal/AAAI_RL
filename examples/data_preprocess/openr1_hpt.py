@@ -28,7 +28,6 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-
 OPENR1_DATASET = "Elliott/Openr1-Math-46k-8192"
 DEFAULT_REWARD_DATA_SOURCE = "numina_olympiads"
 
@@ -253,8 +252,7 @@ def _select_short_target_rows(
             break
     if len(selected) < total_rows:
         raise RuntimeError(
-            f"Only found {len(selected)} OpenR1 rows with target <= {max_target_chars} chars; "
-            f"need {total_rows}."
+            f"Only found {len(selected)} OpenR1 rows with target <= {max_target_chars} chars; need {total_rows}."
         )
     return selected
 
@@ -327,7 +325,7 @@ def _chat_token_ids(tokenizer, messages: list[dict[str, Any]], *, add_generation
         )
         if token_ids and isinstance(token_ids[0], list):
             if len(token_ids) != 1:
-                raise ValueError("chat template returned multiple tokenized rows for one message list")
+                raise ValueError("chat template returned multiple tokenized rows for one message list") from None
             token_ids = token_ids[0]
         return list(token_ids)
 

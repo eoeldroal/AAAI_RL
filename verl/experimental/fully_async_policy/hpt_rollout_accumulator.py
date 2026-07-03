@@ -66,8 +66,7 @@ class HptPromptGroupAccumulator:
         rollout_index = int(result.rollout_index)
         if rollout_index < 0 or rollout_index >= self.rollout_n:
             raise ValueError(
-                f"rollout_index must be in [0, {self.rollout_n}), got {rollout_index} "
-                f"for group_uid={group_uid!r}"
+                f"rollout_index must be in [0, {self.rollout_n}), got {rollout_index} for group_uid={group_uid!r}"
             )
         _validate_one_row_payload(result.payload, group_uid=group_uid, rollout_index=rollout_index)
 

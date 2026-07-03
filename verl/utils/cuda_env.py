@@ -14,7 +14,6 @@
 
 import os
 
-
 CUDA_RUNTIME_ENV_VARS = (
     "CUDA_HOME",
     "CUDA_PATH",

@@ -1,7 +1,7 @@
 import json
 import re
-import shutil
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -322,8 +322,7 @@ def test_openr1_main_launcher_executes_to_fully_async_entrypoint_with_dump_and_w
         cwd=_REPO_ROOT,
         env=env,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         timeout=15,
         check=False,
     )

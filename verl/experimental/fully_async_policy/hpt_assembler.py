@@ -292,8 +292,7 @@ class HptBatchAssembler:
             normalized = row_value.item() if isinstance(row_value, np.generic) else row_value
             if normalized != value:
                 raise ValueError(
-                    f"HPT non_tensor_batch[{key!r}] row {row_idx}={normalized!r} "
-                    f"does not match expected {value!r}."
+                    f"HPT non_tensor_batch[{key!r}] row {row_idx}={normalized!r} does not match expected {value!r}."
                 )
 
     @staticmethod
@@ -331,15 +330,13 @@ class HptBatchAssembler:
             if isinstance(value, np.ndarray):
                 if value.shape[0] != len(batch):
                     raise ValueError(
-                        f"HPT non_tensor_batch[{key!r}] length {value.shape[0]} "
-                        f"does not match batch size {len(batch)}."
+                        f"HPT non_tensor_batch[{key!r}] length {value.shape[0]} does not match batch size {len(batch)}."
                     )
                 continue
             array = np.array(value, dtype=object)
             if array.shape[0] != len(batch):
                 raise ValueError(
-                    f"HPT non_tensor_batch[{key!r}] length {array.shape[0]} "
-                    f"does not match batch size {len(batch)}."
+                    f"HPT non_tensor_batch[{key!r}] length {array.shape[0]} does not match batch size {len(batch)}."
                 )
             batch.non_tensor_batch[key] = array
 

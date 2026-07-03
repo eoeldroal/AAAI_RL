@@ -130,7 +130,9 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
         hpt_sft_token_mask = _hpt_sft_mask(data["hpt_is_sft"], response_mask, log_prob) & response_mask
         old_log_prob = torch.where(hpt_sft_token_mask, log_prob.detach(), old_log_prob)
         if rollout_is_weights is not None:
-            rollout_is_weights = torch.where(hpt_sft_token_mask, torch.ones_like(rollout_is_weights), rollout_is_weights)
+            rollout_is_weights = torch.where(
+                hpt_sft_token_mask, torch.ones_like(rollout_is_weights), rollout_is_weights
+            )
 
     policy_loss_fn = get_policy_loss_fn(loss_mode)
     pg_loss, pg_metrics = policy_loss_fn(

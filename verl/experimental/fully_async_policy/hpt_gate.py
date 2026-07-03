@@ -59,7 +59,7 @@ class HptRouteDecision(BaseModel):
     sft_payload: HptSftPayload | None = None
 
 
-def build_hpt_rollout_gate(config) -> "HptRolloutGate | None":
+def build_hpt_rollout_gate(config) -> HptRolloutGate | None:
     """Build the rollouter-side HPT gate from the fully async config."""
 
     hpt_config = validate_async_hpt_config(config)

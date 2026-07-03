@@ -426,7 +426,9 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
                 "param_version_diversity": len(set(trajectory_param_versions)),
                 "trajectory_param_versions": trajectory_param_versions,
                 "fully_async/partial/total_partial_num": partial_num,
-                "fully_async/partial/partial_ratio": partial_num / len(param_version_diff) if param_version_diff else 0.0,
+                "fully_async/partial/partial_ratio": partial_num / len(param_version_diff)
+                if param_version_diff
+                else 0.0,
                 "fully_async/partial/max_partial_span": max(param_version_diff) if param_version_diff else 0,
             }
         )

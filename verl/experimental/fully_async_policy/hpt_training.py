@@ -172,9 +172,7 @@ def filter_hpt_stale_rollout_samples(
 
 def _active_hpt_row_mask(batch: DataProto, batch_size: int) -> torch.Tensor:
     obsolete = [
-        field
-        for field in ("hpt_seq_weight", "hpt_length_divisor", "hpt_loss_denominator")
-        if field in batch.batch
+        field for field in ("hpt_seq_weight", "hpt_length_divisor", "hpt_loss_denominator") if field in batch.batch
     ]
     if obsolete:
         raise ValueError(f"HPT monitoring no longer accepts obsolete HPT loss fields: {obsolete}.")
@@ -187,8 +185,7 @@ def _require_hpt_non_tensor(batch: DataProto, key: str, batch_size: int) -> list
     values = batch.non_tensor_batch[key]
     if len(values) != batch_size:
         raise ValueError(
-            f"HPT monitoring non_tensor_batch[{key!r}] length must match batch size: "
-            f"{len(values)} != {batch_size}."
+            f"HPT monitoring non_tensor_batch[{key!r}] length must match batch size: {len(values)} != {batch_size}."
         )
     return values.tolist() if isinstance(values, np.ndarray) else list(values)
 
@@ -213,14 +210,11 @@ def _coerce_probability(value: Any, row_idx: int) -> float:
     if isinstance(value, np.generic):
         value = value.item()
     if isinstance(value, bool) or not isinstance(value, int | float):
-        raise ValueError(
-            f"HPT monitoring requires numeric hpt_success_probability at row {row_idx}, got {value!r}."
-        )
+        raise ValueError(f"HPT monitoring requires numeric hpt_success_probability at row {row_idx}, got {value!r}.")
     probability = float(value)
     if not 0.0 <= probability <= 1.0:
         raise ValueError(
-            "HPT monitoring hpt_success_probability must be in [0, 1], "
-            f"got {probability!r} at row {row_idx}."
+            f"HPT monitoring hpt_success_probability must be in [0, 1], got {probability!r} at row {row_idx}."
         )
     return probability
 

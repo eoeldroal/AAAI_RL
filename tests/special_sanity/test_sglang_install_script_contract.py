@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 SCRIPT = Path("scripts/install_vllm_sglang_mcore.sh")
 
 
@@ -40,7 +39,7 @@ def test_sglang_install_script_bootstraps_uv_for_one_command_install():
 
     assert uv_bootstrap in script
     assert uv_install in script
-    assert "UV_BIN=\"${PYTHON_DIR}/uv\"" in script
+    assert 'UV_BIN="${PYTHON_DIR}/uv"' in script
     assert script.index(uv_bootstrap) < script.index(uv_pip_function)
     assert script.index(uv_install) < script.index(uv_pip_function)
 
@@ -121,8 +120,8 @@ def test_sglang_install_script_installs_conda_activation_hooks_for_cuda_runtime(
     script = _script_text()
 
     assert "install_conda_activation_hooks() {" in script
-    assert '${PYTHON_PREFIX}/etc/conda/activate.d' in script
-    assert '${PYTHON_PREFIX}/etc/conda/deactivate.d' in script
+    assert "${PYTHON_PREFIX}/etc/conda/activate.d" in script
+    assert "${PYTHON_PREFIX}/etc/conda/deactivate.d" in script
     for exported_path in [
         'export LD_LIBRARY_PATH="${CUDA_HOME}/lib:${CUDNN_PIP_HOME}/lib:${NCCL_PIP_HOME}/lib:',
         'export LIBRARY_PATH="${CUDA_HOME}/lib:${CUDNN_PIP_HOME}/lib:${NCCL_PIP_HOME}/lib:',
