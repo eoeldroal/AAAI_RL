@@ -322,6 +322,7 @@ def _prepare_hpt_batch_for_actor_update(trainer):
 
 def _make_generated_attempt_payload(rollout_index, *, prompt_uid):
     import numpy as np
+
     from verl.protocol import DataProto
 
     response_mask = torch.tensor([[1, 1, 0, 0]], dtype=torch.long)

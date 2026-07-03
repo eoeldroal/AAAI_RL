@@ -1037,9 +1037,7 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
         # Embed sample_id into prompts for skip management
         source_batch = rollout_sample.full_batch
         group_uid = f"uid_{rollout_sample.sample_id}"
-        source_batch.non_tensor_batch["uid"] = np.array(
-            [group_uid] * len(source_batch), dtype=object
-        )
+        source_batch.non_tensor_batch["uid"] = np.array([group_uid] * len(source_batch), dtype=object)
         ret = await self.async_rollout_manager.generate_sequences_single(source_batch)
         if self.hpt_rollout_gate is not None and _has_infra_abort_marker(ret):
             self.processed_sample_count += 1
@@ -1249,14 +1247,10 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
             "monitor/queue/pending_queue_size": self.pending_queue.qsize(),
             "monitor/queue/mq_queue_size": queue_stats["queue_size"],
             "monitor/hpt/open_prompt_groups": (
-                self.hpt_rollout_accumulator.open_group_count()
-                if self._hpt_trajectory_scheduler_enabled()
-                else 0
+                self.hpt_rollout_accumulator.open_group_count() if self._hpt_trajectory_scheduler_enabled() else 0
             ),
             "monitor/hpt/stranded_completed_attempts": (
-                self.hpt_rollout_accumulator.stranded_count()
-                if self._hpt_trajectory_scheduler_enabled()
-                else 0
+                self.hpt_rollout_accumulator.stranded_count() if self._hpt_trajectory_scheduler_enabled() else 0
             ),
             "monitor/hpt/completed_attempt_storage": (
                 self.hpt_rollout_accumulator.completed_attempt_storage_count(queue_size=queue_stats["queue_size"])
