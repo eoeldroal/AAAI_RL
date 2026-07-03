@@ -323,14 +323,22 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
                 self.hpt_assembler = HptBatchAssembler(config=self.config, tokenizer=self.tokenizer)
             required_multiple = self._hpt_required_training_multiple()
             max_queue_samples = self._hpt_max_queue_samples_for_trainable_batch(required_multiple)
-            queue_samples = [ray.cloudpickle.loads(x) for x in serialized_queue_samples]
-            batch = self.hpt_assembler.assemble_rollout_samples(queue_samples)
-            while required_multiple > 1 and len(batch) % required_multiple != 0:
+            queue_samples = []
+            materialized_batches = []
+            learner_rows = 0
+            for serialized_sample in serialized_queue_samples:
+                queue_sample = ray.cloudpickle.loads(serialized_sample)
+                queue_samples.append(queue_sample)
+                materialized_batch = self.hpt_assembler.materialize_training_batch(queue_sample)
+                materialized_batches.append(materialized_batch)
+                learner_rows += len(materialized_batch)
+
+            while required_multiple > 1 and learner_rows % required_multiple != 0:
                 if len(serialized_queue_samples) >= max_queue_samples:
                     raise ValueError(
                         "HPT learner-row-aware collection could not form a trainable batch within the bounded "
                         "queue window: "
-                        f"learner_rows={len(batch)} required_multiple={required_multiple} "
+                        f"learner_rows={learner_rows} required_multiple={required_multiple} "
                         f"queue_samples={len(serialized_queue_samples)} max_queue_samples={max_queue_samples}."
                     )
                 sample, queue_len = await self.message_queue_client.get_sample()
@@ -338,18 +346,22 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
                     print(
                         "[FullyAsyncTrainer] HPT learner-row-aware collection received termination before a "
                         "trainable batch was formed. "
-                        f"learner_rows={len(batch)} required_multiple={required_multiple} "
+                        f"learner_rows={learner_rows} required_multiple={required_multiple} "
                         f"queue_samples={len(serialized_queue_samples)}"
                     )
                     return None, None
                 serialized_queue_samples.append(sample)
-                queue_samples.append(ray.cloudpickle.loads(sample))
-                batch = self.hpt_assembler.assemble_rollout_samples(queue_samples)
+                queue_sample = ray.cloudpickle.loads(sample)
+                queue_samples.append(queue_sample)
+                materialized_batch = self.hpt_assembler.materialize_training_batch(queue_sample)
+                materialized_batches.append(materialized_batch)
+                learner_rows += len(materialized_batch)
+            batch = self.hpt_assembler.concat_training_batches(materialized_batches)
             consumer_end = time.time()
             total_wait_time = consumer_end - consumer_start
             print(
                 f"[FullyAsyncTrainer] Loop collection completed: {len(queue_samples)}/{self.required_samples} "
-                f"samples, learner_rows={len(batch)}, required_multiple={required_multiple}, "
+                f"samples, learner_rows={learner_rows}, required_multiple={required_multiple}, "
                 f"total wait time: {total_wait_time:.2f} seconds. "
                 f"mq_len: {queue_len}"
             )

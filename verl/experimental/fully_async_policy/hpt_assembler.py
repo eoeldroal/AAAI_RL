@@ -47,11 +47,18 @@ class HptBatchAssembler:
         if not rollout_samples:
             raise ValueError("HPT assembly requires at least one rollout sample.")
 
-        batches = []
-        for rollout_sample in rollout_samples:
-            route = self.require_route(rollout_sample)
-            batch = self.materialize_rollout_sample(rollout_sample, route)
-            batches.append(self.normalize_hpt_training_batch(batch, route))
+        return self.concat_training_batches(
+            [self.materialize_training_batch(rollout_sample) for rollout_sample in rollout_samples]
+        )
+
+    def materialize_training_batch(self, rollout_sample: Any) -> DataProto:
+        route = self.require_route(rollout_sample)
+        batch = self.materialize_rollout_sample(rollout_sample, route)
+        return self.normalize_hpt_training_batch(batch, route)
+
+    def concat_training_batches(self, batches: list[DataProto]) -> DataProto:
+        if not batches:
+            raise ValueError("HPT assembly requires at least one materialized batch.")
 
         self.normalize_mixed_schema(batches)
         batch = DataProto.concat(batches)

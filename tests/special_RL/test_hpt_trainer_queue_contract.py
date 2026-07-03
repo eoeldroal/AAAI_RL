@@ -28,6 +28,54 @@ class _FixedHptAssembler:
         self.seen_samples = queue_samples
         return self.batch
 
+    def materialize_training_batch(self, queue_sample):
+        self.seen_samples = [queue_sample]
+        return self.batch
+
+    def concat_training_batches(self, batches):
+        return self.batch
+
+
+class _CountingIncrementalHptAssembler:
+    def __init__(self, rollout_n=4):
+        self.rollout_n = rollout_n
+        self.full_assembly_calls = 0
+        self.materialized_sample_ids = []
+        self.concat_calls = 0
+
+    def assemble_rollout_samples(self, queue_samples):
+        self.full_assembly_calls += 1
+        return self._concat_samples(queue_samples)
+
+    def materialize_training_batch(self, queue_sample):
+        self.materialized_sample_ids.append(queue_sample.sample_id)
+        return self._batch_for_sample(queue_sample)
+
+    def concat_training_batches(self, batches):
+        self.concat_calls += 1
+        from verl.protocol import DataProto
+
+        return DataProto.concat(batches)
+
+    def _concat_samples(self, queue_samples):
+        from verl.protocol import DataProto
+
+        return DataProto.concat([self._batch_for_sample(sample) for sample in queue_samples])
+
+    def _batch_for_sample(self, queue_sample):
+        route = queue_sample.hpt_route
+        if not route.is_sft:
+            return _make_rl_group_payload(
+                group_uid=route.group_uid,
+                prompt_uid=route.prompt_uid,
+                rollout_n=self.rollout_n,
+            )
+        batch = _make_sft_payload(group_uid=route.group_uid, prompt_uid=route.prompt_uid)
+        batch.non_tensor_batch["min_global_steps"] = np.array([0], dtype=object)
+        batch.non_tensor_batch["max_global_steps"] = np.array([0], dtype=object)
+        batch.batch["hpt_is_sft"] = torch.tensor([True], dtype=torch.bool)
+        return batch
+
 
 class _CollectingQueue:
     def __init__(self):
@@ -677,13 +725,72 @@ async def test_async_hpt_trainer_collects_extra_queue_samples_until_learner_rows
 
 
 @pytest.mark.asyncio
-async def test_async_hpt_trainer_fails_closed_when_queue_window_cannot_form_trainable_rows():
+async def test_async_hpt_trainer_topup_materializes_each_queue_sample_once():
     import ray
 
     from verl.experimental.fully_async_policy.fully_async_trainer import FullyAsyncTrainer
 
-    assembled_batch = _make_generated_attempt_payload(0, prompt_uid="prompt-a")
-    queue_samples = [_make_hpt_queue_sample(route_kind="rl", idx=idx, rollout_n=4) for idx in range(32)]
+    rollout_n = 4
+    queue_samples = [
+        _make_hpt_queue_sample(route_kind="sft", idx=idx, rollout_n=rollout_n)
+        for idx in range(8)
+    ]
+
+    trainer_cls = FullyAsyncTrainer.__ray_metadata__.modified_class
+    trainer = object.__new__(trainer_cls)
+    trainer.required_samples = 4
+    trainer.message_queue_client = _QueueReader([ray.cloudpickle.dumps(sample) for sample in queue_samples])
+    trainer.config = _make_async_hpt_config(rollout_n=rollout_n)
+    trainer.config.trainer.balance_batch = True
+    trainer.actor_rollout_wg = _FakeActorRolloutWorkerGroup(dp_size=1)
+    trainer.config.actor_rollout_ref.actor.ppo_mini_batch_size = 2
+    trainer.config.actor_rollout_ref.rollout.n = rollout_n
+    trainer.use_critic = False
+    trainer.tokenizer = None
+    trainer.hpt_assembler = _CountingIncrementalHptAssembler(rollout_n=rollout_n)
+
+    _, batch = await trainer._get_samples_from_queue()
+
+    assert len(batch) == 8
+    assert trainer.message_queue_client.calls == 8
+    assert trainer.hpt_assembler.full_assembly_calls == 0
+    assert trainer.hpt_assembler.concat_calls == 1
+    assert trainer.hpt_assembler.materialized_sample_ids == [
+        f"sample-{idx}" for idx in range(8)
+    ]
+    assert batch.meta_info["fully_async/hpt_collected_queue_samples"] == 8
+    assert batch.meta_info["fully_async/hpt_required_training_multiple"] == 8
+
+
+def test_hpt_incremental_materialization_matches_full_assembly_contract():
+    from verl.experimental.fully_async_policy.hpt_assembler import HptBatchAssembler
+
+    config = _make_async_hpt_config(rollout_n=4)
+    assembler = HptBatchAssembler(config=config, tokenizer=None)
+    queue_samples = _make_mixed_hpt_queue_samples(rollout_n=4)
+
+    full_batch = assembler.assemble_rollout_samples(queue_samples)
+    materialized = [assembler.materialize_training_batch(sample) for sample in queue_samples]
+    incremental_batch = assembler.concat_training_batches(materialized)
+
+    assert len(incremental_batch) == len(full_batch)
+    assert set(incremental_batch.batch.keys()) == set(full_batch.batch.keys())
+    for key in full_batch.batch.keys():
+        assert torch.equal(incremental_batch.batch[key], full_batch.batch[key]), key
+    assert set(incremental_batch.non_tensor_batch.keys()) == set(full_batch.non_tensor_batch.keys())
+    for key in full_batch.non_tensor_batch.keys():
+        assert incremental_batch.non_tensor_batch[key].tolist() == full_batch.non_tensor_batch[key].tolist(), key
+    assert incremental_batch.meta_info["hpt_sft_entropy_enabled"] is False
+    assert incremental_batch.meta_info["hpt_sft_kl_enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_async_hpt_trainer_returns_none_when_topup_terminates_before_trainable_rows():
+    import ray
+
+    from verl.experimental.fully_async_policy.fully_async_trainer import FullyAsyncTrainer
+
+    queue_samples = [_make_hpt_queue_sample(route_kind="sft", idx=idx, rollout_n=4) for idx in range(4)]
 
     trainer_cls = FullyAsyncTrainer.__ray_metadata__.modified_class
     trainer = object.__new__(trainer_cls)
@@ -692,14 +799,15 @@ async def test_async_hpt_trainer_fails_closed_when_queue_window_cannot_form_trai
     trainer.config = _make_async_hpt_config(rollout_n=4)
     trainer.config.trainer.balance_batch = False
     trainer.tokenizer = None
-    trainer.hpt_assembler = _FixedHptAssembler(assembled_batch)
+    trainer.hpt_assembler = None
     trainer.actor_rollout_wg = _FakeActorRolloutWorkerGroup(dp_size=1)
     trainer.use_critic = False
 
-    with pytest.raises(ValueError, match="could not form a trainable batch"):
-        await trainer._get_samples_from_queue()
+    epoch, batch = await trainer._get_samples_from_queue()
 
-    assert trainer.message_queue_client.calls == 32
+    assert epoch is None
+    assert batch is None
+    assert trainer.message_queue_client.calls == 5
 
 
 @pytest.mark.asyncio
