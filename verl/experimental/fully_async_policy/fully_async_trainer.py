@@ -322,7 +322,7 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
             if self.hpt_assembler is None:
                 self.hpt_assembler = HptBatchAssembler(config=self.config, tokenizer=self.tokenizer)
             required_multiple = self._hpt_required_training_multiple()
-            max_queue_samples = max(self.required_samples, required_multiple) * 2
+            max_queue_samples = self._hpt_max_queue_samples_for_trainable_batch(required_multiple)
             queue_samples = [ray.cloudpickle.loads(x) for x in serialized_queue_samples]
             batch = self.hpt_assembler.assemble_rollout_samples(queue_samples)
             while required_multiple > 1 and len(batch) % required_multiple != 0:
@@ -377,6 +377,22 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
 
         batch.meta_info["fully_async/total_wait_time"] = total_wait_time
         return 0, batch
+
+    def _hpt_max_queue_samples_for_trainable_batch(self, required_multiple: int) -> int:
+        """Bound HPT row-aware queue reads using the async completed-sample budget."""
+
+        default_window = max(self.required_samples, required_multiple) * 2
+        async_training = self.config.get("async_training", {})
+        completed_budget = async_training.get("max_completed_prompt_groups", None)
+        if completed_budget is None:
+            return default_window
+        completed_budget = int(completed_budget)
+        if completed_budget <= 0:
+            raise ValueError(
+                "async_training.max_completed_prompt_groups must be a positive integer when set; "
+                f"got {completed_budget}"
+            )
+        return max(default_window, completed_budget)
 
     @staticmethod
     def _add_hpt_async_sample_meta(batch: DataProto) -> None:

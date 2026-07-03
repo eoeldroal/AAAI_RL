@@ -548,6 +548,10 @@ max_inflight_prompt_groups:
 max_completed_prompt_groups:
   cap on learner-visible completed prompt groups waiting for trainer
 
+trainer HPT queue collection:
+  cap on completed queue samples the trainer may consume while searching for
+  a learner-row count divisible by the distributed training multiple
+
 accumulator storage:
   partial completed attempts count against completed storage budget
   through prompt-group-to-attempt conversion

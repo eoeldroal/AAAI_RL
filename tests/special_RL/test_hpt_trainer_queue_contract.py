@@ -561,6 +561,44 @@ async def test_async_hpt_trainer_fails_closed_when_queue_window_cannot_form_trai
 
 
 @pytest.mark.asyncio
+async def test_async_hpt_trainer_uses_completed_budget_for_row_aware_queue_window():
+    import ray
+
+    from verl.experimental.fully_async_policy.fully_async_trainer import FullyAsyncTrainer
+
+    # 18 RL groups and 14 SFT groups produce 18 * 4 + 14 = 86 learner rows
+    # after 32 queue samples, which is not divisible by the required multiple
+    # 16. Ten more SFT groups bring the batch to 96 rows, so the trainer must
+    # use async_training.max_completed_prompt_groups instead of the old fixed
+    # 32-sample local window.
+    route_kinds = ["sft"] * 14 + ["rl"] * 18 + ["sft"] * 10
+    queue_samples = [
+        _make_hpt_queue_sample(route_kind=route_kind, idx=idx, rollout_n=4)
+        for idx, route_kind in enumerate(route_kinds)
+    ]
+
+    trainer_cls = FullyAsyncTrainer.__ray_metadata__.modified_class
+    trainer = object.__new__(trainer_cls)
+    trainer.required_samples = 4
+    trainer.message_queue_client = _QueueReader([ray.cloudpickle.dumps(sample) for sample in queue_samples])
+    trainer.config = _make_async_hpt_config(rollout_n=4)
+    trainer.config.trainer.balance_batch = True
+    trainer.config.async_training = {"max_completed_prompt_groups": 64}
+    trainer.actor_rollout_wg = _FakeActorRolloutWorkerGroup(dp_size=4)
+    trainer.use_critic = False
+    trainer.tokenizer = None
+    trainer.hpt_assembler = None
+
+    _, batch = await trainer._get_samples_from_queue()
+
+    assert trainer.message_queue_client.calls == 42
+    assert len(batch) == 96
+    assert len(batch) % 16 == 0
+    assert batch.meta_info["fully_async/hpt_collected_queue_samples"] == 42
+    assert batch.meta_info["fully_async/hpt_required_training_multiple"] == 16
+
+
+@pytest.mark.asyncio
 async def test_async_hpt_trainer_batch_preserves_async_param_version_metrics():
     import ray
 
