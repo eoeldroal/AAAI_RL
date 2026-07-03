@@ -1,5 +1,9 @@
 import json
+import re
+import shlex
 from pathlib import Path
+
+import pytest
 
 
 def test_openr1_hpt_preprocess_builds_unified_prompt_rows_with_tau_messages():
@@ -176,3 +180,96 @@ def test_openr1_hpt_preprocess_rejects_rows_outside_token_limits():
         max_response_tokens=4,
         strip_system_prompt=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# Main-run launcher contract
+#
+# These assertions are deliberately VALUE-FREE. A main-run launcher is a run
+# choice, not a code contract: batch sizes, staleness, and require_batches
+# change per experiment. (For example require_batches=16 mirrors the
+# synchronous reference's train_batch_size=128 x rollout.n=8 = 1024 learner
+# scale; the sync<->async mapping lives in docs/Codemap_RL.md, not here.)
+#
+# We assert only that every launcher in main_scripts/ still composes into a
+# *valid* async-HPT config and fails closed on a malformed one. Concrete values
+# stay in the launcher (the source of truth). This is what stops a value edit
+# from silently drifting the test out of agreement with the launcher.
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_MAIN_SCRIPTS_DIR = _REPO_ROOT / "main_scripts"
+_FULLY_ASYNC_CONFIG_DIR = _REPO_ROOT / "verl/experimental/fully_async_policy/config"
+_FULLY_ASYNC_ENTRYPOINT = "python3 -m verl.experimental.fully_async_policy.fully_async_main"
+_SHELL_VAR = re.compile(r"\$\{[^}]+\}|\$\w+")
+
+
+def _extract_fully_async_overrides(script_text):
+    """Return the Hydra overrides from a launcher's fully_async_main invocation.
+
+    Returns None if the launcher does not invoke fully_async_main directly.
+    Unresolved shell variables are replaced with a placeholder path because we
+    validate config structure, not runtime paths.
+    """
+    lines = []
+    capturing = False
+    for raw_line in script_text.splitlines():
+        line = raw_line.strip()
+        if line.startswith(_FULLY_ASYNC_ENTRYPOINT):
+            capturing = True
+        if not capturing:
+            continue
+        if line == '"$@"':
+            break
+        if line.endswith("\\"):
+            line = line[:-1].strip()
+        lines.append(line)
+    if not lines:
+        return None
+    command = _SHELL_VAR.sub("/tmp/placeholder", " ".join(lines))
+    argv = shlex.split(command)
+    assert argv[:3] == _FULLY_ASYNC_ENTRYPOINT.split()
+    return argv[3:]
+
+
+def _main_launcher_params():
+    scripts = sorted(_MAIN_SCRIPTS_DIR.glob("*.sh")) if _MAIN_SCRIPTS_DIR.is_dir() else []
+    if not scripts:
+        return [pytest.param(None, marks=pytest.mark.skip(reason="no main_scripts/*.sh launchers found"))]
+    return [pytest.param(path, id=path.name) for path in scripts]
+
+
+@pytest.mark.parametrize("script_path", _main_launcher_params())
+def test_main_launcher_composes_to_valid_async_hpt_config(script_path):
+    from hydra import compose, initialize_config_dir
+    from omegaconf import OmegaConf
+
+    from verl.experimental.fully_async_policy.hpt_config import validate_async_hpt_config
+    from verl.experimental.reward_loop import migrate_legacy_reward_impl
+    from verl.trainer.ppo.utils import need_critic, need_reference_policy
+    from verl.utils.config import omega_conf_to_dataclass
+
+    overrides = _extract_fully_async_overrides(script_path.read_text())
+    if overrides is None:
+        pytest.skip(f"{script_path.name} does not invoke fully_async_main directly")
+
+    with initialize_config_dir(config_dir=str(_FULLY_ASYNC_CONFIG_DIR.resolve()), version_base=None):
+        config = compose(config_name="fully_async_ppo_trainer", overrides=overrides)
+
+    OmegaConf.resolve(config)
+
+    # Fail closed on a launcher that violates the async-HPT contract.
+    validate_async_hpt_config(config)
+    config = migrate_legacy_reward_impl(config)
+    config.actor_rollout_ref.rollout.nnodes = config.rollout.nnodes
+    config.actor_rollout_ref.rollout.n_gpus_per_node = config.rollout.n_gpus_per_node
+
+    # Structural shape of the HPT-on-GRPO objective (derived, not experiment values).
+    assert not need_critic(config)
+    assert not need_reference_policy(config)
+
+    # Dataclass conversion catches keys that Hydra accepts syntactically but
+    # that the actual worker/server configuration objects cannot consume.
+    omega_conf_to_dataclass(config.actor_rollout_ref.actor)
+    omega_conf_to_dataclass(config.actor_rollout_ref.rollout)
+    omega_conf_to_dataclass(config.actor_rollout_ref.rollout.checkpoint_engine)
