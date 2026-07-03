@@ -66,6 +66,11 @@ touch, what order to change them in, and which tests to run.
 - Merge related bullets into one principle instead of listing variants.
 - Use `search for X` instead of hardcoded file paths.
 - PR references are fine in domain guides for traceability, but avoid them in `AGENTS.md`.
+- When a plan/migration doc's process completes, retire it to
+  `docs/deprecated/<name>.md` with a short header pointing to where its
+  content now lives. Do not delete it outright (keep the audit trail) and do
+  not leave it in its original active location (it will drift into a false
+  second source of truth).
 
 ## Anti-Patterns
 
@@ -75,6 +80,7 @@ touch, what order to change them in, and which tests to run.
 | Copy-paste between guides | Duplicated content drifts apart; keep in one place, link from the other |
 | Imperative walls          | Long DO NOT lists that agents skim past; consolidate into principles    |
 | Config snapshots          | Show the command to get the value, not the value itself                 |
+| Point-in-time status      | Progress checklists, "Last updated" dates, or pinned upstream-SHA comparisons rot silently in a durable guide; git history already tracks this |
 
 ## Change Checklist
 

@@ -2,7 +2,8 @@
 
 > Rules for all AI-assisted work in this repository. Keep this file lean and
 > durable — detailed design and run notes belong in focused docs.
-> New here: `docs/Codemap_RL.md` maps the code and where runs break;
+> New here: `docs/Overview_RL.md` explains what this fork is and why;
+> `docs/Codemap_RL.md` maps the code and where runs break;
 > `CONTRIBUTING.md` has setup, `pre-commit` lint, and test commands.
 
 ## Contribution Policy
@@ -98,8 +99,9 @@ stacks.
 
 - Do not install, upgrade, or remove packages in a shared environment unless the
   user explicitly asks for that change.
-- Before changing async RL + HPT launch profiles, queue/staleness sizing, or
-  main-run log checks, consult `docs/Readme_RL.md`.
+- Before changing async RL + HPT launch profiles or main-run log checks,
+  consult `docs/Readme_RL.md`. Before changing queue/staleness/HPT budget
+  sizing, consult `docs/AsyncBudget_RL.md`.
 - Prefer reproducible commands and checked-in launch profiles over ad hoc shell
   state. Keep environment variables minimal and documented beside the launcher
   that needs them.

@@ -1,5 +1,18 @@
 # Async RL + HPT Export Implementation Plan
 
+> **Deprecated.** This was the migration plan for porting HPT + the async
+> structural layer (E1-E3) from the OSWorld/WebOSWorld fork onto a clean
+> upstream `verl` baseline. The port is complete; this document is retired
+> and kept only for historical reference — do not treat it as current.
+>
+> - Project identity, design contribution, and correctness guarantees now
+>   live in [`../Overview_RL.md`](../Overview_RL.md).
+> - Code contracts (failure/drop semantics, deferred materialization, the
+>   runtime call graph) now live in [`../Codemap_RL.md`](../Codemap_RL.md).
+> - Everything below (pinned upstream-SHA diffs, the file-by-file export
+>   matrix, the old test-migration list) describes the completed migration
+>   only and has no ongoing meaning.
+
 Last updated: 07/02/2026.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

@@ -7,7 +7,9 @@ run breaks — which file/symbol to open first.
 Companion docs (single source of truth, do not duplicate them here):
 
 - `../AGENTS.md` — durable rules and contracts (what you may/may not change).
-- `Readme_RL.md` — how to launch and size async runs; queue/staleness budgets.
+- `Overview_RL.md` — what this fork is and why (identity, guarantees).
+- `Readme_RL.md` — environment setup, launching, and log triage.
+- `AsyncBudget_RL.md` — queue/staleness/HPT-routing budget sizing.
 - This file — where things live and where they break.
 
 Line numbers rot; this map anchors on **file + symbol name**. `grep`/`rg` the
@@ -15,14 +17,14 @@ symbol to jump. Update it when a symbol is renamed or a subsystem moves.
 
 ## What This Fork Is
 
-Upstream `verl` (RL for LLMs) plus one research line: **HPT (Hybrid Policy
-Training)** as a first-class objective on the **fully-asynchronous** RL runtime.
-Everything custom lives under `verl/experimental/fully_async_policy/`. Baseline
-before the fork work: git tag/commit "Document clean verl export baseline".
+See `Overview_RL.md` for what this fork is and why. Wayfinding fact: everything
+custom lives under `verl/experimental/fully_async_policy/`. Baseline before the
+fork work: git commit "Document clean verl export baseline".
 
 ## First 15 Minutes
 
-1. Read `../AGENTS.md` (contracts) and `Readme_RL.md` (run budgets).
+1. Read `Overview_RL.md` (what/why), `../AGENTS.md` (contracts), and
+   `AsyncBudget_RL.md` (run budgets).
 2. Skim this map's *Runtime Architecture* and *Data Flow* sections.
 3. Run the CPU contract tests: `pytest tests/special_RL/ -v` (no GPU/Ray needed).
 4. Read the HPT loss: `verl/workers/utils/losses.py::_compute_hpt_prompt_equal_policy_loss`.
@@ -54,7 +56,8 @@ main_scripts/*.sh                       # our real main-run launchers
 tests/special_e2e/run_fully_async_policy_*.sh  # smoke / contract launchers
 datas/openr1_hpt_{smoke,main}/          # generated datasets
 models/Qwen2.5-Math-7B/                 # main-run base model
-docs/Readme_RL.md                       # run checklist + budget formulas
+docs/Readme_RL.md                       # environment setup, launch, log triage
+docs/AsyncBudget_RL.md                  # queue/staleness/HPT budget formulas
 ```
 
 Launcher split: genuine main runs live in `main_scripts/`; smoke and other
@@ -81,18 +84,51 @@ concrete values are the source of truth, not asserted line-by-line.
 
 ### Rollouter loop (`FullyAsyncRollouter`)
 `fit` -> `_streaming_generation_main` spawns `_feed_samples` (dataloader ->
-in-proc `pending_queue`, each prompt repeated `rollout.n`x as a `RolloutSample`)
-and `_processor_worker` (-> `_process_single_sample_streaming` -> generate ->
-`_queue_completed_rollout_sample` -> `put_sample`). `_async_monitor_loop` logs
-stats and clears backpressure. HPT gate is invoked inside
-`_queue_completed_rollout_sample`; trajectory-scheduler mode instead fans out via
-`_submit_hpt_trajectory_attempts` / `_process_hpt_trajectory_attempt_streaming`.
+in-proc `pending_queue`, each prompt repeated `rollout.n`x as a `RolloutSample`
+via `prepare_single_generation_data`) and `_processor_worker`.
+`_async_monitor_loop` logs stats and clears backpressure.
+
+```
+_processor_worker
+  -> _process_single_sample_streaming              (scheduler disabled)
+     -> generate -> _queue_completed_rollout_sample
+  -> _submit_hpt_trajectory_attempts                (scheduler enabled)
+     -> _process_hpt_trajectory_attempt_streaming
+        -> async_rollout_manager.generate_sequences_single
+        -> HptTrajectoryAttemptResult -> HptPromptGroupAccumulator
+        -> _queue_completed_rollout_sample
+
+_queue_completed_rollout_sample
+  -> HptRolloutGate.route_rollout_sample   (SFT route swaps in the tau payload)
+  -> MessageQueueClient.put_sample
+```
+
+**Failure is fail-closed at the group grain**: an `infra_abort` marker on any
+attempt (`_has_infra_abort_marker`) drops the *entire* prompt group before the
+HPT gate and before the queue put (`_drop_hpt_scheduler_group`) — no partial
+prompt-group sample is ever emitted.
 
 ### Trainer loop (`FullyAsyncTrainer`)
 `fit` -> `while True: fit_step()`. `fit_step` is the PPO template: `_fit_generate`
 (-> `_get_samples_from_queue`) -> reward -> log_prob -> ref -> critic -> advantage
 -> `_fit_update_actor` -> `_fit_update_local_step` -> `_fit_update_weights` ->
 dump. A `None` from the queue raises `TrainingStopException`.
+
+The HPT branch of `_get_samples_from_queue`:
+
+```
+_get_samples_from_queue
+  -> ray.cloudpickle.loads(...)
+  -> HptBatchAssembler.assemble_rollout_samples
+     -> materialize_rollout_sample     (per row: RL DataProto or SFT payload)
+     -> normalize_hpt_training_batch   (per row: writes the hpt_* loss tensors)
+     -> normalize_mixed_schema         (reconciles RL/SFT tensor+non-tensor schema)
+     -> DataProto.concat
+     -> finalize_loss_denominator      (writes the shared b_eff)
+
+_fit_compute_log_prob -> apply_hpt_rollout_logprob_anchor   (HPT path)
+_fit_update_actor -> ppo_loss -> _compute_hpt_prompt_equal_policy_loss
+```
 
 ## Data Flow: rollout sample -> learner row
 
@@ -126,13 +162,20 @@ bounded by `max_completed_prompt_groups`. This produces the log line:
   Failing prompts with an expert answer -> supervised; the rest stay on-policy RL.
 - **tau** = expert trajectory keyed by `prompt_uid`, column `tau_messages`
   (`hpt_payload.HptTauStore` / `HptSftPayload` / `HptTauToAgentLoopOutputAdapter`).
+- **Deferred materialization**: RL and SFT routes converge through the same
+  `materialize_rollout_sample` entry point only when the trainer consumes them,
+  not at generation time — RL wraps the already-generated rollout into a
+  `DataProto`; SFT tokenizes the tau transcript into the same row shape. This
+  symmetry is why `HptBatchAssembler` exists as a single entry point.
 - **Rollout-logprob anchor** (`hpt_training.py`): RL rows use the rollout engine's
   own `rollout_log_probs` as `old_log_probs` (needs `rollout.calculate_log_probs=True`).
 - **prompt-equal loss** (`losses.py::_compute_hpt_prompt_equal_policy_loss`):
   batch is HPT iff it carries all four `hpt_*` tensors (`_has_hpt_loss_fields`).
   SFT rows pin ratio=1 (`old = log_prob.detach()`) -> advantage-weighted NLL;
   RL rows use clipped vanilla PPO. Both length-normalized, weighted so each prompt
-  contributes equally over shared denominator `b_eff`.
+  contributes equally over shared denominator `b_eff`. HPT does not replace the
+  base RL advantage estimator — RL rows still use the existing GRPO advantage
+  path unchanged; HPT only adds the route decision and this aggregation layer.
 - **Off-policy correction** (`rollout_corr_helper.py`): IS/RS applied to RL rows
   only; `_compute_hpt_rollout_correction_and_add_to_batch` masks SFT tokens out
   (SFT rows are not drawn from the rollout policy).
@@ -153,7 +196,7 @@ bounded by `max_completed_prompt_groups`. This produces the log line:
 Enable forces: `adv_estimator=grpo`, `norm_adv_by_std_in_grpo=False`,
 `actor.policy_loss.loss_mode=vanilla`, `rollout.calculate_log_probs=True`.
 
-## Async Budget (from `Readme_RL.md`, enforced in the rollouter)
+## Async Budget (from `AsyncBudget_RL.md`, enforced in the rollouter)
 
 ```
 required_samples     = ppo_mini_batch_size * require_batches           # trainer collection target
@@ -169,10 +212,11 @@ via `CheckpointEngineManager.update_weights`, then RPCs rollouter `reset_stalene
 
 | Symptom | Look first |
 | --- | --- |
-| Run stalls: `active_tasks=0, mq_queue=0, pending>0` | Circular wait, not generation. Async budget too small — `_should_pause_generation` vs trainer `_get_samples_from_queue`. Fix via `Readme_RL.md` budget sizing. |
+| Run stalls: `active_tasks=0, mq_queue=0, pending>0` | Circular wait, not generation. Async budget too small — `_should_pause_generation` vs trainer `_get_samples_from_queue`. Fix via `AsyncBudget_RL.md` sizing. |
 | `ValueError: could not form a trainable batch` | `_get_samples_from_queue` row-aware loop exhausted `max_completed_prompt_groups` window; check `_hpt_required_training_multiple` and assembler row counts. |
 | `ValueError` mentioning `min_global_steps` | `_add_hpt_async_sample_meta` requires param-version metadata after assembly. |
 | `libcudart.so.13: cannot open shared object` | SGLang subprocess without `conda activate RL`. See `Readme_RL.md` step 2, `scripts/install_vllm_sglang_mcore.sh`, `verl/utils/cuda_env.py`. |
+| Prompt groups missing / lower throughput than expected | Whole-group fail-closed drop on any attempt's `infra_abort` marker — `_has_infra_abort_marker` / `_drop_hpt_scheduler_group`. Check rollout-side exceptions before assuming a queue/staleness issue. |
 | Wrong SFT/RL route; `hpt/missing_tau_count>0` unexpectedly | `hpt_gate.route` (`gamma`/`success_threshold`/`success_score_key`); tau `HptTauStore`; data prep `tau_messages` column; `fail_on_missing_tau`. |
 | SFT rows learning with wrong probs / ratio != 1 | `_compute_hpt_prompt_equal_policy_loss` (`effective_old_log_prob`); `apply_hpt_rollout_logprob_anchor`. |
 | Learner-row count unexpected | SFT collapses group->1 row, RL expands->`rollout.n`; `HptBatchAssembler.assemble_rollout_samples` / `normalize_mixed_schema`. |
@@ -200,7 +244,7 @@ conda activate RL && cd <repo> && pytest tests/special_RL/ -v
 | --- | --- |
 | `test_hpt_trainer_queue_contract.py` | learner-row divisibility, fail-closed on unformable batch, row-aware window = `max_completed_prompt_groups`, param-version metadata preserved, rollout-logprob anchor, mixed SFT/RL loss reaches backprop with aligned `hpt_*` fields |
 | `test_hpt_trajectory_scheduler_contract.py` | all `n` attempts share one group uid, distinct ordered `hpt_rollout_index`, `prompt_uid` propagated |
-| `test_openr1_hpt_smoke_contract.py` | data-prep schema (`prompt_uid`+`tau_messages`), launcher text/Hydra-override contracts |
+| `test_openr1_hpt_smoke_contract.py` | data-prep schema (`prompt_uid`+`tau_messages`), main-launcher Hydra-validity contract |
 
 ## Run
 
@@ -219,12 +263,10 @@ bash main_scripts/run_fully_async_policy_openr1_hpt_main.sh
 ## Reference Baseline & Sync↔Async Parity
 
 `Unify-Post-Training/` is a **separate, read-only reference repository** (a
-sibling of this repo, outside `verl/`). It is **not part of this codebase and we
-do not edit it.** Its synchronous HPT launcher
-`Unify-Post-Training/exp_scripts/train.sh` is the baseline our async-HPT main run
-targets for a 1-to-1 comparison. `main_scripts/run_fully_async_policy_openr1_hpt_main.sh`
-mirrors it on the settings that must match, and makes our own choices for the
-async-only knobs:
+sibling of this repo, outside `verl/`, not edited here). Its synchronous
+launcher `train.sh` is the baseline `main_scripts/run_fully_async_policy_openr1_hpt_main.sh`
+targets for a 1-to-1 comparison — matching where it must, and choosing its own
+values for the async-only knobs:
 
 | Matched to baseline (`train.sh`) | Our async-only decision |
 | --- | --- |
@@ -233,15 +275,20 @@ async-only knobs:
 | `lr=5e-6`, `clip_grad=80.0`, `entropy_coeff=0.001`, `use_kl_loss=False` | `max_inflight/completed_prompt_groups` |
 | `max_response_length=8192`, `rope_theta=40000`, `max_position_embeddings=16384` | `data.train_batch_size=0` (forced by fully-async) |
 
-**Why `require_batches=16`, not a naive `2`:** the baseline's learner scale is
-`train_batch_size(128) × rollout.n(8) = 1024` sequences/step. Fully-async forces
-`data.train_batch_size=0`, so that same 1024 scale is expressed as the trainer's
-initial queue request `ppo_mini_batch_size(64) × require_batches(16) = 1024` (see
-`Readme_RL.md`). A value of `2` maps only the 128 *prompt* count, not the 1024
-*learner* scale, and would force HPT row-aware extra collection before the first
-update. This is design intent, not a code invariant — the launcher test
-deliberately does NOT assert it (it only checks the launcher composes to a valid
-async-HPT config).
+**`require_batches` is a queue-sample count, not a row count:** one queue
+sample already holds `rollout.n` rows (the rollouter repeats one prompt
+`rollout.n` times before generation — see the rollouter call graph above).
+Matching the baseline's `train_batch_size(128) × rollout.n(8) = 1024`
+sequences/step needs `require_batches = train_batch_size / ppo_mini_batch_size
+= 128/64 = 2`. An earlier version of this launcher used `require_batches=16`
+on the mistaken assumption that `ppo_mini_batch_size(64) × require_batches(16)
+= 1024` already matched the baseline's 1024-sequence scale — it compared a
+queue-sample count against a row count and missed the `× rollout.n`, so it
+actually collected `1024 × 8 = 8192` rows per fit_step, 8x the baseline's
+per-step volume. See `AsyncBudget_RL.md` for the full derivation and the
+corrected budget. This is design intent, not a code invariant — the launcher
+test deliberately does NOT assert a specific value (it only checks the
+launcher composes to a valid async-HPT config).
 
 ## Maintaining This File
 
