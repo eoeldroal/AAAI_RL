@@ -495,6 +495,47 @@ class TestSkipManagerInitAndAnnotate:
 
         asyncio.run(_run())
 
+    def test_annotate_async_rollout_dump_runs_off_event_loop(self, tmp_path: Path):
+        # Regression guard: on the async rollout path prepare_data (dump
+        # serialization + disk write) must run off the single event loop. If it
+        # runs inline, a slow dump blocks every other coroutine — including new
+        # generation submission — and starves the serving engine. We prove
+        # non-blocking by making prepare_data block on a threading.Event that
+        # only a *concurrent* coroutine can set: it deadlocks if the dump holds
+        # the loop, and the worker-thread wait then times out.
+        import threading
+
+        cfg = _minimal_skip_cfg(str(tmp_path), enable=False, async_enable=True, steps=[1], action="dump")
+        SkipManager.init(cfg)
+        instance = SkipManager.skip_instances["async_rollout"]
+
+        gate = threading.Event()
+        other_ran = {"value": False}
+
+        def blocking_prepare_data(step, result, *args, **kwargs):
+            # Runs on an executor thread; only proceeds once a concurrent
+            # coroutine sets the gate. gate never fires if the loop is blocked.
+            assert gate.wait(timeout=5.0), "prepare_data blocked the event loop (dump not offloaded)"
+
+        instance.prepare_data = blocking_prepare_data
+
+        @SkipManager.annotate(role="async_rollout")
+        async def gen_single(_self: Any, prompts: DataProto) -> DataProto:
+            return DataProto.from_dict(tensors={"a": torch.tensor([1.0])})
+
+        async def _release_gate() -> None:
+            other_ran["value"] = True
+            gate.set()
+
+        async def _run():
+            prompts = DataProto.from_dict(tensors={"x": torch.zeros(1)})
+            prompts.non_tensor_batch["uid"] = np.array(["uid_sample_0_1"], dtype=object)
+            out, _ = await asyncio.gather(gen_single(None, prompts), _release_gate())
+            assert out.batch["a"].item() == 1.0
+            assert other_ran["value"] is True
+
+        asyncio.run(_run())
+
     def test_annotate_async_hpt_attempts_dump_to_distinct_attempt_paths(self, tmp_path: Path):
         cfg = _minimal_skip_cfg(str(tmp_path), enable=False, async_enable=True, steps=[1], action="cache")
         SkipManager.init(cfg)

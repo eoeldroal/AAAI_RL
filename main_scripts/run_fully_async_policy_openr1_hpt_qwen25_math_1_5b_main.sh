@@ -45,10 +45,13 @@ export XDG_CACHE_HOME="${RUNTIME_CACHE_DIR}/xdg"
 # post-update rollout까지 품질 분석 대상이므로 all_steps=True로 전체 feed step을
 # 저장한다. 디스크 비용이 크면 smoke/debug 전용 스크립트에서만 제한한다.
 #
-# 처리량 회귀는 이 덤프가 아니라 수집 top-up 루프의 O(n^2) 재조립(트레이너 측)과
-# 낮은 rollout 동시성(max_inflight)에서 비롯된 것으로 확인되어 덤프는 유지한다.
-# 유일한 실비용은 디스크(~GB/hour, all_steps=True)다. 장기 런에서 디스크가 빠듯하면
-# all_steps=False + steps=[...]로 일부 step만 저장해 제한한다.
+# 이 덤프의 prepare_data는 전체 generation DataProto를 직렬화+디스크 기록하는 무거운
+# 작업이다. 동기로 실행하면 rollout의 단일 asyncio event loop를 점유해 SGLang 요청
+# 제출을 굶기고 gen throughput을 런이 길어질수록 단조 붕괴시킨다(py-spy로 loop 시간의
+# 대부분이 덤프 직렬화임을 확인). 그래서 SkipManager.annotate(async 경로)가 prepare_data를
+# executor로 offload해 loop를 blocking하지 않게 하고 덤프는 그대로 유지한다. 실비용은
+# 디스크(~GB/hour, all_steps=True)와 background 직렬화 CPU다. 장기 런에서 디스크가
+# 빠듯하면 all_steps=False + steps=[...]로 일부 step만 저장해 제한한다.
 ROLLOUT_DUMP_DIR="${VERL_ROOT}/.cache/rollout_dump/openr1_async_hpt_qwen25_math_1_5b_${RUN_TIMESTAMP}"
 
 # [각주 3] batch scale은 UPT train_batch_size=128 prompt groups와 맞춘다.

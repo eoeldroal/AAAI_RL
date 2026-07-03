@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import functools
 import inspect
 from typing import Callable
@@ -92,7 +93,18 @@ class SkipManager:
                     if skip_instance.meet_precondition(step, func, *args, **kwargs_inner):
                         return skip_instance.warp_function(step, func, *args, **kwargs_inner)
                     result = await func(*args, **kwargs_inner)
-                    skip_instance.prepare_data(step, result, *args, **kwargs_inner)
+                    # prepare_data serializes the full generation DataProto and writes it to
+                    # disk. On the async rollout path this ran inline on the single event
+                    # loop, so a large/slow dump blocked request submission and starved the
+                    # serving engine. Offload it to the default executor so the loop stays
+                    # free to submit and collect generations while the dump runs on a worker
+                    # thread. prepare_data owns its own error handling and writes to a
+                    # per-attempt directory, so concurrent dumps do not share mutable state.
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(
+                        None,
+                        functools.partial(skip_instance.prepare_data, step, result, *args, **kwargs_inner),
+                    )
                     return result
 
                 return async_wrapper
