@@ -40,7 +40,10 @@ class AsyncHptConfig(BaseModel):
     gamma: float = Field(default=0.0, ge=0.0, le=1.0)
     beta: float = Field(default=1.0, ge=0.0)
     alpha: float = Field(default=1.0, ge=0.0)
-    loss_aggregation: Literal["prompt_equal"] = "prompt_equal"
+    loss_aggregation: Literal["branch_blind"] = "branch_blind"
+    sft_beta_mode: Literal["constant", "length_inverse"] = "constant"
+    sft_entropy_enabled: bool = False
+    sft_kl_enabled: bool = False
     rl_old_logprob_source: Literal["rollout"] = "rollout"
     tau_dataset_path: str | None = None
     tau_messages_key: str = "tau_messages"
@@ -102,6 +105,22 @@ def validate_async_hpt_config(config: DictConfig) -> AsyncHptConfig:
 
     if hpt_config.tau_dataset_path is None:
         raise ValueError("async_hpt.tau_dataset_path must be set when async_hpt.enabled=true")
+
+    if hpt_config.alpha != 1.0:
+        raise ValueError("async_hpt.alpha is deprecated by branch-blind reduction and must remain 1.0.")
+
+    if hpt_config.sft_beta_mode == "length_inverse":
+        loss_scale_factor = OmegaConf.select(config, "actor_rollout_ref.actor.loss_scale_factor", default=None)
+        if (
+            loss_scale_factor is None
+            or isinstance(loss_scale_factor, bool)
+            or not isinstance(loss_scale_factor, int)
+            or loss_scale_factor <= 0
+        ):
+            raise ValueError(
+                "async_hpt.sft_beta_mode=length_inverse requires "
+                "actor_rollout_ref.actor.loss_scale_factor to be a positive integer."
+            )
 
     adv_estimator = OmegaConf.select(config, "algorithm.adv_estimator", default=None)
     if adv_estimator != "grpo":

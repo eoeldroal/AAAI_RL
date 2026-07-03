@@ -171,15 +171,14 @@ def filter_hpt_stale_rollout_samples(
 
 
 def _active_hpt_row_mask(batch: DataProto, batch_size: int) -> torch.Tensor:
-    if "hpt_seq_weight" not in batch.batch:
-        return torch.ones(batch_size, dtype=torch.bool)
-    seq_weight = batch.batch["hpt_seq_weight"]
-    if seq_weight.dim() != 1 or int(seq_weight.shape[0]) != batch_size:
-        raise ValueError(
-            "HPT monitoring expects hpt_seq_weight to be rank 1 with the batch dimension: "
-            f"{tuple(seq_weight.shape)} vs batch_size={batch_size}."
-        )
-    return seq_weight.detach().cpu().to(torch.float32) > 0
+    obsolete = [
+        field
+        for field in ("hpt_seq_weight", "hpt_length_divisor", "hpt_loss_denominator")
+        if field in batch.batch
+    ]
+    if obsolete:
+        raise ValueError(f"HPT monitoring no longer accepts obsolete HPT loss fields: {obsolete}.")
+    return torch.ones(batch_size, dtype=torch.bool)
 
 
 def _require_hpt_non_tensor(batch: DataProto, key: str, batch_size: int) -> list[Any]:

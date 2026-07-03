@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 import torch
 from omegaconf import OmegaConf
+from tensordict import TensorDict
 
 pytest.importorskip("ray")
 
@@ -71,17 +72,17 @@ class _CapturingActorRolloutWorkerGroup(_FakeActorRolloutWorkerGroup):
             "advantages",
             "response_mask",
             "hpt_is_sft",
-            "hpt_seq_weight",
-            "hpt_length_divisor",
-            "hpt_loss_denominator",
         ):
             assert key in batch_td.keys(), f"missing update_actor field: {key}"
+        for removed_key in ("hpt_seq_weight", "hpt_length_divisor", "hpt_loss_denominator"):
+            assert removed_key not in batch_td.keys(), f"obsolete HPT field reached actor update: {removed_key}"
         batch_size = int(batch_td["hpt_is_sft"].shape[0])
         assert tuple(batch_td["old_log_probs"].shape) == tuple(batch_td["response_mask"].shape)
         assert tuple(batch_td["advantages"].shape) == tuple(batch_td["response_mask"].shape)
         assert tuple(batch_td["response_mask"].shape) == (batch_size, 4)
         assert tuple(batch_td["hpt_is_sft"].shape) == (batch_size,)
-        assert tuple(batch_td["hpt_loss_denominator"].shape) == (batch_size,)
+        assert tu.get(batch_td, "hpt_sft_entropy_enabled") is False
+        assert tu.get(batch_td, "hpt_sft_kl_enabled") is False
         assert tu.get(batch_td, "compute_loss") is True
         assert tu.get(batch_td, "global_batch_size") == batch_size
         return tu.get_tensordict({}, non_tensor_dict={"metrics": {"mfu": [0.0], "loss": [1.25]}})
@@ -134,6 +135,10 @@ def _make_async_hpt_config(*, rollout_n=4):
                 "gamma": 0.5,
                 "alpha": 1.0,
                 "beta": 1.0,
+                "loss_aggregation": "branch_blind",
+                "sft_beta_mode": "constant",
+                "sft_entropy_enabled": False,
+                "sft_kl_enabled": False,
                 "tau_dataset_path": "unused-for-rl-route.parquet",
                 "fail_on_missing_tau": False,
                 "trajectory_scheduler": {"enabled": True},
@@ -249,6 +254,35 @@ def _make_mixed_hpt_queue_samples(*, rollout_n=4):
     ]
 
 
+def _make_actor_config(
+    *,
+    loss_agg_mode="seq-mean-token-sum-norm",
+    loss_scale_factor=4,
+    entropy_coeff=0.0,
+    use_kl_loss=False,
+    kl_loss_type="low_var_kl",
+):
+    from verl.workers.config import ActorConfig
+
+    return ActorConfig(
+        strategy="fsdp",
+        rollout_n=4,
+        ppo_mini_batch_size=4,
+        ppo_micro_batch_size=4,
+        clip_ratio=0.2,
+        clip_ratio_low=0.2,
+        clip_ratio_high=0.28,
+        clip_ratio_c=10.0,
+        loss_agg_mode=loss_agg_mode,
+        loss_scale_factor=loss_scale_factor,
+        entropy_coeff=entropy_coeff,
+        use_kl_loss=use_kl_loss,
+        kl_loss_type=kl_loss_type,
+        policy_loss={"loss_mode": "vanilla"},
+        global_batch_info={"dp_size": 4},
+    )
+
+
 def _make_row_aware_hpt_trainer(queue_samples, *, rollout_n=4):
     import ray
 
@@ -361,6 +395,54 @@ async def test_async_hpt_trainer_sets_global_token_num_after_queue_assembly():
     assert batch.meta_info["fully_async/total_wait_time"] >= 0
 
 
+def test_async_hpt_config_accepts_branch_blind_controls_and_rejects_old_prompt_equal():
+    from verl.experimental.fully_async_policy.hpt_config import validate_async_hpt_config
+
+    config = _make_async_hpt_config()
+    hpt_config = validate_async_hpt_config(config)
+
+    assert hpt_config.loss_aggregation == "branch_blind"
+    assert hpt_config.beta == 1.0
+    assert hpt_config.sft_beta_mode == "constant"
+    assert hpt_config.sft_entropy_enabled is False
+    assert hpt_config.sft_kl_enabled is False
+
+    config.async_hpt.loss_aggregation = "prompt_equal"
+    with pytest.raises(ValueError, match="loss_aggregation"):
+        validate_async_hpt_config(config)
+
+
+def test_async_hpt_config_rejects_non_unit_alpha_and_invalid_beta_mode():
+    from verl.experimental.fully_async_policy.hpt_config import validate_async_hpt_config
+
+    config = _make_async_hpt_config()
+    config.async_hpt.alpha = 0.5
+    with pytest.raises(ValueError, match="alpha"):
+        validate_async_hpt_config(config)
+
+    config = _make_async_hpt_config()
+    config.async_hpt.sft_beta_mode = "unsupported"
+    with pytest.raises(ValueError, match="sft_beta_mode"):
+        validate_async_hpt_config(config)
+
+
+def test_async_hpt_length_inverse_beta_requires_positive_loss_scale_factor():
+    from verl.experimental.fully_async_policy.hpt_config import validate_async_hpt_config
+
+    config = _make_async_hpt_config()
+    config.async_hpt.sft_beta_mode = "length_inverse"
+    with pytest.raises(ValueError, match="loss_scale_factor"):
+        validate_async_hpt_config(config)
+
+    config.actor_rollout_ref.actor.loss_scale_factor = 4.5
+    with pytest.raises(ValueError, match="loss_scale_factor"):
+        validate_async_hpt_config(config)
+
+    config.actor_rollout_ref.actor.loss_scale_factor = 8
+    hpt_config = validate_async_hpt_config(config)
+    assert hpt_config.sft_beta_mode == "length_inverse"
+
+
 @pytest.mark.asyncio
 async def test_async_hpt_trajectory_scheduler_to_trainer_queue_rl_contract():
     import ray
@@ -465,8 +547,9 @@ async def test_async_hpt_trajectory_scheduler_to_trainer_queue_rl_contract():
     assert len(batch) == rollout_n
     assert batch.batch["responses"][:, 0].tolist() == [10, 11, 12, 13]
     assert batch.batch["hpt_is_sft"].tolist() == [False] * rollout_n
-    assert batch.batch["hpt_seq_weight"].tolist() == pytest.approx([0.25] * rollout_n)
-    assert batch.batch["hpt_loss_denominator"].tolist() == pytest.approx([1.0] * rollout_n)
+    assert "hpt_seq_weight" not in batch.batch
+    assert "hpt_length_divisor" not in batch.batch
+    assert "hpt_loss_denominator" not in batch.batch
     assert batch.meta_info["global_token_num"] == [4, 4, 4, 4]
     assert batch.non_tensor_batch["uid"].tolist() == ["uid_sample_0_1"] * rollout_n
     assert batch.non_tensor_batch["prompt_uid"].tolist() == ["prompt-a"] * rollout_n
@@ -676,7 +759,6 @@ async def test_async_hpt_trainer_requires_param_version_metadata_after_hpt_assem
 @pytest.mark.asyncio
 async def test_async_hpt_batch_reaches_reward_advantage_and_actor_loss_contract():
     from verl.utils import tensordict_utils as tu
-    from verl.workers.config import ActorConfig
     from verl.workers.utils.losses import ppo_loss
 
     trainer = _make_row_aware_hpt_trainer(_make_mixed_hpt_queue_samples())
@@ -697,11 +779,10 @@ async def test_async_hpt_batch_reaches_reward_advantage_and_actor_loss_contract(
         "advantages",
         "returns",
         "hpt_is_sft",
-        "hpt_seq_weight",
-        "hpt_length_divisor",
-        "hpt_loss_denominator",
     ):
         assert key in batch.batch
+    for removed_key in ("hpt_seq_weight", "hpt_length_divisor", "hpt_loss_denominator"):
+        assert removed_key not in batch.batch
     assert tuple(batch.batch["old_log_probs"].shape) == tuple(batch.batch["response_mask"].shape)
     assert tuple(batch.batch["advantages"].shape) == tuple(batch.batch["response_mask"].shape)
     assert tuple(batch.batch["returns"].shape) == tuple(batch.batch["response_mask"].shape)
@@ -711,19 +792,7 @@ async def test_async_hpt_batch_reaches_reward_advantage_and_actor_loss_contract(
     assert trainer.metrics["hpt/num_sft_rows"] == 4.0
     assert trainer.metrics["hpt/num_rl_groups"] == 3.0
 
-    actor_config = ActorConfig(
-        strategy="fsdp",
-        rollout_n=4,
-        ppo_mini_batch_size=4,
-        ppo_micro_batch_size=4,
-        clip_ratio=0.2,
-        clip_ratio_low=0.2,
-        clip_ratio_high=0.28,
-        clip_ratio_c=10.0,
-        loss_agg_mode="token-mean",
-        policy_loss={"loss_mode": "vanilla"},
-        global_batch_info={"dp_size": 4},
-    )
+    actor_config = _make_actor_config()
     actor_data = batch.batch.clone()
     tu.assign_non_tensor(
         actor_data,
@@ -744,9 +813,126 @@ async def test_async_hpt_batch_reaches_reward_advantage_and_actor_loss_contract(
     assert torch.isfinite(policy_loss).item()
     assert model_log_probs.grad is not None
     assert torch.isfinite(model_log_probs.grad).all()
-    assert "hpt/b_eff" in loss_metrics
-    assert "hpt/sft_loss_component" in loss_metrics
-    assert "hpt/rl_loss_component" in loss_metrics
+    assert "hpt/b_eff" not in loss_metrics
+    assert "hpt/sft_loss_component" not in loss_metrics
+    assert "hpt/rl_loss_component" not in loss_metrics
+
+
+def test_hpt_all_rl_policy_loss_matches_vanilla_policy_loss():
+    from verl.utils import tensordict_utils as tu
+    from verl.workers.utils.losses import ppo_loss
+
+    hpt_config = _make_actor_config()
+    vanilla_config = _make_actor_config()
+    response_mask = torch.tensor([[1, 1, 0, 0], [1, 1, 1, 0]], dtype=torch.long)
+    data = TensorDict(
+        {
+            "prompts": torch.tensor([[1, 2], [1, 2]]),
+            "responses": torch.tensor([[3, 4, 0, 0], [5, 6, 7, 0]]),
+            "attention_mask": torch.tensor([[1, 1, 1, 1, 0, 0], [1, 1, 1, 1, 1, 0]]),
+            "response_mask": response_mask,
+            "old_log_probs": torch.tensor([[-0.2, -0.3, 0.0, 0.0], [-0.1, -0.2, -0.4, 0.0]]),
+            "advantages": torch.tensor([[1.0, 0.5, 0.0, 0.0], [0.2, -0.3, 0.4, 0.0]]),
+            "hpt_is_sft": torch.tensor([False, False]),
+        },
+        batch_size=[2],
+    )
+    tu.assign_non_tensor(data, dp_size=1, batch_num_tokens=int(response_mask.sum().item()), global_batch_size=2)
+    vanilla_data = data.exclude("hpt_is_sft")
+    log_probs = torch.tensor(
+        [0.0, -0.15, -0.25, 0.0, 0.0, -0.05, -0.15, -0.35, 0.0],
+        requires_grad=True,
+    )
+
+    hpt_loss, hpt_metrics = ppo_loss(hpt_config, {"log_probs": log_probs}, data)
+    vanilla_loss, vanilla_metrics = ppo_loss(vanilla_config, {"log_probs": log_probs}, vanilla_data)
+
+    assert hpt_loss.item() == pytest.approx(vanilla_loss.item(), rel=1e-6, abs=1e-6)
+    assert hpt_metrics["actor/pg_clipfrac"].aggregate() == pytest.approx(
+        vanilla_metrics["actor/pg_clipfrac"].aggregate()
+    )
+    assert "hpt/b_eff" not in hpt_metrics
+
+
+def test_hpt_sft_self_detach_keeps_ratio_one_and_masks_auxiliary_terms():
+    from verl.utils import tensordict_utils as tu
+    from verl.workers.utils.losses import ppo_loss
+
+    config = _make_actor_config(entropy_coeff=0.5, use_kl_loss=True, kl_loss_type="mse")
+    response_mask = torch.ones((2, 4), dtype=torch.long)
+    data = TensorDict(
+        {
+            "prompts": torch.tensor([[1, 2], [1, 2]]),
+            "responses": torch.tensor([[3, 4, 5, 6], [7, 8, 9, 10]]),
+            "attention_mask": torch.ones((2, 6), dtype=torch.long),
+            "response_mask": response_mask,
+            "old_log_probs": torch.tensor([[-10.0, -10.0, -10.0, -10.0], [-0.3, -0.4, -0.5, -0.6]]),
+            "ref_log_prob": torch.tensor([[10.0, 10.0, 10.0, 10.0], [1.0, 1.0, 1.0, 1.0]]),
+            "advantages": torch.ones((2, 4)),
+            "hpt_is_sft": torch.tensor([True, False]),
+        },
+        batch_size=[2],
+    )
+    tu.assign_non_tensor(data, dp_size=1, batch_num_tokens=8, global_batch_size=2)
+    log_probs = torch.full((12,), -0.2, requires_grad=True)
+    entropy = torch.cat([torch.full((6,), 100.0), torch.ones(6)])
+
+    _, metrics = ppo_loss(config, {"log_probs": log_probs, "entropy": entropy}, data)
+
+    assert metrics["actor/ppo_kl"].aggregate() == pytest.approx(-0.125, abs=1e-6)
+    assert metrics["actor/entropy_loss"].aggregate() == pytest.approx(0.5, abs=1e-6)
+    assert metrics["kl_loss"].aggregate() == pytest.approx(0.36, abs=1e-6)
+
+
+def test_hpt_sft_auxiliary_terms_can_be_enabled_explicitly():
+    from verl.utils import tensordict_utils as tu
+    from verl.workers.utils.losses import ppo_loss
+
+    config = _make_actor_config(entropy_coeff=0.5, use_kl_loss=True, kl_loss_type="mse")
+    response_mask = torch.ones((2, 4), dtype=torch.long)
+    data = TensorDict(
+        {
+            "prompts": torch.tensor([[1, 2], [1, 2]]),
+            "responses": torch.tensor([[3, 4, 5, 6], [7, 8, 9, 10]]),
+            "attention_mask": torch.ones((2, 6), dtype=torch.long),
+            "response_mask": response_mask,
+            "old_log_probs": torch.zeros((2, 4)),
+            "ref_log_prob": torch.tensor([[10.0, 10.0, 10.0, 10.0], [1.0, 1.0, 1.0, 1.0]]),
+            "advantages": torch.ones((2, 4)),
+            "hpt_is_sft": torch.tensor([True, False]),
+        },
+        batch_size=[2],
+    )
+    tu.assign_non_tensor(
+        data,
+        dp_size=1,
+        batch_num_tokens=8,
+        global_batch_size=2,
+        hpt_sft_entropy_enabled=True,
+        hpt_sft_kl_enabled=True,
+    )
+    log_probs = torch.zeros(12, requires_grad=True)
+    entropy = torch.cat([torch.full((6,), 100.0), torch.ones(6)])
+
+    _, metrics = ppo_loss(config, {"log_probs": log_probs, "entropy": entropy}, data)
+
+    assert metrics["actor/entropy_loss"].aggregate() == pytest.approx(50.5, abs=1e-6)
+    assert metrics["kl_loss"].aggregate() == pytest.approx(25.25, abs=1e-6)
+
+
+def test_hpt_monitoring_rejects_obsolete_loss_weight_fields():
+    from verl.experimental.fully_async_policy.hpt_training import collect_hpt_batch_monitoring_metrics
+
+    batch = _make_generated_attempt_payload(0, prompt_uid="prompt-a")
+    batch.batch["hpt_is_sft"] = torch.tensor([False], dtype=torch.bool)
+    batch.batch["hpt_seq_weight"] = torch.tensor([0.0])
+    batch.non_tensor_batch["hpt_group_uid"] = np.array(["uid_sample_0_1"], dtype=object)
+    batch.non_tensor_batch["hpt_route_is_sft"] = np.array([False], dtype=object)
+    batch.non_tensor_batch["hpt_missing_tau"] = np.array([True], dtype=object)
+    batch.non_tensor_batch["hpt_success_probability"] = np.array([1.0], dtype=object)
+
+    with pytest.raises(ValueError, match="obsolete HPT loss fields"):
+        collect_hpt_batch_monitoring_metrics(batch)
 
 
 @pytest.mark.asyncio
@@ -789,9 +975,6 @@ def test_GPU_hpt_rollout_logprob_anchor_and_loss_fields_stay_aligned_on_cuda():
         batch.batch[key] = batch.batch[key].to("cuda")
 
     batch.batch["hpt_is_sft"] = torch.tensor([False], dtype=torch.bool, device="cuda")
-    batch.batch["hpt_seq_weight"] = torch.tensor([0.25], dtype=torch.float32, device="cuda")
-    batch.batch["hpt_length_divisor"] = torch.tensor([4.0], dtype=torch.float32, device="cuda")
-    batch.batch["hpt_loss_denominator"] = torch.tensor([1.0], dtype=torch.float32, device="cuda")
     batch.non_tensor_batch["hpt_group_uid"] = np.array(["uid_sample_0_1"], dtype=object)
     batch.non_tensor_batch["hpt_route_is_sft"] = np.array([False], dtype=object)
     batch.non_tensor_batch["hpt_missing_tau"] = np.array([True], dtype=object)
@@ -803,11 +986,7 @@ def test_GPU_hpt_rollout_logprob_anchor_and_loss_fields_stay_aligned_on_cuda():
 
     current_log_probs = torch.zeros_like(batch.batch["old_log_probs"], requires_grad=True)
     response_mask = batch.batch["response_mask"].to(torch.float32)
-    surrogate_loss = (
-        (current_log_probs - batch.batch["old_log_probs"].detach())
-        * response_mask
-        * batch.batch["hpt_seq_weight"].view(-1, 1)
-    ).sum() / batch.batch["hpt_loss_denominator"].sum()
+    surrogate_loss = ((current_log_probs - batch.batch["old_log_probs"].detach()) * response_mask).sum()
     surrogate_loss.backward()
 
     assert batch.batch["old_log_probs"].is_cuda

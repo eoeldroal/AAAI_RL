@@ -24,141 +24,22 @@ from verl.utils.torch_functional import masked_mean, masked_sum
 from verl.workers.config import ActorConfig, CriticConfig
 from verl.workers.utils.padding import no_padding_2_padding
 
-_HPT_LOSS_FIELDS = ("hpt_is_sft", "hpt_seq_weight", "hpt_length_divisor", "hpt_loss_denominator")
+_HPT_LOSS_FIELD = "hpt_is_sft"
+_OBSOLETE_HPT_LOSS_FIELDS = ("hpt_seq_weight", "hpt_length_divisor", "hpt_loss_denominator")
 
 
 def _has_hpt_loss_fields(data) -> bool:
-    present = [field in data for field in _HPT_LOSS_FIELDS]
-    if any(present) and not all(present):
-        missing = [field for field, exists in zip(_HPT_LOSS_FIELDS, present, strict=True) if not exists]
-        raise ValueError(f"HPT policy loss batch is missing fields: {missing}.")
-    return all(present)
+    obsolete = [field for field in _OBSOLETE_HPT_LOSS_FIELDS if field in data]
+    if obsolete:
+        raise ValueError(f"HPT branch-blind policy loss no longer accepts obsolete fields: {obsolete}.")
+    return _HPT_LOSS_FIELD in data
 
 
-def _as_float(value) -> float:
-    if isinstance(value, torch.Tensor):
-        if value.numel() != 1:
-            raise ValueError(f"Expected scalar tensor, got shape {tuple(value.shape)}.")
-        return float(value.item())
-    return float(value)
-
-
-def _compute_vanilla_token_losses(
-    *,
-    old_log_prob: torch.Tensor,
-    log_prob: torch.Tensor,
-    advantages: torch.Tensor,
-    response_mask: torch.Tensor,
-    config: ActorConfig,
-    rollout_is_weights: torch.Tensor | None,
-) -> tuple[torch.Tensor, dict]:
-    clip_ratio = config.clip_ratio
-    clip_ratio_low = config.clip_ratio_low if config.clip_ratio_low is not None else clip_ratio
-    clip_ratio_high = config.clip_ratio_high if config.clip_ratio_high is not None else clip_ratio
-    clip_ratio_c = config.get("clip_ratio_c", 3.0)
-    if clip_ratio_c <= 1.0:
-        raise ValueError(f"clip_ratio_c must be greater than 1.0, got {clip_ratio_c}.")
-
-    negative_approx_kl = torch.clamp(log_prob - old_log_prob, min=-20.0, max=20.0)
-    ratio = torch.exp(negative_approx_kl)
-    ppo_kl = masked_mean(-negative_approx_kl, response_mask)
-
-    pg_losses1 = -advantages * ratio
-    pg_losses2 = -advantages * torch.clamp(ratio, 1 - clip_ratio_low, 1 + clip_ratio_high)
-    clip_pg_losses1 = torch.maximum(pg_losses1, pg_losses2)
-    pg_clipfrac = masked_mean(torch.gt(pg_losses2, pg_losses1).float(), response_mask)
-
-    pg_losses3 = -advantages * clip_ratio_c
-    clip_pg_losses2 = torch.min(pg_losses3, clip_pg_losses1)
-    pg_clipfrac_lower = masked_mean(torch.gt(clip_pg_losses1, pg_losses3) * (advantages < 0).float(), response_mask)
-    token_losses = torch.where(advantages < 0, clip_pg_losses2, clip_pg_losses1)
-    if rollout_is_weights is not None:
-        token_losses = token_losses * rollout_is_weights
-
-    return token_losses, {
-        "actor/pg_clipfrac": pg_clipfrac.detach().item(),
-        "actor/ppo_kl": ppo_kl.detach().item(),
-        "actor/pg_clipfrac_lower": pg_clipfrac_lower.detach().item(),
-    }
-
-
-def _compute_hpt_prompt_equal_policy_loss(
-    *,
-    log_prob: torch.Tensor,
-    old_log_prob: torch.Tensor,
-    advantages: torch.Tensor,
-    response_mask: torch.Tensor,
-    rollout_is_weights: torch.Tensor | None,
-    hpt_is_sft: torch.Tensor,
-    hpt_seq_weight: torch.Tensor,
-    hpt_length_divisor: torch.Tensor,
-    hpt_loss_denominator: torch.Tensor,
-    config: ActorConfig,
-) -> tuple[torch.Tensor, dict[str, Metric]]:
-    if config.policy_loss.get("loss_mode", "vanilla") != "vanilla":
-        raise ValueError("HPT policy loss currently supports only vanilla as the base policy loss mode.")
-
+def _hpt_sft_mask(hpt_is_sft: torch.Tensor, response_mask: torch.Tensor, log_prob: torch.Tensor) -> torch.Tensor:
     batch_size = response_mask.shape[0]
-    for name, tensor in {
-        "hpt_is_sft": hpt_is_sft,
-        "hpt_seq_weight": hpt_seq_weight,
-        "hpt_length_divisor": hpt_length_divisor,
-        "hpt_loss_denominator": hpt_loss_denominator,
-    }.items():
-        if tuple(tensor.shape) != (batch_size,):
-            raise ValueError(f"HPT field {name!r} must have shape ({batch_size},), got {tuple(tensor.shape)}.")
-
-    hpt_is_sft = hpt_is_sft.to(device=log_prob.device, dtype=torch.bool)
-    hpt_seq_weight = hpt_seq_weight.to(device=log_prob.device, dtype=log_prob.dtype)
-    hpt_length_divisor = hpt_length_divisor.to(device=log_prob.device, dtype=log_prob.dtype)
-    hpt_loss_denominator = hpt_loss_denominator.to(device=log_prob.device, dtype=log_prob.dtype)
-
-    if (hpt_length_divisor <= 0).any():
-        raise ValueError("HPT length divisors must be positive.")
-    if (hpt_loss_denominator <= 0).any():
-        raise ValueError("HPT loss denominators must be positive.")
-
-    denominator = hpt_loss_denominator.max()
-    if not torch.allclose(hpt_loss_denominator, torch.full_like(hpt_loss_denominator, denominator)):
-        raise ValueError("HPT loss denominator must be identical across rows in an actor microbatch.")
-
-    sft_mask = hpt_is_sft.unsqueeze(-1)
-    effective_old_log_prob = torch.where(sft_mask, log_prob.detach(), old_log_prob)
-    if rollout_is_weights is not None:
-        rollout_is_weights = torch.where(sft_mask, torch.ones_like(rollout_is_weights), rollout_is_weights)
-
-    token_losses, pg_metrics = _compute_vanilla_token_losses(
-        old_log_prob=effective_old_log_prob,
-        log_prob=log_prob,
-        advantages=advantages,
-        response_mask=response_mask,
-        config=config,
-        rollout_is_weights=rollout_is_weights,
-    )
-    response_mask_float = response_mask.to(dtype=token_losses.dtype)
-    seq_losses = (token_losses * response_mask_float).sum(dim=-1) / hpt_length_divisor
-    dp_size = _as_float(config.global_batch_info.get("dp_size", 1))
-    weighted_seq_losses = hpt_seq_weight * seq_losses
-    sft_loss_component = weighted_seq_losses.masked_select(hpt_is_sft).sum() / denominator * dp_size
-    rl_loss_component = weighted_seq_losses.masked_select(~hpt_is_sft).sum() / denominator * dp_size
-    pg_loss = sft_loss_component + rl_loss_component
-
-    metrics = Metric.from_dict(pg_metrics, aggregation=AggregationType.MEAN)
-    metrics["hpt/b_eff"] = Metric(value=denominator.detach(), aggregation=AggregationType.MEAN)
-    metrics["hpt/sft_loss_component"] = Metric(value=sft_loss_component.detach(), aggregation=AggregationType.SUM)
-    metrics["hpt/rl_loss_component"] = Metric(value=rl_loss_component.detach(), aggregation=AggregationType.SUM)
-
-    sft_response_mask = sft_mask & response_mask
-    metrics["hpt/sft_response_token_count"] = Metric(
-        value=sft_response_mask.to(dtype=torch.float32).sum().detach(),
-        aggregation=AggregationType.SUM,
-    )
-    if sft_response_mask.any():
-        sft_nll = masked_sum(-log_prob, sft_response_mask) / sft_response_mask.sum().clamp_min(1)
-    else:
-        sft_nll = torch.zeros((), device=log_prob.device, dtype=log_prob.dtype)
-    metrics["hpt/sft_nll"] = Metric(value=sft_nll.detach(), aggregation=AggregationType.MEAN)
-    return pg_loss, metrics
+    if tuple(hpt_is_sft.shape) != (batch_size,):
+        raise ValueError(f"HPT field 'hpt_is_sft' must have shape ({batch_size},), got {tuple(hpt_is_sft.shape)}.")
+    return hpt_is_sft.to(device=log_prob.device, dtype=torch.bool).unsqueeze(-1)
 
 
 def sft_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None):
@@ -219,11 +100,13 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
     metrics = {}
 
     hpt_policy_loss = _has_hpt_loss_fields(data)
+    hpt_sft_entropy_enabled = bool(tu.get_non_tensor_data(data, "hpt_sft_entropy_enabled", False))
+    hpt_sft_kl_enabled = bool(tu.get_non_tensor_data(data, "hpt_sft_kl_enabled", False))
 
     # select fields and convert to padded tensor
     fields = ["response_mask", "old_log_probs", "advantages"]
     if hpt_policy_loss:
-        fields.extend(_HPT_LOSS_FIELDS)
+        fields.append(_HPT_LOSS_FIELD)
     if "rollout_is_weights" in data:
         fields.append("rollout_is_weights")
     if "ref_log_prob" in data:
@@ -240,34 +123,39 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
 
     loss_mode = config.policy_loss.get("loss_mode", "vanilla")
 
+    hpt_sft_token_mask = None
     if hpt_policy_loss:
-        pg_loss, pg_metrics = _compute_hpt_prompt_equal_policy_loss(
-            log_prob=log_prob,
-            old_log_prob=old_log_prob,
-            advantages=advantages,
-            response_mask=response_mask,
-            rollout_is_weights=rollout_is_weights,
-            hpt_is_sft=data["hpt_is_sft"],
-            hpt_seq_weight=data["hpt_seq_weight"],
-            hpt_length_divisor=data["hpt_length_divisor"],
-            hpt_loss_denominator=data["hpt_loss_denominator"],
-            config=config,
-        )
-    else:
-        policy_loss_fn = get_policy_loss_fn(loss_mode)
-        pg_loss, pg_metrics = policy_loss_fn(
-            old_log_prob=old_log_prob,
-            log_prob=log_prob,
-            advantages=advantages,
-            response_mask=response_mask,
-            loss_agg_mode=loss_agg_mode,
-            config=config,
-            rollout_is_weights=rollout_is_weights,
-        )
+        if loss_mode != "vanilla":
+            raise ValueError("HPT branch-blind policy loss supports only vanilla as the base policy loss mode.")
+        hpt_sft_token_mask = _hpt_sft_mask(data["hpt_is_sft"], response_mask, log_prob) & response_mask
+        old_log_prob = torch.where(hpt_sft_token_mask, log_prob.detach(), old_log_prob)
+        if rollout_is_weights is not None:
+            rollout_is_weights = torch.where(hpt_sft_token_mask, torch.ones_like(rollout_is_weights), rollout_is_weights)
 
-        # AggregationType.MEAN for pg metrics: assumes policy_loss_fn normalizes by local_bsz/local_tokens
-        # Ex: in compute_policy_loss_vanilla, pg_metrics are pg_clipfrac, ppo_kl, pg_clipfrac_lower
-        pg_metrics = Metric.from_dict(pg_metrics, aggregation=AggregationType.MEAN)
+    policy_loss_fn = get_policy_loss_fn(loss_mode)
+    pg_loss, pg_metrics = policy_loss_fn(
+        old_log_prob=old_log_prob,
+        log_prob=log_prob,
+        advantages=advantages,
+        response_mask=response_mask,
+        loss_agg_mode=loss_agg_mode,
+        config=config,
+        rollout_is_weights=rollout_is_weights,
+    )
+
+    # AggregationType.MEAN for pg metrics: assumes policy_loss_fn normalizes by local_bsz/local_tokens
+    # Ex: in compute_policy_loss_vanilla, pg_metrics are pg_clipfrac, ppo_kl, pg_clipfrac_lower
+    pg_metrics = Metric.from_dict(pg_metrics, aggregation=AggregationType.MEAN)
+    if hpt_sft_token_mask is not None:
+        pg_metrics["hpt/sft_response_token_count"] = Metric(
+            value=hpt_sft_token_mask.to(dtype=torch.float32).sum().detach(),
+            aggregation=AggregationType.SUM,
+        )
+        if hpt_sft_token_mask.any():
+            sft_nll = masked_sum(-log_prob, hpt_sft_token_mask) / hpt_sft_token_mask.sum().clamp_min(1)
+        else:
+            sft_nll = torch.zeros((), device=log_prob.device, dtype=log_prob.dtype)
+        pg_metrics["hpt/sft_nll"] = Metric(value=sft_nll.detach(), aggregation=AggregationType.MEAN)
 
     metrics.update(pg_metrics)
     metrics["actor/pg_loss"] = Metric(value=pg_loss, aggregation=metric_aggregation)
@@ -275,8 +163,11 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
 
     # add entropy loss
     if entropy is not None:
+        entropy_mask = response_mask
+        if hpt_sft_token_mask is not None and not hpt_sft_entropy_enabled:
+            entropy_mask = response_mask & ~hpt_sft_token_mask
         entropy_loss = agg_loss(
-            loss_mat=entropy, loss_mask=response_mask, loss_agg_mode=loss_agg_mode, **config.global_batch_info
+            loss_mat=entropy, loss_mask=entropy_mask, loss_agg_mode=loss_agg_mode, **config.global_batch_info
         )
         entropy_coeff = config.entropy_coeff
         policy_loss -= entropy_coeff * entropy_loss
@@ -287,8 +178,11 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
         ref_log_prob = data["ref_log_prob"]
         # compute kl loss
         kld = kl_penalty(logprob=log_prob, ref_logprob=ref_log_prob, kl_penalty=config.kl_loss_type)
+        kl_mask = response_mask
+        if hpt_sft_token_mask is not None and not hpt_sft_kl_enabled:
+            kl_mask = response_mask & ~hpt_sft_token_mask
         kl_loss = agg_loss(
-            loss_mat=kld, loss_mask=response_mask, loss_agg_mode=config.loss_agg_mode, **config.global_batch_info
+            loss_mat=kld, loss_mask=kl_mask, loss_agg_mode=config.loss_agg_mode, **config.global_batch_info
         )
 
         policy_loss += kl_loss * config.kl_loss_coef

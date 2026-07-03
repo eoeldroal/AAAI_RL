@@ -27,7 +27,7 @@ fork work: git commit "Document clean verl export baseline".
    `AsyncBudget_RL.md` (run budgets).
 2. Skim this map's *Runtime Architecture* and *Data Flow* sections.
 3. Run the CPU contract tests: `pytest tests/special_RL/ -v` (no GPU/Ray needed).
-4. Read the HPT loss: `verl/workers/utils/losses.py::_compute_hpt_prompt_equal_policy_loss`.
+4. Read the HPT loss: `verl/workers/utils/losses.py::ppo_loss` HPT branch.
 
 ## Repo Layout (RL-relevant)
 
@@ -45,7 +45,7 @@ verl/experimental/fully_async_policy/   # THE fork's home
   hpt_rollout_accumulator.py # regroup per-trajectory attempts (scheduler mode)
   hpt_training.py            # rollout-logprob anchor + stale-row filter
   config/fully_async_ppo_trainer.yaml   # async + async_hpt config block
-verl/workers/utils/losses.py            # HPT prompt-equal policy loss
+verl/workers/utils/losses.py            # HPT branch-blind policy loss wrapper
 verl/trainer/ppo/rollout_corr_helper.py # off-policy IS/RS correction (RL rows only)
 verl/protocol.py                        # DataProto: the cross-process data contract
 verl/single_controller/                 # @register / Dispatch worker RPC
@@ -121,13 +121,12 @@ _get_samples_from_queue
   -> ray.cloudpickle.loads(...)
   -> HptBatchAssembler.assemble_rollout_samples
      -> materialize_rollout_sample     (per row: RL DataProto or SFT payload)
-     -> normalize_hpt_training_batch   (per row: writes the hpt_* loss tensors)
+     -> normalize_hpt_training_batch   (per row: writes hpt_is_sft + HPT route metadata)
      -> normalize_mixed_schema         (reconciles RL/SFT tensor+non-tensor schema)
      -> DataProto.concat
-     -> finalize_loss_denominator      (writes the shared b_eff)
 
 _fit_compute_log_prob -> apply_hpt_rollout_logprob_anchor   (HPT path)
-_fit_update_actor -> ppo_loss -> _compute_hpt_prompt_equal_policy_loss
+_fit_update_actor -> ppo_loss -> standard vanilla PPO with SFT self-detach
 ```
 
 ## Data Flow: rollout sample -> learner row
@@ -139,9 +138,9 @@ config validated        hpt_config.validate_async_hpt_config
   -> [scheduler] regroup hpt_rollout_accumulator.HptPromptGroupAccumulator.pop_ready
   -> queue (cloudpickle) message_queue.put_sample / get_sample
   -> assemble            hpt_assembler.HptBatchAssembler.assemble_rollout_samples
-     (writes hpt_is_sft, hpt_seq_weight, hpt_length_divisor, hpt_loss_denominator)
+     (writes hpt_is_sft and row-aligned HPT route metadata)
   -> anchor + filter     hpt_training.apply_hpt_rollout_logprob_anchor / filter_hpt_stale_rollout_samples
-  -> loss                losses.ppo_loss -> _compute_hpt_prompt_equal_policy_loss
+  -> loss                losses.ppo_loss -> branch-blind vanilla PPO + SFT self-detach
 ```
 
 **Key asymmetry (memorize this):** an **SFT** route collapses a prompt group to
@@ -169,13 +168,13 @@ bounded by `max_completed_prompt_groups`. This produces the log line:
   symmetry is why `HptBatchAssembler` exists as a single entry point.
 - **Rollout-logprob anchor** (`hpt_training.py`): RL rows use the rollout engine's
   own `rollout_log_probs` as `old_log_probs` (needs `rollout.calculate_log_probs=True`).
-- **prompt-equal loss** (`losses.py::_compute_hpt_prompt_equal_policy_loss`):
-  batch is HPT iff it carries all four `hpt_*` tensors (`_has_hpt_loss_fields`).
+- **branch-blind policy loss** (`losses.py::ppo_loss` HPT branch):
+  batch is HPT iff it carries `hpt_is_sft`; obsolete B_eff fields are rejected.
   SFT rows pin ratio=1 (`old = log_prob.detach()`) -> advantage-weighted NLL;
-  RL rows use clipped vanilla PPO. Both length-normalized, weighted so each prompt
-  contributes equally over shared denominator `b_eff`. HPT does not replace the
-  base RL advantage estimator — RL rows still use the existing GRPO advantage
-  path unchanged; HPT only adds the route decision and this aggregation layer.
+  RL rows use the standard clipped vanilla PPO path unchanged. HPT does not
+  replace the base RL advantage estimator — RL rows still use the existing GRPO
+  advantage path; HPT only adds the route decision, SFT self-detach, and
+  auxiliary masking.
 - **Off-policy correction** (`rollout_corr_helper.py`): IS/RS applied to RL rows
   only; `_compute_hpt_rollout_correction_and_add_to_batch` masks SFT tokens out
   (SFT rows are not drawn from the rollout policy).
@@ -185,8 +184,11 @@ bounded by `max_completed_prompt_groups`. This produces the log line:
 | --- | --- |
 | `enabled` | master switch; off = untouched base async RL |
 | `gamma` | success-prob threshold at/below which -> SFT |
-| `beta` | SFT reward magnitude at last supervised token |
-| `alpha` | RL row weight scale (`alpha/total_count`) |
+| `beta` | SFT terminal pseudo reward magnitude |
+| `alpha` | deprecated compatibility field; must remain `1.0` |
+| `loss_aggregation` | `branch_blind`; old `prompt_equal` is rejected |
+| `sft_beta_mode` | `constant` or `length_inverse` terminal pseudo reward |
+| `sft_entropy_enabled` / `sft_kl_enabled` | default false; include SFT rows in auxiliary masks only when explicitly true |
 | `k_max` | RL staleness drop bound (SFT rows exempt) |
 | `success_threshold` / `success_score_key` | what counts as a successful rollout |
 | `tau_dataset_path` / `tau_messages_key` | tau lookup parquet + column |
@@ -218,18 +220,18 @@ via `CheckpointEngineManager.update_weights`, then RPCs rollouter `reset_stalene
 | `libcudart.so.13: cannot open shared object` | SGLang subprocess without `conda activate RL`. See `Readme_RL.md` step 2, `scripts/install_vllm_sglang_mcore.sh`, `verl/utils/cuda_env.py`. |
 | Prompt groups missing / lower throughput than expected | Whole-group fail-closed drop on any attempt's `infra_abort` marker — `_has_infra_abort_marker` / `_drop_hpt_scheduler_group`. Check rollout-side exceptions before assuming a queue/staleness issue. |
 | Wrong SFT/RL route; `hpt/missing_tau_count>0` unexpectedly | `hpt_gate.route` (`gamma`/`success_threshold`/`success_score_key`); tau `HptTauStore`; data prep `tau_messages` column; `fail_on_missing_tau`. |
-| SFT rows learning with wrong probs / ratio != 1 | `_compute_hpt_prompt_equal_policy_loss` (`effective_old_log_prob`); `apply_hpt_rollout_logprob_anchor`. |
+| SFT rows learning with wrong probs / ratio != 1 | `losses.py::ppo_loss` HPT self-detach branch; `apply_hpt_rollout_logprob_anchor`. |
 | Learner-row count unexpected | SFT collapses group->1 row, RL expands->`rollout.n`; `HptBatchAssembler.assemble_rollout_samples` / `normalize_mixed_schema`. |
 | Rollout anchor missing / old_logprobs wrong | `should_use_hpt_rollout_logprob_anchor`; ensure `rollout.calculate_log_probs=True`. |
 | Correction touching SFT rows | `_compute_hpt_rollout_correction_and_add_to_batch` must mask SFT out. |
 | No parameter sync happening | `_fit_update_weights` gated on `local_trigger_step==1`; `_fit_update_local_step`; `CheckpointEngineManager.update_weights`. |
 | Trajectory attempts out of order / wrong group | `HptPromptGroupAccumulator.pop_ready`; `_submit_hpt_trajectory_attempts`. |
-| Batch shape/mask/logprob misalignment | `DataProto.check_consistency` (`verl/protocol.py`); the four `hpt_*` fields must be row-aligned with `response_mask`. |
+| Batch shape/mask/logprob misalignment | `DataProto.check_consistency` (`verl/protocol.py`); `hpt_is_sft`, `rollout_log_probs`, masks, rewards, and route metadata must stay row-aligned. |
 
 Useful log/metric keys: `hpt/num_sft_routed`, `hpt/num_rl_routed`,
-`hpt/missing_tau_count`, `hpt/old_logprob_from_rollout`, `hpt/b_eff`,
-`hpt/sft_loss_component`, `hpt/rl_loss_component`. For live runs, inspect Ray
-worker logs directly (see `Readme_RL.md` "Suggested Main-Run Log Checks").
+`hpt/missing_tau_count`, `hpt/old_logprob_from_rollout`,
+`hpt/sft_response_token_count`, `hpt/sft_nll`. For live runs, inspect Ray worker
+logs directly (see `Readme_RL.md` "Suggested Main-Run Log Checks").
 
 ## Tests
 
@@ -242,7 +244,7 @@ conda activate RL && cd <repo> && pytest tests/special_RL/ -v
 
 | File | Protects |
 | --- | --- |
-| `test_hpt_trainer_queue_contract.py` | learner-row divisibility, fail-closed on unformable batch, row-aware window = `max_completed_prompt_groups`, param-version metadata preserved, rollout-logprob anchor, mixed SFT/RL loss reaches backprop with aligned `hpt_*` fields |
+| `test_hpt_trainer_queue_contract.py` | learner-row divisibility, fail-closed on unformable batch, row-aware window = `max_completed_prompt_groups`, param-version metadata preserved, rollout-logprob anchor, branch-blind HPT loss, SFT self-detach, auxiliary masks, obsolete B_eff fields rejected |
 | `test_hpt_trajectory_scheduler_contract.py` | all `n` attempts share one group uid, distinct ordered `hpt_rollout_index`, `prompt_uid` propagated |
 | `test_openr1_hpt_smoke_contract.py` | data-prep schema (`prompt_uid`+`tau_messages`), main-launcher Hydra-validity contract |
 
@@ -271,7 +273,7 @@ values for the async-only knobs:
 | Matched to baseline (`train.sh`) | Our async-only decision |
 | --- | --- |
 | `adv_estimator=grpo`, `norm_adv_by_std_in_grpo=False` (Dr.GRPO) | `staleness_threshold`, `trigger_parameter_sync_step` |
-| `ppo_mini_batch_size=64`, `rollout.n=8` | `require_batches`, `partial_rollout` |
+| `rollout.n=8`; same 128-prompt fit_step scale | `require_batches`, finer `ppo_mini_batch_size`, `partial_rollout` |
 | `lr=5e-6`, `clip_grad=80.0`, `entropy_coeff=0.001`, `use_kl_loss=False` | `max_inflight/completed_prompt_groups` |
 | `max_response_length=8192`, `rope_theta=40000`, `max_position_embeddings=16384` | `data.train_batch_size=0` (forced by fully-async) |
 
@@ -279,16 +281,22 @@ values for the async-only knobs:
 sample already holds `rollout.n` rows (the rollouter repeats one prompt
 `rollout.n` times before generation — see the rollouter call graph above).
 Matching the baseline's `train_batch_size(128) × rollout.n(8) = 1024`
-sequences/step needs `require_batches = train_batch_size / ppo_mini_batch_size
-= 128/64 = 2`. An earlier version of this launcher used `require_batches=16`
-on the mistaken assumption that `ppo_mini_batch_size(64) × require_batches(16)
-= 1024` already matched the baseline's 1024-sequence scale — it compared a
-queue-sample count against a row count and missed the `× rollout.n`, so it
-actually collected `1024 × 8 = 8192` rows per fit_step, 8x the baseline's
+sequences/step means `ppo_mini_batch_size * require_batches = 128`. The strict
+Unify mini-batch grain is `64 * 2`; the current main launcher intentionally
+uses the finer async/HPT grain `32 * 4`. Both preserve the large fit_step batch
+scale. An earlier version used `require_batches=16` on the mistaken assumption
+that `64 × 16 = 1024` already matched the baseline's 1024-sequence scale — it
+compared a queue-sample count against a row count and missed the `× rollout.n`,
+so it actually collected `1024 × 8 = 8192` rows per fit_step, 8x the baseline's
 per-step volume. See `AsyncBudget_RL.md` for the full derivation and the
-corrected budget. This is design intent, not a code invariant — the launcher
-test deliberately does NOT assert a specific value (it only checks the
-launcher composes to a valid async-HPT config).
+corrected budget.
+
+`max_completed_prompt_groups` is not part of this parity equation. It is an
+async-only completed-backlog cap; the main launcher keeps it large enough to
+avoid dropping rollout samples while preserving the 128-prompt fit_step scale.
+This is design intent, not a code invariant — the launcher test deliberately
+does NOT assert a specific value (it only checks the launcher composes to a
+valid async-HPT config).
 
 ## Maintaining This File
 

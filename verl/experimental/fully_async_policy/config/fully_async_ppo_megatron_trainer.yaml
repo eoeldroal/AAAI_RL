@@ -40,8 +40,11 @@ async_hpt:
   beta: 1.0
   alpha: 1.0
 
-  # Phase-1 HPT keeps prompt-equal aggregation and rollout old-logprob anchors.
-  loss_aggregation: prompt_equal
+  # Phase-1 HPT uses branch-blind reduction and rollout old-logprob anchors.
+  loss_aggregation: branch_blind
+  sft_beta_mode: constant
+  sft_entropy_enabled: False
+  sft_kl_enabled: False
   rl_old_logprob_source: rollout
 
   # Tau supervision source. Required only when async_hpt.enabled=true.

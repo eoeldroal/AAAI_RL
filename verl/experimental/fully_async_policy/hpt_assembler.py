@@ -54,7 +54,10 @@ class HptBatchAssembler:
             batches.append(self.normalize_hpt_training_batch(batch, route))
 
         self.normalize_mixed_schema(batches)
-        return self.finalize_loss_denominator(DataProto.concat(batches))
+        batch = DataProto.concat(batches)
+        batch.meta_info["hpt_sft_entropy_enabled"] = bool(self.hpt_config.sft_entropy_enabled)
+        batch.meta_info["hpt_sft_kl_enabled"] = bool(self.hpt_config.sft_kl_enabled)
+        return batch
 
     def materialize_rollout_sample(self, rollout_sample: Any, route: HptRouteMetadata | None = None) -> DataProto:
         route = route or self.require_route(rollout_sample)
@@ -147,31 +150,16 @@ class HptBatchAssembler:
             if batch_size != 1:
                 raise ValueError(f"HPT SFT route expects one materialized row, got {batch_size}.")
             self._normalize_sft_tensors(batch, response_mask)
-            seq_weight = 1.0
-            length_divisor = response_mask.sum(dim=-1).to(torch.float32)
         else:
             self._normalize_rl_tensors(batch, response_mask, route)
-            seq_weight = self.hpt_config.alpha / float(route.total_count)
-            length_divisor = torch.full(
-                (batch_size,),
-                float(response_mask.shape[-1]),
-                dtype=torch.float32,
-                device=response_mask.device,
-            )
 
-        if (length_divisor <= 0).any():
-            bad_rows = (length_divisor <= 0).nonzero(as_tuple=True)[0].tolist()
-            raise ValueError(f"HPT length divisor must be positive; bad rows={bad_rows}.")
+        supervised_lengths = response_mask.sum(dim=-1)
+        if (supervised_lengths <= 0).any():
+            bad_rows = (supervised_lengths <= 0).nonzero(as_tuple=True)[0].tolist()
+            raise ValueError(f"HPT supervised response length must be positive; bad rows={bad_rows}.")
 
         batch.batch["hpt_is_sft"] = torch.full(
             (batch_size,), bool(route.is_sft), dtype=torch.bool, device=response_mask.device
-        )
-        batch.batch["hpt_seq_weight"] = torch.full(
-            (batch_size,), float(seq_weight), dtype=torch.float32, device=response_mask.device
-        )
-        batch.batch["hpt_length_divisor"] = length_divisor
-        batch.batch["hpt_loss_denominator"] = torch.ones(
-            batch_size, dtype=torch.float32, device=response_mask.device
         )
         return batch
 
@@ -194,16 +182,6 @@ class HptBatchAssembler:
             for key in non_tensor_keys - set(batch.non_tensor_batch.keys()):
                 batch.non_tensor_batch[key] = self._default_non_tensor_array(key, batch_size)
             self._normalize_non_tensor_arrays(batch)
-
-    @staticmethod
-    def finalize_loss_denominator(batch: DataProto) -> DataProto:
-        if "hpt_seq_weight" not in batch.batch:
-            raise ValueError("HPT batch is missing hpt_seq_weight before denominator finalization.")
-        denominator = float(batch.batch["hpt_seq_weight"].sum().item())
-        if denominator <= 0:
-            raise ValueError("HPT loss denominator must be positive before padding.")
-        batch.batch["hpt_loss_denominator"] = torch.full_like(batch.batch["hpt_seq_weight"], denominator)
-        return batch
 
     @staticmethod
     def require_route(rollout_sample: Any) -> HptRouteMetadata:
@@ -253,8 +231,18 @@ class HptBatchAssembler:
             supervised_positions = supervised[row_idx].nonzero(as_tuple=True)[0]
             if supervised_positions.numel() <= 0:
                 raise ValueError(f"HPT SFT row {row_idx} has no supervised response tokens.")
-            rm_scores[row_idx, supervised_positions[-1]] = float(self.hpt_config.beta)
+            rm_scores[row_idx, supervised_positions[-1]] = self._sft_terminal_reward(
+                supervised_token_count=int(supervised_positions.numel())
+            )
         batch.batch["rm_scores"] = rm_scores
+
+    def _sft_terminal_reward(self, *, supervised_token_count: int) -> float:
+        if supervised_token_count <= 0:
+            raise ValueError(f"HPT SFT supervised_token_count must be positive, got {supervised_token_count}.")
+        if self.hpt_config.sft_beta_mode == "constant":
+            return float(self.hpt_config.beta)
+        loss_scale_factor = int(self.config.actor_rollout_ref.actor.loss_scale_factor)
+        return float(self.hpt_config.beta) * float(loss_scale_factor) / float(supervised_token_count)
 
     @staticmethod
     def _normalize_rl_tensors(batch: DataProto, response_mask: torch.Tensor, route: HptRouteMetadata) -> None:

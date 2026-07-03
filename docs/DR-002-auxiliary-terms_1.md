@@ -1,15 +1,25 @@
 # DR-002. Auxiliary Terms (Entropy / KL) on the Supervised Branch
 
-Status: 확정 (phase-1) · 미검증 (관련 코드 현재까지 미실행)
+Status: 확정 (phase-1) · 구현됨 (`feat/async-hpt-branch-blind-loss`) · CPU 계약 테스트 통과
 범위: Async-HPT actor loss의 auxiliary 정칙화 항(entropy, KL)이 branch별로 어떻게 적용되는가. off-policy 보정/trust region은 DR-003 소관.
-관련 코드: `verl/workers/utils/losses.py` (entropy/kl 계산 277–296), `verl/experimental/fully_async_policy/hpt_config.py`
+관련 코드: `verl/workers/utils/losses.py::ppo_loss`, `verl/experimental/fully_async_policy/hpt_config.py`
 선행 예고: DR-001 §7에서 "KL/entropy가 SFT row에 균일 적용되는 문제는 이 결정과 독립"으로 분리 예고됨.
+
+---
+
+## 구현 기록
+
+- 완료: policy loss mask는 기존 `response_mask`를 유지.
+- 완료: `async_hpt.sft_entropy_enabled=false`이면 entropy mask에서 SFT token을 제외.
+- 완료: `async_hpt.sft_kl_enabled=false`이면 KL mask에서 SFT token을 제외.
+- 완료: 두 flag를 `true`로 켠 경우에만 SFT token이 auxiliary mask에 들어가는 계약 테스트 추가.
+- 검증: `/home/sogang_nlpy/miniconda3/envs/RL/bin/python -m pytest tests/special_RL -q` 통과.
 
 ---
 
 ## 0. 한 문단 요약
 
-현재 loss는 entropy와 KL 항을 `response_mask` 전체에 적용하므로 SFT row도 이 정칙화를 받는다(losses.py:277–296, detach 바깥). 결정은 **auxiliary 항을 RL row에만 적용하고 SFT row는 마스킹**하는 것이다. 근거는 provenance 원리(A.5, DR-003 §): entropy·KL은 rollout provenance를 가진 데이터에만 의미를 갖는 정칙화이며, SFT의 목적(고정 target을 확신 있게 모방)과 상충한다. entropy는 RL에 표준값(0.001), SFT에는 끈다. KL은 현 config가 reference model 자체를 띄우지 않아(`ref.use_ref=False`) 이 설정에서는 애초에 non-issue이나, 개념적으로도 SFT에 anchor-KL을 거는 것은 학습 방해라 면제가 맞다. 처방은 새 기제가 아니라 correction 면제(rollout_corr_helper:1061)와 동형의 branch 마스킹이다.
+현재 loss는 entropy와 KL 항을 `response_mask` 전체에 적용할 수 있으므로 SFT row도 이 정칙화를 받을 위험이 있다. 결정은 **auxiliary 항을 RL row에만 적용하고 SFT row는 마스킹**하는 것이다. 근거는 provenance 원리(A.5, DR-003 §): entropy·KL은 rollout provenance를 가진 데이터에만 의미를 갖는 정칙화이며, SFT의 목적(고정 target을 확신 있게 모방)과 상충한다. entropy는 RL에 표준값(0.001), SFT에는 끈다. KL은 현 config가 reference model 자체를 띄우지 않아(`ref.use_ref=False`) 이 설정에서는 애초에 non-issue이나, 개념적으로도 SFT에 anchor-KL을 거는 것은 학습 방해라 면제가 맞다. 처방은 새 기제가 아니라 correction 면제와 동형의 branch 마스킹이다.
 
 ---
 
@@ -43,7 +53,7 @@ Status: 확정 (phase-1) · 미검증 (관련 코드 현재까지 미실행)
 
 ## 3. 구현: auxiliary 항의 SFT row 마스킹
 
-losses.py:277–296이 entropy·kl을 `response_mask`로 계산한다. 이를 `response_mask & ~sft_mask`로 바꾸면 RL row에만 걸리고 SFT는 면제된다. 이는 correction 면제(rollout_corr_helper:1061의 `torch.where(sft_token_mask, ones, weights)`)와 **동형 패턴**이다.
+`losses.py::ppo_loss`의 entropy·KL mask를 `response_mask & ~sft_mask`로 바꾸면 RL row에만 걸리고 SFT는 면제된다. 이는 correction 면제의 `torch.where(sft_token_mask, ones, weights)`와 **동형 패턴**이다.
 
 원리적 정당화는 provenance(A.5, DR-003 §3): correction·staleness가 rollout provenance를 가진 RL row에만 의미를 갖듯, entropy(탐색 정칙화)·anchor-KL(앵커링)도 rollout policy 기준의 항이라 rollout provenance가 있는 RL row에만 의미가 있다. 즉 이 마스킹은 새 예외가 아니라 **provenance 원리가 auxiliary 항으로 확장되는 사례**다. DR-003이 이 원리의 본체(보정·staleness 면제의 이중 부재)를 세우고, 이 DR이 그것을 인용한다.
 
@@ -66,4 +76,4 @@ losses.py:277–296이 entropy·kl을 `response_mask`로 계산한다. 이를 `r
 
 ## 부록: 상태
 
-이 결정은 설계 방침이며 미검증이다(코드 미실행). KL은 현 config에서 non-issue라 즉시 검증 대상은 entropy 마스킹뿐이다. entropy on/off(SFT)는 §2 예비대로 SFT-heavy 레짐에서 ablation 후보로 남긴다.
+이 결정은 구현되었고 CPU 계약 테스트로 검증했다. KL은 현 config에서 non-issue이나, reference/KL을 켜는 future config에서도 SFT row가 기본 면제되도록 mask 계약을 넣었다. entropy on/off(SFT)는 §2 예비대로 SFT-heavy 레짐에서 ablation 후보로 남긴다.
