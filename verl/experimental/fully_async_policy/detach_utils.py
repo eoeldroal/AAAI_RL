@@ -23,6 +23,8 @@ import torch
 from verl import DataProto
 from verl.trainer.ppo.ray_trainer import compute_response_mask
 
+_METRIC_WEIGHT_PREFIX = "_metric_weight/"
+
 
 @dataclass
 class RolloutSample:
@@ -185,6 +187,7 @@ class MetricsAggregator:
     def __init__(self, total_gpus: int):
         # Store all values ​​for each metric
         self.metric_values: dict[str, list[float]] = defaultdict(list)
+        self.metric_weights: dict[str, list[int]] = defaultdict(list)
         # Store the number of samples at each step for weighted averaging
         self.sample_counts: list[int] = []
         # Store the timestamp of each step for time-related calculations
@@ -202,16 +205,39 @@ class MetricsAggregator:
         return {
             # Time-Based metrics, can add metrics here
             "time_sum": ["perf/time_per_step"],
+            "sum": [
+                "actor/hpt/sft_response_token_count",
+                "fully_async/hpt_collected_queue_samples",
+                "fully_async/partial/total_partial_num",
+                "hpt/missing_tau_count",
+                "hpt/num_rl_groups",
+                "hpt/num_sft",
+                "hpt/num_sft_rows",
+                "hpt/p_success_zero_count",
+                "hpt/rl_stale_dropped",
+                "hpt/sft_staleness_exempt",
+            ],
             "min": ["timing_s/agent_loop/tool_calls/min"],
             "avg": ["timing_s/agent_loop/tool_calls/mean"],
             "max": ["timing_s/agent_loop/tool_calls/max"],
+            "weighted_avg": [
+                "actor/entropy",
+                "actor/hpt/sft_nll",
+                "rollout_is_eff_sample_size",
+            ],
             "last": [
                 "fully_async/count/total_generated_samples",
                 "fully_async/count/stale_samples_processed",
                 "fully_async/count/stale_trajectory_processed",
                 "fully_async/count/current_param_version",
                 "fully_async/count/dropped_stale_samples",
+                "fully_async/hpt_required_training_multiple",
                 "training/global_step",  # TODO change name to: total_step
+                "training/epoch",
+                "actor/lr",
+                "critic/lr",
+                "actor/kl_coef",
+                "actor/reward_kl_penalty_coeff",
             ],
         }
 
@@ -224,12 +250,23 @@ class MetricsAggregator:
         self.timestamps.append(timestamp)
         self.step_count += 1
 
+        metric_weights = {
+            key[len(_METRIC_WEIGHT_PREFIX) :]: int(value)
+            for key, value in metrics.items()
+            if key.startswith(_METRIC_WEIGHT_PREFIX) and isinstance(value, int | float | np.number)
+        }
+
         # Store all metrics values
         for key, value in metrics.items():
+            if key.startswith(_METRIC_WEIGHT_PREFIX):
+                continue
+            weight = metric_weights.get(key, sample_count)
             if isinstance(value, int | float | np.number):
                 self.metric_values[key].append(float(value))
+                self.metric_weights[key].append(weight)
             elif isinstance(value, torch.Tensor):
                 self.metric_values[key].append(float(value.item()))
+                self.metric_weights[key].append(weight)
 
     def _get_aggregation_type(self, metric_name: str) -> str:
         """Determine the aggregation type based on the metric name"""
@@ -240,15 +277,16 @@ class MetricsAggregator:
         metric_lower = metric_name.lower()
         if any(keyword in metric_lower for keyword in ["timing_s/"]):
             return "time_sum"
-        if any(keyword in metric_lower for keyword in ["mean", "avg", "average"]):
-            return "avg"
         if any(keyword in metric_lower for keyword in ["max", "maximum"]):
             return "max"
         if any(keyword in metric_lower for keyword in ["min", "minimum"]):
             return "min"
         if any(keyword in metric_lower for keyword in ["sum", "total"]):
             return "sum"
-        if any(keyword in metric_lower for keyword in ["weighted_avg"]):
+        if any(
+            keyword in metric_lower
+            for keyword in ["mean", "avg", "average", "ratio", "fraction", "clipfrac", "loss", "kl", "ppl", "chi2"]
+        ):
             return "weighted_avg"
 
         return "avg"
@@ -264,16 +302,15 @@ class MetricsAggregator:
             return values[-1]
 
         elif agg_type == "weighted_avg":
-            # Weighted average
-            if len(values) != len(self.sample_counts):
-                # If the lengths do not match, use a simple average
+            weights = self.metric_weights.get(metric_name, [])
+            if len(values) != len(weights):
                 return sum(values) / len(values)
 
-            total_samples = sum(self.sample_counts)
+            total_samples = sum(weights)
             if total_samples == 0:
                 return sum(values) / len(values)
 
-            weighted_sum = sum(v * c for v, c in zip(values, self.sample_counts, strict=False))
+            weighted_sum = sum(v * c for v, c in zip(values, weights, strict=False))
             return weighted_sum / total_samples
 
         elif agg_type == "sum" or agg_type == "time_sum":
@@ -329,11 +366,19 @@ class MetricsAggregator:
         if "timing_s/gen" in aggregated.keys() and "timing_s/step" in aggregated.keys():
             aggregated["fully_async/trainer/idle_ratio"] = aggregated["timing_s/gen"] / aggregated["timing_s/step"]
 
+        if "hpt/num_sft" in aggregated and "hpt/num_rl_groups" in aggregated:
+            hpt_group_count = aggregated["hpt/num_sft"] + aggregated["hpt/num_rl_groups"]
+            if hpt_group_count > 0:
+                aggregated["hpt/offline_data_ratio"] = aggregated["hpt/num_sft"] / hpt_group_count
+                if "hpt/p_success_zero_count" in aggregated:
+                    aggregated["hpt/p_success_zero_ratio"] = aggregated["hpt/p_success_zero_count"] / hpt_group_count
+
         return aggregated
 
     def reset(self):
         """Reset Aggregator"""
         self.metric_values.clear()
+        self.metric_weights.clear()
         self.sample_counts.clear()
         self.timestamps.clear()
         self.step_count = 0

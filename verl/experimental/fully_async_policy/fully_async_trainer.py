@@ -36,6 +36,7 @@ from verl.experimental.fully_async_policy.message_queue import MessageQueueClien
 from verl.experimental.separation.ray_trainer import SeparateRayPPOTrainer
 from verl.single_controller.ray import RayClassWithInitArgs, RayWorkerGroup
 from verl.trainer.ppo import core_algos
+from verl.trainer.ppo.metric_utils import _compute_response_info
 from verl.trainer.ppo.ray_trainer import ResourcePoolManager
 from verl.trainer.ppo.utils import Role, WorkerType, need_critic, need_reference_policy, need_reward_model
 from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path, should_save_ckpt_esi
@@ -587,7 +588,7 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
         self._fit_collect_metrics(batch)
         if weights_updated:
             self._fit_log_aggregated_training_metrics()
-        self._fit_postprocess_step()
+        self._fit_postprocess_step(batch)
 
     async def _fit_generate(self, batch: DataProto = None) -> DataProto | None:
         metrics = self.metrics
@@ -645,11 +646,11 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
         if steps is not None and last_profiler_step in steps:
             await asyncio.wrap_future(self.rollouter._stop_profiling.remote().future())
 
-        with marked_timer("timing_s/param_sync", self.timing_raw):
+        with marked_timer("param_sync", self.timing_raw):
             await self.checkpoint_manager.update_weights(global_steps=self.current_param_version)
         print(
             f"[FullyAsyncTrainer] _fit_update_weights, "
-            f"timing_s/param_sync: {self.timing_raw['timing_s/param_sync']:.4f} seconds "
+            f"timing_s/param_sync: {self.timing_raw['param_sync']:.4f} seconds "
             f"self.current_param_version: {self.current_param_version}"
         )
 
@@ -764,11 +765,11 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
                 self._save_checkpoint()
                 self.last_ckpt_version = self.current_param_version
 
-    def _fit_postprocess_step(self):
+    def _fit_postprocess_step(self, batch: DataProto):
         self.global_steps += 1
 
         self.metrics_aggregator.add_step_metrics(
-            metrics=self.metrics, sample_count=self.required_samples, timestamp=time.time()
+            metrics=self.metrics, sample_count=len(batch), timestamp=time.time()
         )
 
         if self.local_trigger_step == 1:
@@ -907,3 +908,79 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
             for key, value in batch.meta_info.items():
                 if key.startswith("fully_async") or key.startswith("timing_s"):
                     metrics[key] = value
+
+    def _fit_collect_metrics(self, batch: DataProto):
+        super()._fit_collect_metrics(batch)
+        self._collect_metric_aggregation_weights(batch)
+
+    def _collect_metric_aggregation_weights(self, batch: DataProto):
+        response_info = _compute_response_info(batch)
+        response_length = response_info["response_length"]
+        response_mask = batch.batch["response_mask"].bool()
+
+        row_count = len(batch)
+        non_aborted_count = int((response_length != 0).sum().item())
+        response_token_count = int(response_mask.sum().item())
+        sft_token_count = response_token_count
+        if "hpt_is_sft" in batch.batch:
+            hpt_is_sft = batch.batch["hpt_is_sft"].to(dtype=torch.bool).unsqueeze(-1)
+            sft_token_count = int((response_mask & hpt_is_sft).sum().item())
+
+        metric_weights = {
+            "critic/score/mean": non_aborted_count,
+            "critic/rewards/mean": non_aborted_count,
+            "critic/advantages/mean": response_token_count,
+            "critic/returns/mean": response_token_count,
+            "critic/vf_loss": response_token_count,
+            "critic/vf_clipfrac": response_token_count,
+            "critic/vpred_mean": response_token_count,
+            "response_length/mean": row_count,
+            "response_length/clip_ratio": row_count,
+            "response_length_non_aborted/mean": non_aborted_count,
+            "response_length_non_aborted/clip_ratio": non_aborted_count,
+            "response/aborted_ratio": row_count,
+            "prompt_length/mean": row_count,
+            "prompt_length/clip_ratio": row_count,
+            "actor/pg_loss": response_token_count,
+            "actor/pg_clipfrac": response_token_count,
+            "actor/pg_clipfrac_lower": response_token_count,
+            "actor/ppo_kl": response_token_count,
+            "actor/entropy": response_token_count,
+            "actor/entropy_loss": response_token_count,
+            "actor/kl_loss": response_token_count,
+            "actor/hpt/sft_nll": sft_token_count,
+            "kl": response_token_count,
+            "k3_kl": response_token_count,
+            "chi2_token": response_token_count,
+            "rollout_is_mean": response_token_count,
+            "rollout_is_std": response_token_count,
+            "rollout_is_oob_ratio": response_token_count,
+            "rollout_is_ratio_fraction_high": response_token_count,
+            "rollout_is_ratio_fraction_low": response_token_count,
+            "training_ppl": row_count,
+            "training_log_ppl": row_count,
+            "rollout_ppl": row_count,
+            "rollout_log_ppl": row_count,
+            "log_ppl_diff": row_count,
+            "log_ppl_abs_diff": row_count,
+            "ppl_ratio": row_count,
+            "chi2_seq": row_count,
+            "rollout_is_eff_sample_size": row_count,
+        }
+        if self.use_critic:
+            metric_weights["critic/values/mean"] = response_token_count
+
+        if "__num_turns__" in batch.non_tensor_batch:
+            metric_weights["num_turns/mean"] = int(len(batch.non_tensor_batch["__num_turns__"]))
+        if "tool_call_counts" in batch.non_tensor_batch:
+            metric_weights["tool_call_counts/mean"] = int(len(batch.non_tensor_batch["tool_call_counts"]))
+
+        for metric_name in self.metrics:
+            if metric_name.startswith("rollout_is_seq_"):
+                metric_weights[metric_name] = row_count
+            elif metric_name.startswith("rollout_rs_"):
+                metric_weights[metric_name] = row_count if "_seq_" in metric_name else response_token_count
+
+        for metric_name, weight in metric_weights.items():
+            if metric_name in self.metrics:
+                self.metrics[f"_metric_weight/{metric_name}"] = weight

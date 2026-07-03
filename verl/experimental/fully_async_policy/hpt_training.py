@@ -130,6 +130,7 @@ def collect_hpt_batch_monitoring_metrics(batch: DataProto) -> dict[str, float]:
         "hpt/num_sft": float(num_sft),
         "hpt/num_rl_groups": float(num_rl_groups),
         "hpt/missing_tau_count": float(missing_tau_count),
+        "hpt/p_success_zero_count": float(p_success_zero_count),
     }
 
 

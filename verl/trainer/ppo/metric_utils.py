@@ -624,7 +624,7 @@ def compute_timing_metrics(batch: DataProto, timing_raw: dict[str, float]) -> di
     }
 
     return {
-        **{f"timing_s/{name}": value for name, value in timing_raw.items()},
+        **{name if name.startswith("timing_s/") else f"timing_s/{name}": value for name, value in timing_raw.items()},
         **{
             f"timing_per_token_ms/{name}": (
                 timing_raw[name] * 1000 / num_tokens_of_section[name] if num_tokens_of_section[name] > 0 else 0.0
