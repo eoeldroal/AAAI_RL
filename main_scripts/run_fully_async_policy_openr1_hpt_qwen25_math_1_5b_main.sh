@@ -45,11 +45,10 @@ export XDG_CACHE_HOME="${RUNTIME_CACHE_DIR}/xdg"
 # post-update rollout까지 품질 분석 대상이므로 all_steps=True로 전체 feed step을
 # 저장한다. 디스크 비용이 크면 smoke/debug 전용 스크립트에서만 제한한다.
 #
-# [2026-07-03] 성능 조치: enable=False로 비활성화. all_steps=True dump는 매 생성마다
-# skip_manager가 save_to_disk()를 async 이벤트루프에서 동기 호출(prepare_data)하여
-# 루프를 블로킹 -> rollout 동시성/ GPU util 저하 (디스크 비용뿐 아니라 throughput 손실).
-# 품질 분석 기록이 필요하면 all_steps=False + steps=[...]로 특정 step만 dump하거나,
-# throughput 우선이면 enable=False 유지. 되돌리려면 enable=True로만 바꾸면 됨.
+# 처리량 회귀는 이 덤프가 아니라 수집 top-up 루프의 O(n^2) 재조립(트레이너 측)과
+# 낮은 rollout 동시성(max_inflight)에서 비롯된 것으로 확인되어 덤프는 유지한다.
+# 유일한 실비용은 디스크(~GB/hour, all_steps=True)다. 장기 런에서 디스크가 빠듯하면
+# all_steps=False + steps=[...]로 일부 step만 저장해 제한한다.
 ROLLOUT_DUMP_DIR="${VERL_ROOT}/.cache/rollout_dump/openr1_async_hpt_qwen25_math_1_5b_${RUN_TIMESTAMP}"
 
 # [각주 3] batch scale은 UPT train_batch_size=128 prompt groups와 맞춘다.
@@ -186,7 +185,7 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     async_training.use_trainer_do_validate=False \
     async_training.max_inflight_prompt_groups=96 \
     async_training.max_completed_prompt_groups=${MAX_COMPLETED_PROMPT_GROUPS} \
-    skip.async_rollout.enable=False \
+    skip.async_rollout.enable=True \
     skip.async_rollout.dump_dir="${ROLLOUT_DUMP_DIR}" \
     skip.async_rollout.steps=[] \
     skip.async_rollout.all_steps=True \
