@@ -946,7 +946,24 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
         rollout_index: int,
         attempt_batch: DataProto,
     ) -> None:
-        ret = await self.async_rollout_manager.generate_sequences_single(attempt_batch)
+        try:
+            ret = await self.async_rollout_manager.generate_sequences_single(attempt_batch)
+        except Exception as e:
+            # A single attempt's generation failing must neither crash the rollouter
+            # (the exception would otherwise propagate out through the awaiting
+            # _wait_for_one_active_task and take down the processor loop) nor strand
+            # this group's already-completed sibling attempts in the accumulator.
+            # Fail closed: drop the whole prompt group (no synthetic learner sample)
+            # and keep serving. Late-arriving siblings are ignored via
+            # hpt_closed_group_uids in _record_hpt_trajectory_attempt_result.
+            logger.exception(
+                "HPT trajectory attempt generation failed; dropping group group_uid=%r rollout_index=%s: %s",
+                group_uid,
+                rollout_index,
+                e,
+            )
+            await self._drop_hpt_scheduler_group(group_uid, reason=f"attempt_exception:{type(e).__name__}")
+            return
         if _has_infra_abort_marker(ret):
             await self._drop_hpt_scheduler_group(group_uid, reason="infra_abort")
             return
