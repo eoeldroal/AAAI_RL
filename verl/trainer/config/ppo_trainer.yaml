@@ -439,6 +439,9 @@ skip:
     # Steps to skip rollout
     steps: []
 
+    # Whether to apply skip behavior to every step without listing steps.
+    all_steps: False
+
     # Action to take when rollout is skipped, refer to verl.utils.skip.base_skip.SkipAction
     action: cache
 
@@ -453,6 +456,9 @@ skip:
 
     # Steps to skip rollout (rollouter global_steps from sample_id)
     steps: []
+
+    # Whether to apply skip behavior to every async rollout feed step without listing steps.
+    all_steps: False
 
     # Action to take when rollout is skipped, refer to verl.utils.skip.base_skip.SkipAction
     action: cache

@@ -918,11 +918,13 @@ skip:
     enable: false
     dump_dir: ~/.verl/rollout_dump
     steps: []
+    all_steps: false
     action: cache
   async_rollout:
     enable: false
     dump_dir: ~/.verl/rollout_dump
     steps: []
+    all_steps: false
     action: cache
 ray_kwargs:
   ray_init:

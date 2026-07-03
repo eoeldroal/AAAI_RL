@@ -25,7 +25,7 @@ from verl.utils.skip.base_skip import BaseSkip, SkipAction, register_skip
 class RolloutSkip(BaseSkip):
     """RolloutSkip skips sequence generation during rollout by attempting to load previously dumped data."""
 
-    support_actions = [SkipAction.CACHE, SkipAction.REPEAT]
+    support_actions = [SkipAction.CACHE, SkipAction.DUMP, SkipAction.REPEAT]
     print_mark = "[RolloutSkip()] "
     gen_batch_name = "gen_batch.dp"
     meta_name = "meta.json"
@@ -47,6 +47,9 @@ class RolloutSkip(BaseSkip):
         self.prompt_length = OmegaConf.select(global_config, "data.max_prompt_length", default=0)
 
     def meet_precondition(self, step: int, func: Callable, *args, **kwargs) -> bool:
+        if self.action == SkipAction.DUMP:
+            return False
+
         if self.action == SkipAction.CACHE:
             if not self._check_valid_step_path(self._get_step_dump_dir(step)):
                 print(
@@ -186,6 +189,79 @@ class AsyncRolloutSkip(RolloutSkip):
 
     support_online_step = True
 
+    def meet_precondition(self, step: int, func: Callable, *args, **kwargs) -> bool:
+        attempt_index = self._extract_hpt_rollout_index(*args, **kwargs)
+        if attempt_index is None:
+            return super().meet_precondition(step, func, *args, **kwargs)
+        if self.action == SkipAction.DUMP:
+            return False
+        if self.action == SkipAction.CACHE:
+            step_dir = self._get_attempt_dump_dir(step, attempt_index)
+            if not self._check_valid_step_path(step_dir):
+                print(
+                    f"{self.print_mark}\033[33mNo dumped data found at step {step}/attempt_{attempt_index} "
+                    f"from {self._get_project_dump_dir()}. "
+                    f"The trainer will generate and dump the data for this attempt.\033[0m",
+                    flush=True,
+                )
+                return False
+            return True
+        if self.action == SkipAction.REPEAT:
+            return self._find_latest_attempt_step(step, attempt_index) != -1
+        return False
+
+    def warp_function(self, step: int, func: Callable, *args, **kwargs):
+        attempt_index = self._extract_hpt_rollout_index(*args, **kwargs)
+        if attempt_index is None:
+            return super().warp_function(step, func, *args, **kwargs)
+        if self.action == SkipAction.CACHE:
+            load_step = step
+        elif self.action == SkipAction.REPEAT:
+            load_step = self._find_latest_attempt_step(step, attempt_index)
+            if load_step == -1:
+                raise RuntimeError(
+                    f"{self.print_mark}repeat action expected dumped data for step {step}/attempt_{attempt_index}, "
+                    f"but none was found under {self._get_project_dump_dir()}"
+                )
+        else:
+            load_step = step
+        step_dir = self._get_attempt_dump_dir(load_step, attempt_index)
+        gen_batch_path = step_dir.joinpath(self.gen_batch_name)
+        result = DataProto.load_from_disk(gen_batch_path)
+        print(
+            f"{self.print_mark}\033[33mLoad generate result at step {load_step}/attempt_{attempt_index} "
+            f"(request step {step}) from {gen_batch_path}\033[0m",
+            flush=True,
+        )
+        return result
+
+    def prepare_data(self, step: int, result, *args, **kwargs):
+        attempt_index = self._extract_hpt_rollout_index(*args, **kwargs)
+        if attempt_index is None:
+            return super().prepare_data(step, result, *args, **kwargs)
+
+        step_dir = self._get_attempt_dump_dir(step, attempt_index)
+        try:
+            step_dir.mkdir(parents=True, exist_ok=True)
+            result.save_to_disk(step_dir.joinpath(self.gen_batch_name))
+            meta = {
+                "global_steps": step,
+                "feed_step": step,
+                "hpt_rollout_index": attempt_index,
+            }
+            step_dir.joinpath(self.meta_name).write_text(json.dumps(meta))
+            print(
+                f"{self.print_mark}\033[33mDump generate result at step {step}/attempt_{attempt_index} "
+                f"to {step_dir}\033[0m",
+                flush=True,
+            )
+        except Exception as e:
+            print(
+                f"{self.print_mark}\033[31mFailed to dump generate result at step {step}/attempt_{attempt_index} "
+                f"to {step_dir}: {e}\033[0m",
+                flush=True,
+            )
+
     def extract_step(self, *args, **kwargs) -> int:
         # generate_sequences_single(self, prompts)
         # sample_id is embedded in prompts.non_tensor_batch["uid"]
@@ -196,3 +272,45 @@ class AsyncRolloutSkip(RolloutSkip):
         if uid_array is None or len(uid_array) == 0:
             raise ValueError("async_rollout extract_step expects uid in prompts.non_tensor_batch")
         return parse_async_rollout_sample_step(str(uid_array[0]))
+
+    def _extract_hpt_rollout_index(self, *args, **kwargs) -> int | None:
+        prompts = args[1] if len(args) > 1 else kwargs.get("prompts")
+        if prompts is None:
+            return None
+        index_array = prompts.non_tensor_batch.get("hpt_rollout_index")
+        if index_array is None or len(index_array) == 0:
+            return None
+        return int(index_array[0])
+
+    def _get_attempt_dump_dir(self, step: int, attempt_index: int) -> Path:
+        return self._get_step_dump_dir(step).joinpath(f"attempt_{attempt_index}").absolute()
+
+    def _get_available_attempt_steps(self, attempt_index: int) -> list[int]:
+        result: list[int] = []
+        project_dir = self._get_project_dump_dir()
+        if not project_dir.is_dir():
+            return result
+        for child in project_dir.iterdir():
+            if not child.is_dir():
+                continue
+            try:
+                step = int(child.name)
+            except ValueError:
+                continue
+            if self._check_valid_step_path(child.joinpath(f"attempt_{attempt_index}")):
+                result.append(step)
+        return sorted(result)
+
+    def _find_latest_attempt_step(self, step: int, attempt_index: int) -> int:
+        if self._check_valid_step_path(self._get_attempt_dump_dir(step, attempt_index)):
+            return step
+        available = self._get_available_attempt_steps(attempt_index)
+        if not available:
+            return -1
+        smaller_steps = [this_step for this_step in available if this_step < step]
+        if smaller_steps:
+            return smaller_steps[-1]
+        larger_steps = [this_step for this_step in available if this_step > step]
+        if larger_steps:
+            return larger_steps[0]
+        return -1

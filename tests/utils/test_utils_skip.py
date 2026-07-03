@@ -60,6 +60,7 @@ def _minimal_skip_cfg(
     steps: list[int] | None = None,
     action: str = "cache",
     async_enable: bool = False,
+    all_steps: bool = False,
 ) -> OmegaConf:
     steps = steps if steps is not None else [1]
     return OmegaConf.create(
@@ -69,12 +70,14 @@ def _minimal_skip_cfg(
                     "enable": enable,
                     "dump_dir": dump_dir,
                     "steps": steps,
+                    "all_steps": all_steps,
                     "action": action,
                 },
                 "async_rollout": {
                     "enable": async_enable,
                     "dump_dir": dump_dir,
                     "steps": steps,
+                    "all_steps": all_steps,
                     "action": action,
                 },
             },
@@ -124,9 +127,17 @@ class TestRolloutSkipConfig:
         with pytest.raises(AssertionError, match="action"):
             RolloutSkipConfig(action="not_an_action")
 
+    def test_dump_action_is_valid(self):
+        assert RolloutSkipConfig(action="dump").action == "dump"
+        assert AsyncRolloutSkipConfig(action="dump").action == "dump"
+
     def test_steps_must_be_int(self):
         with pytest.raises(AssertionError, match="steps"):
             RolloutSkipConfig(steps=[1, "x"])  # type: ignore[list-item]
+
+    def test_all_steps_must_be_bool(self):
+        with pytest.raises(AssertionError, match="all_steps"):
+            RolloutSkipConfig(all_steps="true")  # type: ignore[arg-type]
 
 
 class TestSkipRegistryAndBaseSkip:
@@ -345,6 +356,20 @@ class TestSkipManagerInitAndAnnotate:
         SkipManager.set_step(1)
         assert work(40) == 41
 
+    def test_annotate_sync_all_steps_ignores_explicit_step_filter(self, tmp_path: Path):
+        cfg = _minimal_skip_cfg(str(tmp_path), enable=True, steps=[], action="dump", all_steps=True)
+        SkipManager.init(cfg)
+        root = _project_dump_root(tmp_path, cfg)
+
+        @SkipManager.annotate(role="rollout")
+        def gen() -> DataProto:
+            return DataProto.from_dict(tensors={"z": torch.tensor([7.0])})
+
+        SkipManager.set_step(123)
+        out = gen()
+        assert out.batch["z"].item() == 7.0
+        assert (root / "123" / "gen_batch.dp").exists()
+
     def test_should_bypass_for_validation(self):
         batch = DataProto.from_dict(tensors={"x": torch.zeros(1)})
         batch.meta_info = {"validate": True}
@@ -447,6 +472,64 @@ class TestSkipManagerInitAndAnnotate:
 
         asyncio.run(_run())
 
+    def test_annotate_async_rollout_dump_action_never_replays_cache(self, tmp_path: Path):
+        cfg = _minimal_skip_cfg(str(tmp_path), enable=False, async_enable=True, steps=[1], action="dump")
+        SkipManager.init(cfg)
+        root = _project_dump_root(tmp_path, cfg)
+        _write_valid_step_dump(root, 1, DataProto.from_dict(tensors={"a": torch.tensor([99.0])}))
+        calls = {"n": 0}
+
+        @SkipManager.annotate(role="async_rollout")
+        async def gen_single(_self: Any, prompts: DataProto) -> DataProto:
+            calls["n"] += 1
+            return DataProto.from_dict(tensors={"a": torch.tensor([float(calls["n"])])})
+
+        async def _run():
+            prompts = DataProto.from_dict(tensors={"x": torch.zeros(1)})
+            prompts.non_tensor_batch["uid"] = np.array(["uid_sample_0_1"], dtype=object)
+            out = await gen_single(None, prompts)
+            assert out.batch["a"].item() == 1.0
+            assert calls["n"] == 1
+            dumped = DataProto.load_from_disk(root / "1" / "gen_batch.dp")
+            assert dumped.batch["a"].item() == 1.0
+
+        asyncio.run(_run())
+
+    def test_annotate_async_hpt_attempts_dump_to_distinct_attempt_paths(self, tmp_path: Path):
+        cfg = _minimal_skip_cfg(str(tmp_path), enable=False, async_enable=True, steps=[1], action="cache")
+        SkipManager.init(cfg)
+        root = _project_dump_root(tmp_path, cfg)
+
+        def _make_prompts(rollout_index: int) -> DataProto:
+            prompts = DataProto.from_dict(tensors={"x": torch.zeros(1)})
+            prompts.non_tensor_batch["uid"] = np.array(["uid_sample_0_1"], dtype=object)
+            prompts.non_tensor_batch["hpt_rollout_index"] = np.array([rollout_index], dtype=object)
+            return prompts
+
+        @SkipManager.annotate(role="async_rollout")
+        async def gen_single(_self: Any, prompts: DataProto) -> DataProto:
+            rollout_index = int(prompts.non_tensor_batch["hpt_rollout_index"][0])
+            return DataProto.from_dict(tensors={"a": torch.tensor([float(rollout_index)])})
+
+        async def _run():
+            out0 = await gen_single(None, _make_prompts(0))
+            out1 = await gen_single(None, _make_prompts(1))
+            assert out0.batch["a"].item() == 0.0
+            assert out1.batch["a"].item() == 1.0
+            assert (root / "1" / "attempt_0" / "gen_batch.dp").exists()
+            assert (root / "1" / "attempt_1" / "gen_batch.dp").exists()
+
+            @SkipManager.annotate(role="async_rollout")
+            async def gen_cached(_self: Any, prompts: DataProto) -> DataProto:
+                raise AssertionError("cached path")
+
+            loaded0 = await gen_cached(None, _make_prompts(0))
+            loaded1 = await gen_cached(None, _make_prompts(1))
+            assert loaded0.batch["a"].item() == 0.0
+            assert loaded1.batch["a"].item() == 1.0
+
+        asyncio.run(_run())
+
     def test_annotate_async_bypass_when_step_not_in_list(self, tmp_path: Path):
         cfg = _minimal_skip_cfg(str(tmp_path), async_enable=True, steps=[99], action="cache")
         SkipManager.init(cfg)
@@ -463,6 +546,135 @@ class TestSkipManagerInitAndAnnotate:
             out = await gen(None, p)
             assert out.non_tensor_batch["uid"][0] == "uid_sample_0_1"
             assert calls["n"] == 1
+
+        asyncio.run(_run())
+
+    def test_annotate_async_all_steps_dumps_every_feed_step(self, tmp_path: Path):
+        cfg = _minimal_skip_cfg(
+            str(tmp_path),
+            enable=False,
+            async_enable=True,
+            steps=[],
+            action="dump",
+            all_steps=True,
+        )
+        SkipManager.init(cfg)
+        root = _project_dump_root(tmp_path, cfg)
+
+        @SkipManager.annotate(role="async_rollout")
+        async def gen(_self: Any, prompts: DataProto) -> DataProto:
+            return DataProto.from_dict(tensors={"z": torch.tensor([1.0])})
+
+        async def _run():
+            p = DataProto.from_dict(tensors={"x": torch.zeros(1)})
+            p.non_tensor_batch["uid"] = np.array(["uid_sample_0_2049"], dtype=object)
+            out = await gen(None, p)
+            assert out.batch["z"].item() == 1.0
+            assert (root / "2049" / "gen_batch.dp").exists()
+
+        asyncio.run(_run())
+
+    def test_annotate_async_all_steps_dumps_hpt_attempt_paths(self, tmp_path: Path):
+        cfg = _minimal_skip_cfg(
+            str(tmp_path),
+            enable=False,
+            async_enable=True,
+            steps=[],
+            action="dump",
+            all_steps=True,
+        )
+        SkipManager.init(cfg)
+        root = _project_dump_root(tmp_path, cfg)
+
+        @SkipManager.annotate(role="async_rollout")
+        async def gen(_self: Any, prompts: DataProto) -> DataProto:
+            rollout_index = int(prompts.non_tensor_batch["hpt_rollout_index"][0])
+            return DataProto.from_dict(tensors={"z": torch.tensor([float(rollout_index)])})
+
+        async def _run():
+            for rollout_index in (0, 1):
+                p = DataProto.from_dict(tensors={"x": torch.zeros(1)})
+                p.non_tensor_batch["uid"] = np.array(["uid_sample_0_2049"], dtype=object)
+                p.non_tensor_batch["hpt_rollout_index"] = np.array([rollout_index], dtype=object)
+                out = await gen(None, p)
+                assert out.batch["z"].item() == float(rollout_index)
+            assert (root / "2049" / "attempt_0" / "gen_batch.dp").exists()
+            assert (root / "2049" / "attempt_1" / "gen_batch.dp").exists()
+            assert not (root / "2049" / "gen_batch.dp").exists()
+            assert json.loads((root / "2049" / "attempt_0" / "meta.json").read_text(encoding="utf-8")) == {
+                "global_steps": 2049,
+                "feed_step": 2049,
+                "hpt_rollout_index": 0,
+            }
+            assert json.loads((root / "2049" / "attempt_1" / "meta.json").read_text(encoding="utf-8")) == {
+                "global_steps": 2049,
+                "feed_step": 2049,
+                "hpt_rollout_index": 1,
+            }
+
+        asyncio.run(_run())
+
+    def test_annotate_async_all_steps_dump_overwrites_stale_hpt_cache_without_replaying(self, tmp_path: Path):
+        cfg = _minimal_skip_cfg(
+            str(tmp_path),
+            enable=False,
+            async_enable=True,
+            steps=[],
+            action="dump",
+            all_steps=True,
+        )
+        SkipManager.init(cfg)
+        root = _project_dump_root(tmp_path, cfg)
+        stale_dir = root / "77" / "attempt_3"
+        stale_dir.mkdir(parents=True)
+        DataProto.from_dict(tensors={"z": torch.tensor([999.0])}).save_to_disk(stale_dir / "gen_batch.dp")
+        stale_dir.joinpath("meta.json").write_text(
+            json.dumps({"global_steps": 77, "feed_step": 77, "hpt_rollout_index": 3}),
+            encoding="utf-8",
+        )
+        calls = {"n": 0}
+
+        @SkipManager.annotate(role="async_rollout")
+        async def gen(_self: Any, prompts: DataProto) -> DataProto:
+            calls["n"] += 1
+            return DataProto.from_dict(tensors={"z": torch.tensor([3.0])})
+
+        async def _run():
+            p = DataProto.from_dict(tensors={"x": torch.zeros(1)})
+            p.non_tensor_batch["uid"] = np.array(["uid_sample_0_77"], dtype=object)
+            p.non_tensor_batch["hpt_rollout_index"] = np.array([3], dtype=object)
+            out = await gen(None, p)
+            assert out.batch["z"].item() == 3.0
+            assert calls["n"] == 1
+            dumped = DataProto.load_from_disk(stale_dir / "gen_batch.dp")
+            assert dumped.batch["z"].item() == 3.0
+
+        asyncio.run(_run())
+
+    def test_annotate_async_all_steps_dump_still_bypasses_validation(self, tmp_path: Path):
+        cfg = _minimal_skip_cfg(
+            str(tmp_path),
+            enable=False,
+            async_enable=True,
+            steps=[],
+            action="dump",
+            all_steps=True,
+        )
+        SkipManager.init(cfg)
+        root = _project_dump_root(tmp_path, cfg)
+
+        @SkipManager.annotate(role="async_rollout")
+        async def gen(_self: Any, prompts: DataProto) -> DataProto:
+            return DataProto.from_dict(tensors={"z": torch.tensor([5.0])})
+
+        async def _run():
+            p = DataProto.from_dict(tensors={"x": torch.zeros(1)})
+            p.non_tensor_batch["uid"] = np.array(["uid_sample_0_88"], dtype=object)
+            p.non_tensor_batch["hpt_rollout_index"] = np.array([0], dtype=object)
+            p.meta_info = {"validate": True}
+            out = await gen(None, p)
+            assert out.batch["z"].item() == 5.0
+            assert not (root / "88").exists()
 
         asyncio.run(_run())
 
