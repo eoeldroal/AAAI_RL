@@ -14,10 +14,9 @@
 """
 Prepare a small OpenR1 text dataset that exercises async HPT end to end.
 
-The output keeps the ordinary RL train/val parquet contract and writes a
-separate tau parquet keyed by ``prompt_uid``. The smoke path intentionally keeps
-tau for only part of the rows so HPT sees both SFT-routed and RL-routed prompt
-groups without changing the model or distributed setup.
+The output keeps the prompt-level HPT dataset contract: every train row has a
+stable ``prompt_uid`` and an in-row ``tau_messages`` transcript. The same train
+parquet can therefore feed both the RL dataloader and the tau lookup path.
 """
 
 from __future__ import annotations
@@ -26,6 +25,7 @@ import argparse
 import json
 import os
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
 
 
@@ -40,13 +40,8 @@ def build_hpt_rows(
     prompt_uid_prefix: str,
     normalize_data_source: str,
     strip_system_prompt: bool,
-    tau_keep_every: int,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    if tau_keep_every <= 0:
-        raise ValueError(f"tau_keep_every must be positive, got {tau_keep_every}.")
-
+) -> list[dict[str, Any]]:
     train_rows: list[dict[str, Any]] = []
-    tau_rows: list[dict[str, Any]] = []
     for index, item in enumerate(raw_rows):
         prompt_uid = f"{prompt_uid_prefix}_{split}_{index:08d}"
         prompt = _normalize_messages(item["prompt"])
@@ -73,18 +68,120 @@ def build_hpt_rows(
                 "reward_model": reward_model,
                 "extra_info": extra_info,
                 "prompt_uid": prompt_uid,
+                "tau_messages": json.dumps(prompt + target, ensure_ascii=False),
             }
         )
 
-        if index % tau_keep_every == 0:
-            tau_rows.append(
-                {
-                    "prompt_uid": prompt_uid,
-                    "tau_messages": json.dumps(prompt + target, ensure_ascii=False),
-                }
-            )
+    return train_rows
 
-    return train_rows, tau_rows
+
+def build_unify_eval_rows(raw_rows: Iterable[dict[str, Any]], *, split: str, data_source: str) -> list[dict[str, Any]]:
+    eval_rows: list[dict[str, Any]] = []
+    for index, item in enumerate(raw_rows):
+        question = item.get("prompt")
+        answer = item.get("answer")
+        if not isinstance(question, str) or not question.strip():
+            raise ValueError(f"{data_source} eval row {index} must contain a non-empty prompt.")
+        if not isinstance(answer, str) or not answer.strip():
+            raise ValueError(f"{data_source} eval row {index} must contain a non-empty answer.")
+
+        item_id = item.get("id")
+        eval_index = f"{data_source}-{item_id}" if item_id is not None else f"{data_source}-{index}"
+        extra_info = {"split": split, "index": eval_index}
+        if "source" in item:
+            extra_info["source"] = item["source"]
+
+        eval_rows.append(
+            {
+                "data_source": data_source,
+                "prompt": [{"role": "user", "content": question}],
+                "ability": "math",
+                "reward_model": {"style": "rule", "ground_truth": answer},
+                "extra_info": extra_info,
+            }
+        )
+    return eval_rows
+
+
+def _row_within_limits(
+    row: dict[str, Any],
+    row_idx: int,
+    *,
+    max_target_chars: int,
+    token_counter,
+    max_prompt_tokens: int,
+    max_response_tokens: int,
+    strip_system_prompt: bool,
+    token_limit_action: str,
+) -> bool:
+    """Whether a row fits the char/token budget.
+
+    Returns False to skip the row under ``filter``; raises ValueError under ``fail``.
+    """
+    if max_target_chars > 0 and len(_target_text(row)) > max_target_chars:
+        if token_limit_action == "fail":
+            raise ValueError(f"OpenR1 row {row_idx} exceeds max_target_chars={max_target_chars}.")
+        return False
+    if token_counter is not None and not _within_token_limits(
+        row,
+        token_counter=token_counter,
+        max_prompt_tokens=max_prompt_tokens,
+        max_response_tokens=max_response_tokens,
+        strip_system_prompt=strip_system_prompt,
+    ):
+        if token_limit_action == "fail":
+            raise ValueError(
+                f"OpenR1 row {row_idx} exceeds prompt/response token limits "
+                f"({max_prompt_tokens}, {max_response_tokens})."
+            )
+        return False
+    return True
+
+
+def select_openr1_rows_for_hpt(
+    dataset,
+    *,
+    total_rows: int,
+    max_target_chars: int,
+    reward_data_source: str,
+    tokenizer_path: str | None,
+    max_prompt_tokens: int,
+    max_response_tokens: int,
+    strip_system_prompt: bool,
+    token_limit_action: str = "filter",
+) -> list[dict[str, Any]]:
+    if token_limit_action not in {"filter", "fail", "ignore"}:
+        raise ValueError(f"Unsupported token_limit_action={token_limit_action!r}.")
+    if total_rows == 0:
+        return []
+    if total_rows > 0:
+        return _select_short_target_rows(
+            dataset,
+            total_rows=total_rows,
+            max_target_chars=max_target_chars,
+            reward_data_source=reward_data_source,
+            tokenizer_path=tokenizer_path,
+            max_prompt_tokens=max_prompt_tokens,
+            max_response_tokens=max_response_tokens,
+            strip_system_prompt=strip_system_prompt,
+            token_limit_action=token_limit_action,
+        )
+
+    token_counter = _build_token_counter(tokenizer_path) if token_limit_action != "ignore" else None
+    selected = []
+    for row_idx, row in enumerate(dataset):
+        if _row_within_limits(
+            row,
+            row_idx,
+            max_target_chars=max_target_chars,
+            token_counter=token_counter,
+            max_prompt_tokens=max_prompt_tokens,
+            max_response_tokens=max_response_tokens,
+            strip_system_prompt=strip_system_prompt,
+            token_limit_action=token_limit_action,
+        ):
+            selected.append(row)
+    return selected
 
 
 def _normalize_messages(messages: Any) -> list[dict[str, Any]]:
@@ -121,19 +218,28 @@ def _select_short_target_rows(
     max_prompt_tokens: int,
     max_response_tokens: int,
     strip_system_prompt: bool,
+    token_limit_action: str = "filter",
 ) -> list[dict[str, Any]]:
     from verl.utils.reward_score import default_compute_score
 
-    token_counter = _build_token_counter(tokenizer_path)
+    token_counter = _build_token_counter(tokenizer_path) if token_limit_action != "ignore" else None
     selected = []
-    for row in dataset:
-        target_text = _target_text(row)
-        if len(target_text) > max_target_chars:
+    for row_idx, row in enumerate(dataset):
+        if not _row_within_limits(
+            row,
+            row_idx,
+            max_target_chars=max_target_chars,
+            token_counter=token_counter,
+            max_prompt_tokens=max_prompt_tokens,
+            max_response_tokens=max_response_tokens,
+            strip_system_prompt=strip_system_prompt,
+            token_limit_action=token_limit_action,
+        ):
             continue
         try:
             score = default_compute_score(
                 reward_data_source,
-                target_text,
+                _target_text(row),
                 row["reward_model"]["ground_truth"],
                 dict(row.get("extra_info") or {}),
             )
@@ -141,14 +247,6 @@ def _select_short_target_rows(
             continue
         score_value = score.get("score", 0.0) if isinstance(score, dict) else float(score)
         if score_value <= 0:
-            continue
-        if token_counter is not None and not _within_token_limits(
-            row,
-            token_counter=token_counter,
-            max_prompt_tokens=max_prompt_tokens,
-            max_response_tokens=max_response_tokens,
-            strip_system_prompt=strip_system_prompt,
-        ):
             continue
         selected.append(row)
         if len(selected) >= total_rows:
@@ -236,17 +334,19 @@ def _chat_token_ids(tokenizer, messages: list[dict[str, Any]], *, add_generation
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local_save_dir", default="~/data/openr1_hpt_smoke")
+    parser.add_argument("--local_save_dir", default="datas/openr1_hpt_smoke")
     parser.add_argument("--dataset", default=OPENR1_DATASET)
+    parser.add_argument("--eval_json_dir", default=None)
+    parser.add_argument("--eval_data_sources", nargs="*", default=("AIME24", "AMC23", "MATH-500"))
     parser.add_argument("--train_size", type=int, default=12)
     parser.add_argument("--val_size", type=int, default=4)
     parser.add_argument("--max_target_chars", type=int, default=6000)
     parser.add_argument("--tokenizer_path", default=None)
     parser.add_argument("--max_prompt_tokens", type=int, default=1024)
     parser.add_argument("--max_response_tokens", type=int, default=2048)
+    parser.add_argument("--token_limit_action", choices=("filter", "fail", "ignore"), default="filter")
     parser.add_argument("--prompt_uid_prefix", default="openr1_hpt_smoke")
     parser.add_argument("--normalize_data_source", default=DEFAULT_REWARD_DATA_SOURCE)
-    parser.add_argument("--tau_keep_every", type=int, default=2)
     parser.add_argument("--keep_system_prompt", action="store_true")
     args = parser.parse_args()
 
@@ -256,9 +356,9 @@ def main() -> None:
     import datasets
     import pandas as pd
 
-    required_rows = args.train_size + args.val_size
     raw_dataset = datasets.load_dataset(args.dataset, split="train")
-    selected_rows = _select_short_target_rows(
+    required_rows = args.train_size + args.val_size if args.train_size >= 0 else -1
+    selected_rows = select_openr1_rows_for_hpt(
         raw_dataset,
         total_rows=required_rows,
         max_target_chars=args.max_target_chars,
@@ -267,30 +367,37 @@ def main() -> None:
         max_prompt_tokens=args.max_prompt_tokens,
         max_response_tokens=args.max_response_tokens,
         strip_system_prompt=not args.keep_system_prompt,
+        token_limit_action=args.token_limit_action,
     )
-    train_source = selected_rows[: args.train_size]
-    val_source = selected_rows[args.train_size :]
+    if args.train_size < 0:
+        train_source = selected_rows
+        val_source = []
+    else:
+        train_source = selected_rows[: args.train_size]
+        val_source = selected_rows[args.train_size :]
 
-    train_rows, train_tau_rows = build_hpt_rows(
+    train_rows = build_hpt_rows(
         train_source,
         split="train",
         prompt_uid_prefix=args.prompt_uid_prefix,
         normalize_data_source=args.normalize_data_source,
         strip_system_prompt=not args.keep_system_prompt,
-        tau_keep_every=args.tau_keep_every,
     )
-    val_rows, _ = build_hpt_rows(
+    val_rows = build_hpt_rows(
         val_source,
         split="val",
         prompt_uid_prefix=args.prompt_uid_prefix,
         normalize_data_source=args.normalize_data_source,
         strip_system_prompt=not args.keep_system_prompt,
-        tau_keep_every=args.tau_keep_every,
     )
 
     pd.DataFrame(train_rows).to_parquet(os.path.join(local_save_dir, "train.parquet"))
     pd.DataFrame(val_rows).to_parquet(os.path.join(local_save_dir, "test.parquet"))
-    pd.DataFrame(train_tau_rows).to_parquet(os.path.join(local_save_dir, "tau.parquet"))
+    eval_counts = _write_unify_eval_parquets(
+        eval_json_dir=args.eval_json_dir,
+        eval_data_sources=args.eval_data_sources,
+        local_save_dir=local_save_dir,
+    )
     with open(os.path.join(local_save_dir, "metadata.json"), "w", encoding="utf-8") as f:
         json.dump(
             {
@@ -301,10 +408,13 @@ def main() -> None:
                 "tokenizer_path": args.tokenizer_path,
                 "max_prompt_tokens": args.max_prompt_tokens,
                 "max_response_tokens": args.max_response_tokens,
+                "token_limit_action": args.token_limit_action,
                 "prompt_uid_prefix": args.prompt_uid_prefix,
                 "normalize_data_source": args.normalize_data_source,
-                "tau_keep_every": args.tau_keep_every,
                 "keep_system_prompt": args.keep_system_prompt,
+                "hpt_dataset_format": "unified_prompt_rows",
+                "eval_json_dir": args.eval_json_dir,
+                "eval_counts": eval_counts,
             },
             f,
             indent=2,
@@ -313,10 +423,38 @@ def main() -> None:
 
     print(
         "Prepared OpenR1 HPT smoke dataset: "
-        f"train={len(train_rows)}, val={len(val_rows)}, tau={len(train_tau_rows)} "
+        f"train={len(train_rows)}, val={len(val_rows)}, tau={len(train_rows)} "
         f"under {local_save_dir}",
         flush=True,
     )
+
+
+def _write_unify_eval_parquets(
+    *,
+    eval_json_dir: str | None,
+    eval_data_sources: Iterable[str],
+    local_save_dir: str,
+) -> dict[str, int]:
+    if eval_json_dir is None:
+        return {}
+
+    import pandas as pd
+
+    eval_root = Path(eval_json_dir).expanduser()
+    eval_counts: dict[str, int] = {}
+    for data_source in eval_data_sources:
+        source_path = eval_root / data_source / "test.json"
+        if not source_path.exists():
+            raise FileNotFoundError(f"Unify eval json not found: {source_path}")
+        raw_rows = json.loads(source_path.read_text(encoding="utf-8"))
+        if not isinstance(raw_rows, list):
+            raise ValueError(f"Unify eval json must contain a list: {source_path}")
+        rows = build_unify_eval_rows(raw_rows, split="test", data_source=data_source)
+        output_dir = Path(local_save_dir) / data_source
+        output_dir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(rows).to_parquet(output_dir / "test.parquet")
+        eval_counts[data_source] = len(rows)
+    return eval_counts
 
 
 if __name__ == "__main__":
