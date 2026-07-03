@@ -102,6 +102,8 @@ stacks.
 - Before changing async RL + HPT launch profiles or main-run log checks,
   consult `docs/Readme_RL.md`. Before changing queue/staleness/HPT budget
   sizing, consult `docs/AsyncBudget_RL.md`.
+- For linting, profiling a live run, or diagnosing performance (ruff/pre-commit,
+  `py-spy` on Ray actors, perf triangulation), see `docs/Debug_RL.md`.
 - Prefer reproducible commands and checked-in launch profiles over ad hoc shell
   state. Keep environment variables minimal and documented beside the launcher
   that needs them.
