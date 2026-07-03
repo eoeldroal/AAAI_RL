@@ -36,17 +36,13 @@ export XDG_CACHE_HOME="${RUNTIME_CACHE_DIR}/xdg"
 # directory unique per run so analysis artifacts never mix across runs.
 ROLLOUT_DUMP_DIR="${VERL_ROOT}/.cache/rollout_dump/openr1_async_hpt_main_${RUN_TIMESTAMP}"
 
-# require_batches=2 * ppo_mini_batch_size(64) * rollout.n(8) = 1024 rows/fit_step,
-# matching the synchronous baseline's train_batch_size(128)*rollout.n(8) scale
-# and its train_batch_size/ppo_mini_batch_size=2 mini-batch steps per update.
-# max_completed_prompt_groups scales down with it (2048/8=256) to keep the
-# completed-queue cap, not staleness, as the first backpressure point. Do not
-# reintroduce require_batches=16: that was a units bug (queue samples are
-# prompt groups, not rows -- see docs/AsyncBudget_RL.md's "Known pitfall") that
-# silently ran fit_steps 8x larger than intended. See docs/AsyncBudget_RL.md
-# for the full derivation and docs/Codemap_RL.md for the rollouter call graph.
-REQUIRE_BATCHES=2
-MAX_COMPLETED_PROMPT_GROUPS=256
+# Match Unify's prompt batch scale while allowing a finer async/HPT learner
+# mini-batch grain: 32 * 4 = 128 prompt groups per fit_step, and each prompt
+# group carries rollout.n=8 rows. This preserves the baseline's 128 * 8 = 1024
+# generated rows per fit_step without repeating the old require_batches=16
+# units bug (queue samples are prompt groups, not rows).
+REQUIRE_BATCHES=4
+MAX_COMPLETED_PROMPT_GROUPS=2048
 
 # Keep only engine-runtime environment at the command boundary. All training,
 # rollout, validation, and HPT settings are explicit Hydra overrides below.
@@ -80,14 +76,15 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     actor_rollout_ref.actor.optim.lr_warmup_steps=-1 \
     actor_rollout_ref.actor.optim.weight_decay=0.1 \
     actor_rollout_ref.actor.optim.clip_grad=80.0 \
-    actor_rollout_ref.actor.ppo_mini_batch_size=64 \
-    actor_rollout_ref.actor.ppo_micro_batch_size=64 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=32 \
+    actor_rollout_ref.actor.ppo_micro_batch_size=32 \
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=32768 \
     actor_rollout_ref.actor.clip_ratio_low=0.2 \
     actor_rollout_ref.actor.clip_ratio_high=0.28 \
     actor_rollout_ref.actor.clip_ratio_c=10.0 \
     actor_rollout_ref.actor.entropy_coeff=0.001 \
-    actor_rollout_ref.actor.loss_agg_mode=token-mean \
+    actor_rollout_ref.actor.loss_agg_mode=seq-mean-token-sum-norm \
+    actor_rollout_ref.actor.loss_scale_factor=8192 \
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.actor.kl_loss_coef=0.0 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
@@ -155,6 +152,11 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     skip.async_rollout.action=dump \
     async_hpt.enabled=True \
     async_hpt.gamma=0.0 \
+    async_hpt.beta=1.0 \
+    async_hpt.loss_aggregation=branch_blind \
+    async_hpt.sft_beta_mode=constant \
+    async_hpt.sft_entropy_enabled=False \
+    async_hpt.sft_kl_enabled=False \
     async_hpt.tau_dataset_path="${DATA_DIR}/train.parquet" \
     async_hpt.tau_messages_key=tau_messages \
     async_hpt.fail_on_missing_tau=True \

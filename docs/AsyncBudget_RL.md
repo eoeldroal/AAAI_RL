@@ -95,26 +95,48 @@ Reward/log-prob/ref/advantage computation holds the *entire* fit_step batch
 before that chunking applies, so every fit_step was 8x larger and 8x less
 frequent than intended.
 
-The value that actually matches the baseline is `require_batches=2`. For the
-OpenR1 HPT main launcher, pair it with a modest `staleness_threshold` and a
-`max_completed_prompt_groups` sized to the same smaller scale:
+The prompt-batch parity rule is:
 
 ```text
-actor.ppo_mini_batch_size=64
+ppo_mini_batch_size * require_batches = baseline train_batch_size
+```
+
+For the OpenR1 HPT main launcher, the baseline train batch is 128 prompt
+groups. Two settings are therefore valid from a batch-scale perspective:
+
+```text
+strict Unify mini-batch grain:
+  actor.ppo_mini_batch_size=64
+  async_training.require_batches=2
+
+finer async/HPT mini-batch grain:
+  actor.ppo_mini_batch_size=32
+  async_training.require_batches=4
+```
+
+Both collect 128 prompt groups per fit_step. With `rollout.n=8`, both collect
+1024 generated rows per fit_step. The current main launcher uses the finer
+`32 * 4` form because it keeps the large batch scale comparable while making
+HPT learner-row divisibility and trainer scheduling less brittle.
+
+Current main-run sizing:
+
+```text
+actor.ppo_mini_batch_size=32
 rollout.n=8
-async_training.require_batches=2
+async_training.require_batches=4
 async_training.trigger_parameter_sync_step=4
 async_training.staleness_threshold=2.0
-async_training.max_completed_prompt_groups=256
+async_training.max_completed_prompt_groups=2048
 ```
 
 This gives:
 
 ```text
-initial queue request = 64 * 2 = 128 prompt groups -> 128 * 8 = 1024 rows/fit_step
-actor learner multiple = 64 * 8 = 512 rows (2 SGD steps/fit_step, matching the baseline)
+initial queue request = 32 * 4 = 128 prompt groups -> 128 * 8 = 1024 rows/fit_step
+actor learner multiple = 32 * 8 = 256 rows (4 SGD mini-batches/fit_step)
 max_required_samples = 128 * (2 + 1) * 4 = 1536 queue samples
-all-SFT rows needed for 4 updates = 1024 * 4 = 4096
+all-SFT rows needed for 4 updates = 256 * 4 = 1024
 ```
 
 In an all-SFT HPT window, one queue sample materializes to one row instead of
@@ -124,11 +146,27 @@ staleness budget can't cover that through the next parameter-sync point, the
 system can look like it's "not training" while actually waiting for enough
 HPT rows.
 
-`max_completed_prompt_groups` scales down with `require_batches` (2048/8=256)
-to keep the completed-queue cap, not staleness, first: `max_required_samples`
-shrinks with `required_samples`, so leaving it at 2048 would flip which cap
-binds first. Raise `require_batches` only when fixed per-fit_step overhead
-(Ray RPC, queue deserialization) starts to dominate at the smaller scale.
+`max_completed_prompt_groups` is not a batch-size parity knob. It is the
+completed-queue/backlog cap used by the rollouter and the HPT row-aware trainer
+read window. Setting it to 256 would make queue capacity only two fit_steps for
+the main launcher and can trigger `Queue full, dropped sample` during rollout
+bursts. Keeping it at 2048 is an async-only buffer choice: it does not change
+the learner batch scale, but it prevents completed samples from being dropped
+before the trainer can assemble HPT rows.
+
+Raise `require_batches` only when fixed per-fit_step overhead (Ray RPC, queue
+deserialization) starts to dominate at the smaller scale. Do not raise it to
+16 for parity; that is the unit error described above.
+
+Validation frequency is also not directly step-identical to the synchronous
+baseline. Unify validates on `global_steps % trainer.test_freq == 0`. The
+fully-async trainer validates when the current parameter version reaches
+`trainer.test_freq`, and parameter versions advance after
+`trigger_parameter_sync_step` local trainer updates. Therefore
+`trainer.test_freq=10` is intentionally kept for naming/config parity, but in
+async runs it means roughly every `10 * trigger_parameter_sync_step` local
+updates. Keep `trainer.val_before_train=False` for main async runs unless the
+run explicitly needs an expensive initial validation baseline.
 
 ### Smoke Setting
 
