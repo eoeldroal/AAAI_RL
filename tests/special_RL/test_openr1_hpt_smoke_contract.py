@@ -189,9 +189,8 @@ def test_openr1_hpt_preprocess_rejects_rows_outside_token_limits():
 #
 # These assertions are deliberately VALUE-FREE. A main-run launcher is a run
 # choice, not a code contract: batch sizes, staleness, and require_batches
-# change per experiment. (For example require_batches=16 mirrors the
-# synchronous reference's train_batch_size=128 x rollout.n=8 = 1024 learner
-# scale; the sync<->async mapping lives in docs/Codemap_RL.md, not here.)
+# change per experiment. The sync<->async mapping lives in docs/Codemap_RL.md
+# and docs/AsyncBudget_RL.md, not here.
 #
 # We assert only that every launcher in main_scripts/ still composes into a
 # *valid* async-HPT config and fails closed on a malformed one. Concrete values

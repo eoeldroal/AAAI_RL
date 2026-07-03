@@ -109,13 +109,13 @@ nohup file can miss actor-local details.
 Find the active Ray session:
 
 ```bash
-ls -td /tmp/ray/session_* | head -n 1
+ls -td "${TMPDIR:-/tmp}"/ray/session_* | head -n 1
 ```
 
 Useful checks:
 
 ```bash
-SESSION=$(ls -td /tmp/ray/session_* | head -n 1)
+SESSION=$(ls -td "${TMPDIR:-/tmp}"/ray/session_* | head -n 1)
 
 rg -n "Loop collection completed|learner_rows|required_multiple|global_steps|_fit_update_weights|Traceback|ERROR|Exception" \
   "$SESSION/logs"/*.out "$SESSION/logs"/*.err
