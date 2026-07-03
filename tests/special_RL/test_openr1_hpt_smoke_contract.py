@@ -1,6 +1,8 @@
 import json
 import re
+import shutil
 import shlex
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -239,6 +241,30 @@ def _main_launcher_params():
     return [pytest.param(path, id=path.name) for path in scripts]
 
 
+def _write_fake_main_launcher_env(tmp_path: Path) -> Path:
+    """Create the minimum fake conda env needed to execute the launcher to python argv capture."""
+    # The cluster /tmp can be mounted noexec. Put the fake executable under the
+    # repo-local cache so this contract test exercises the launcher's real exec path.
+    fake_home = _REPO_ROOT / ".cache" / "pytest_launcher_env" / tmp_path.name / "home"
+    if fake_home.exists():
+        shutil.rmtree(fake_home)
+    fake_env = fake_home / "miniconda3" / "envs" / "RL"
+    fake_bin = fake_env / "bin"
+    fake_hook_dir = fake_env / "etc" / "conda" / "activate.d"
+    fake_bin.mkdir(parents=True)
+    fake_hook_dir.mkdir(parents=True)
+    (fake_hook_dir / "verl_cuda_stack.sh").write_text("# fake activation hook for launcher contract tests\n")
+    (fake_bin / "python3").write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$@" > "${VERL_TEST_CAPTURE_ARGV}"
+""",
+        encoding="utf-8",
+    )
+    (fake_bin / "python3").chmod(0o755)
+    return fake_home
+
+
 @pytest.mark.parametrize("script_path", _main_launcher_params())
 def test_main_launcher_composes_to_valid_async_hpt_config(script_path):
     from hydra import compose, initialize_config_dir
@@ -248,6 +274,7 @@ def test_main_launcher_composes_to_valid_async_hpt_config(script_path):
     from verl.experimental.reward_loop import migrate_legacy_reward_impl
     from verl.trainer.ppo.utils import need_critic, need_reference_policy
     from verl.utils.config import omega_conf_to_dataclass
+    from verl.utils.skip.config import SkipManagerConfig
 
     overrides = _extract_fully_async_overrides(script_path.read_text())
     if overrides is None:
@@ -273,3 +300,39 @@ def test_main_launcher_composes_to_valid_async_hpt_config(script_path):
     omega_conf_to_dataclass(config.actor_rollout_ref.actor)
     omega_conf_to_dataclass(config.actor_rollout_ref.rollout)
     omega_conf_to_dataclass(config.actor_rollout_ref.rollout.checkpoint_engine)
+    skip_config = omega_conf_to_dataclass(config.skip, SkipManagerConfig)
+    assert skip_config.async_rollout.enable is True
+    assert skip_config.async_rollout.action == "dump"
+    assert skip_config.async_rollout.steps == []
+    assert skip_config.async_rollout.all_steps is True
+
+
+def test_openr1_main_launcher_executes_to_fully_async_entrypoint_with_dump_and_wandb(tmp_path):
+    script_path = _MAIN_SCRIPTS_DIR / "run_fully_async_policy_openr1_hpt_main.sh"
+    capture_path = tmp_path / "argv.txt"
+    fake_home = _write_fake_main_launcher_env(tmp_path)
+    env = {
+        **dict(),
+        "HOME": str(fake_home),
+        "PATH": "/usr/bin:/bin",
+        "VERL_TEST_CAPTURE_ARGV": str(capture_path),
+    }
+
+    result = subprocess.run(
+        ["bash", str(script_path), "trainer.total_training_steps=1"],
+        cwd=_REPO_ROOT,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=15,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    argv = capture_path.read_text(encoding="utf-8").splitlines()
+    assert argv[:2] == ["-m", "verl.experimental.fully_async_policy.fully_async_main"]
+    assert "trainer.logger=['console','wandb']" in argv
+    assert "skip.async_rollout.action=dump" in argv
+    assert "skip.async_rollout.steps=[]" in argv
+    assert "skip.async_rollout.all_steps=True" in argv

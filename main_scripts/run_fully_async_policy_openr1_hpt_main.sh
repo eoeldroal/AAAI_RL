@@ -16,6 +16,37 @@ source "${CONDA_PREFIX}/etc/conda/activate.d/verl_cuda_stack.sh"
 
 DATA_DIR="${VERL_ROOT}/datas/openr1_hpt_main"
 MODEL_PATH="${VERL_ROOT}/models/Qwen2.5-Math-7B"
+RUN_TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+
+# Triton/TorchInductor build shared objects at runtime. The cluster /tmp is
+# mounted noexec, so keep JIT artifacts on an executable project filesystem.
+# Keep this path short because Ray also creates AF_UNIX sockets under TMPDIR.
+RUNTIME_CACHE_DIR="$(cd "${VERL_ROOT}/.." && pwd)/.rt"
+mkdir -p \
+    "${RUNTIME_CACHE_DIR}/tmp" \
+    "${RUNTIME_CACHE_DIR}/triton" \
+    "${RUNTIME_CACHE_DIR}/torchinductor" \
+    "${RUNTIME_CACHE_DIR}/xdg"
+export TMPDIR="${RUNTIME_CACHE_DIR}/tmp"
+export TRITON_CACHE_DIR="${RUNTIME_CACHE_DIR}/triton"
+export TORCHINDUCTOR_CACHE_DIR="${RUNTIME_CACHE_DIR}/torchinductor"
+export XDG_CACHE_HOME="${RUNTIME_CACHE_DIR}/xdg"
+
+# Async rollout dump uses the skip path in write-only mode. Keep the dump
+# directory unique per run so analysis artifacts never mix across runs.
+ROLLOUT_DUMP_DIR="${VERL_ROOT}/.cache/rollout_dump/openr1_async_hpt_main_${RUN_TIMESTAMP}"
+
+# require_batches=2 * ppo_mini_batch_size(64) * rollout.n(8) = 1024 rows/fit_step,
+# matching the synchronous baseline's train_batch_size(128)*rollout.n(8) scale
+# and its train_batch_size/ppo_mini_batch_size=2 mini-batch steps per update.
+# max_completed_prompt_groups scales down with it (2048/8=256) to keep the
+# completed-queue cap, not staleness, as the first backpressure point. Do not
+# reintroduce require_batches=16: that was a units bug (queue samples are
+# prompt groups, not rows -- see docs/AsyncBudget_RL.md's "Known pitfall") that
+# silently ran fit_steps 8x larger than intended. See docs/AsyncBudget_RL.md
+# for the full derivation and docs/Codemap_RL.md for the rollouter call graph.
+REQUIRE_BATCHES=2
+MAX_COMPLETED_PROMPT_GROUPS=256
 
 # Keep only engine-runtime environment at the command boundary. All training,
 # rollout, validation, and HPT settings are explicit Hydra overrides below.
@@ -69,7 +100,7 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     actor_rollout_ref.rollout.top_p=1.0 \
     actor_rollout_ref.rollout.top_k=-1 \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.75 \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
+    actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
     actor_rollout_ref.rollout.disable_log_stats=False \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
@@ -94,33 +125,34 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     +reward.reward_kwargs.overlong_buffer_cfg.penalty_factor=1.0 \
     +reward.reward_kwargs.overlong_buffer_cfg.log=False \
     +reward.reward_kwargs.max_resp_len=8192 \
-    trainer.logger=['console'] \
+    "trainer.logger=['console','wandb']" \
     trainer.project_name=async-hpt-openr1 \
     trainer.experiment_name=qwen25_math_7b_openr1_async_hpt \
     trainer.val_before_train=False \
     trainer.save_freq=50 \
     trainer.resume_mode=disable \
     trainer.nnodes=1 \
-    trainer.n_gpus_per_node=4 \
+    trainer.n_gpus_per_node=2 \
     trainer.log_val_generations=10 \
     trainer.total_epochs=3 \
     trainer.total_training_steps=500 \
     trainer.test_freq=10 \
     rollout.nnodes=1 \
-    rollout.n_gpus_per_node=4 \
+    rollout.n_gpus_per_node=6 \
     rollout.n=8 \
     rollout.total_rollout_steps=128000 \
     async_training.staleness_threshold=2.0 \
-    async_training.require_batches=16 \
+    async_training.require_batches=${REQUIRE_BATCHES} \
     async_training.partial_rollout=True \
     async_training.trigger_parameter_sync_step=4 \
     async_training.use_trainer_do_validate=False \
-    async_training.max_inflight_prompt_groups=8 \
-    async_training.max_completed_prompt_groups=2048 \
-    skip.async_rollout.enable=False \
-    skip.async_rollout.dump_dir="${HOME}/data/rollout_dump_async" \
-    "skip.async_rollout.steps=[1]" \
-    skip.async_rollout.action=cache \
+    async_training.max_inflight_prompt_groups=24 \
+    async_training.max_completed_prompt_groups=${MAX_COMPLETED_PROMPT_GROUPS} \
+    skip.async_rollout.enable=True \
+    skip.async_rollout.dump_dir="${ROLLOUT_DUMP_DIR}" \
+    skip.async_rollout.steps=[] \
+    skip.async_rollout.all_steps=True \
+    skip.async_rollout.action=dump \
     async_hpt.enabled=True \
     async_hpt.gamma=0.0 \
     async_hpt.tau_dataset_path="${DATA_DIR}/train.parquet" \
