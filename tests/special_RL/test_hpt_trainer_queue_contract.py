@@ -574,6 +574,64 @@ async def test_async_hpt_trajectory_scheduler_to_trainer_queue_rl_contract():
 
 
 @pytest.mark.asyncio
+async def test_async_hpt_rollouter_pause_gate_tracks_live_consumption_not_monotonic_production():
+    """The staleness pause gate must reflect the live outstanding buffer (in-flight open
+    groups + completed queued samples), not a monotonic produced-since-sync counter.
+
+    When the trainer drains the queue, the outstanding buffer drops below
+    ``max_required_samples`` and the rollouter must be eligible to resume within the same
+    parameter version instead of stalling until the next weight sync. A monotonic counter
+    would still read ``>= max_required_samples`` after consumption and keep the rollouter
+    (and its idle rollout GPUs) paused. Guards the async-scheduling contract behind
+    ``_should_pause_generation`` / ``_outstanding_sample_count``; see the circular-wait
+    pitfall in ``docs/AsyncBudget_RL.md``.
+    """
+    from verl.experimental.fully_async_policy.fully_async_rollouter import FullyAsyncRollouter
+    from verl.experimental.fully_async_policy.hpt_config import validate_async_hpt_config
+    from verl.experimental.fully_async_policy.hpt_gate import HptRolloutGate
+    from verl.experimental.fully_async_policy.hpt_rollout_accumulator import HptPromptGroupAccumulator
+
+    rollout_n = 4
+    config = _make_async_hpt_config(rollout_n=rollout_n)
+    hpt_config = validate_async_hpt_config(config)
+
+    rollouter_cls = FullyAsyncRollouter.__ray_metadata__.modified_class
+    rollouter = object.__new__(rollouter_cls)
+    rollouter.config = config
+    rollouter.hpt_rollout_gate = HptRolloutGate(config=hpt_config, tau_store=_EmptyTauStore())
+    rollouter.hpt_rollout_accumulator = HptPromptGroupAccumulator(rollout_n=rollout_n)
+    rollouter.active_tasks = set()
+    rollouter.paused = False
+    rollouter.max_required_samples = 10
+    # Keep the queue-full (#1) and HPT completed-attempt-storage (#3) gates far away so the
+    # staleness gate (#2) is the only one under test.
+    rollouter.max_queue_size = 10_000
+
+    queue_state = {"queue_size": 0}
+
+    class _StubQueueClient:
+        async def get_statistics(self):
+            return {"queue_size": queue_state["queue_size"]}
+
+    rollouter.message_queue_client = _StubQueueClient()
+
+    # Whole outstanding buffer lives in the completed queue (no in-flight groups).
+    assert rollouter._hpt_trajectory_scheduler_enabled() is True
+    assert rollouter.hpt_rollout_accumulator.open_group_count() == 0
+
+    # Outstanding buffer at the ceiling -> pause.
+    queue_state["queue_size"] = 10
+    assert rollouter._outstanding_sample_count(10) == 10
+    assert await rollouter._should_pause_generation() is True
+
+    # Trainer consumes 6 samples -> outstanding 4 < ceiling 10 -> must not pause.
+    # A monotonic produced-since-sync counter would still read >= 10 here and stall.
+    queue_state["queue_size"] = 4
+    assert rollouter._outstanding_sample_count(4) == 4
+    assert await rollouter._should_pause_generation() is False
+
+
+@pytest.mark.asyncio
 async def test_async_hpt_trainer_collects_extra_queue_samples_until_learner_rows_are_trainable():
     import ray
 

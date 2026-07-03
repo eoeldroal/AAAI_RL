@@ -205,8 +205,11 @@ required_samples     = ppo_mini_batch_size * require_batches           # trainer
 max_required_samples = required_samples * (staleness_threshold + 1) * trigger_parameter_sync_step
 ```
 Rollouter pauses (`_should_pause_generation`) when the queue is full
-(`max_completed_prompt_groups`), staleness hits `max_required_samples`, or the
-scheduler's completed-attempt store overflows. Weight sync fires in
+(`max_completed_prompt_groups`), the live outstanding buffer — open groups +
+queued samples (`_outstanding_sample_count`) — hits `max_required_samples`, or the
+scheduler's completed-attempt store overflows. The monitor loop re-checks this
+live and resumes generation as the trainer drains the queue, so the pause is not
+locked to the sync cadence. Weight sync fires in
 `_fit_update_weights` only when `local_trigger_step == 1` (a fresh param version),
 via `CheckpointEngineManager.update_weights`, then RPCs rollouter `reset_staleness`.
 

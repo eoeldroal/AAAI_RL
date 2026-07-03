@@ -413,7 +413,6 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
 
         # Statistics
         self.total_generated_samples = 0
-        self.staleness_samples = 0
         self.dropped_stale_samples = 0
         self.processed_sample_count = 0
         # we start from step 1
@@ -440,7 +439,7 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
 
     def _init_async_objects(self):
         # Initialize asyncio synchronization primitives.
-        # `lock` protects shared state: paused / active_tasks / staleness_samples / timing fields.
+        # `lock` protects shared state: paused / active_tasks / timing fields.
         self.lock = asyncio.Lock()
         # `_resume_event` signals that the rollouter is currently running (paused == False).
         self._resume_event = asyncio.Event()
@@ -521,12 +520,11 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
             # Wake the drain loop in _processor_worker so it can exit early and resume submitting
             # new samples to idle replicas instead of waiting for long-tail in-flight tasks.
             self._resume_event.set()
-            # every time param change, reset staleness_samples
+            # Staleness is derived live from the outstanding buffer on every pause
+            # check (see _outstanding_sample_count); there is no monotonic counter to
+            # reset here. Record the current outstanding count for the sync milestone.
             queue_size = await self.message_queue_client.get_queue_size()
-            if self._hpt_trajectory_scheduler_enabled():
-                self.staleness_samples = self.hpt_rollout_accumulator.open_group_count() + queue_size
-            else:
-                self.staleness_samples = len(self.active_tasks) + queue_size
+            outstanding_samples = self._outstanding_sample_count(queue_size)
             timing_raw = {}
             rollout_version_time = max(time.time() - self.step_start_time, 1e-6)
             if self.idle_start_time > self.step_start_time:
@@ -541,7 +539,7 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
 
             print(
                 f"[FullyAsyncRollouter][Public][reset_staleness] "
-                f"reset staleness_samples to: {self.staleness_samples} "
+                f"outstanding_samples: {outstanding_samples} "
                 f"idle_ratio: {timing_raw['fully_async/rollouter/idle_ratio']:.4f}"
             )
             self.step_start_time = time.time()
@@ -819,7 +817,7 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
                     # (b) a resume signal (reset_staleness / monitor flipping paused=False) to
                     # break the drain early so new samples can be submitted to free replicas.
                     # We do NOT hold the lock during the wait, so publishers can acquire it to
-                    # update paused / staleness_samples concurrently.
+                    # update paused concurrently.
                     while self.active_tasks and not resume_future.done():
                         wait_set = set(self.active_tasks) | {resume_future}
                         done, _pending = await asyncio.wait(wait_set, return_when=asyncio.FIRST_COMPLETED)
@@ -849,7 +847,6 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
             # Get sample from appropriate queue and immediately mark task as done
             rollout_sample = await self.pending_queue.get()
             self.pending_queue.task_done()
-            self.staleness_samples += 1
 
             if rollout_sample is None:
                 print(
@@ -1183,6 +1180,22 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
                     print("[FullyAsyncRollouter][ShouldPause] resume rollouter.")
                     self._resume_event.set()
 
+    def _outstanding_sample_count(self, queue_size: int) -> int:
+        """Live count of rollout samples produced but not yet consumed by the trainer.
+
+        Outstanding = in-flight open prompt groups (HPT trajectory scheduler) or active
+        generation tasks (plain rollout), plus completed groups still waiting in the
+        message queue. This is the same quantity ``reset_staleness`` records at each
+        parameter sync, but evaluated live on every pause check instead of tracked as a
+        monotonic produced-since-sync counter. Evaluating it live lets the gate fall as
+        the trainer drains the queue, so the monitor loop resumes generation once the
+        outstanding buffer drops back below ``max_required_samples`` rather than stalling
+        until the next sync. The off-policy ceiling ``max_required_samples`` is unchanged.
+        """
+        if self._hpt_trajectory_scheduler_enabled():
+            return self.hpt_rollout_accumulator.open_group_count() + queue_size
+        return len(self.active_tasks) + queue_size
+
     async def _should_pause_generation(self) -> bool:
         """Determine whether the build should be paused"""
         queue_stats = await self.message_queue_client.get_statistics()
@@ -1196,12 +1209,13 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
                 )
             return True
 
-        if self.staleness_samples >= self.max_required_samples:
+        outstanding_samples = self._outstanding_sample_count(queue_size)
+        if outstanding_samples >= self.max_required_samples:
             if not self.paused:
                 print(
                     "[FullyAsyncRollouter][ShouldPause] "
-                    f"due to "
-                    f"staleness_samples {self.staleness_samples} >= max_required_samples {self.max_required_samples} "
+                    f"due to outstanding_samples {outstanding_samples} >= "
+                    f"max_required_samples {self.max_required_samples}"
                 )
             return True
 
@@ -1251,7 +1265,7 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
             ),
             # counting stats
             "count/total_generated_samples": self.total_generated_samples,
-            "count/staleness_samples": self.staleness_samples,
+            "count/staleness_samples": self._outstanding_sample_count(queue_stats["queue_size"]),
             "count/dropped_stale_samples": self.dropped_stale_samples,
             # static stats
             "static/max_required_samples": self.max_required_samples,

@@ -75,10 +75,14 @@ max_required_samples =
   required_samples * (staleness_threshold + 1) * trigger_parameter_sync_step
 ```
 
-If `max_required_samples` is too small, the rollouter can pause before the
-trainer reaches `trigger_parameter_sync_step`. Then the trainer waits for more
-queue samples, while the rollouter waits for sync/reset. This is a circular
-wait, not a generation bottleneck.
+The pause gate is evaluated live against the *outstanding buffer* — in-flight
+open groups plus completed queued samples (`_outstanding_sample_count`) — not a
+monotonic produced-since-sync counter. So a paused rollouter resumes (via the
+monitor loop) as soon as the trainer drains the queue back below
+`max_required_samples`; it does not wait for the next sync. Sizing
+`max_required_samples` too small still throttles throughput (the rollouter idles
+at the ceiling more often), but that is a budget-sizing choice, not a
+sync-locked circular wait.
 
 **Known pitfall — queue samples are not rows.** `require_batches` counts
 **queue samples** (`initial queue request = ppo_mini_batch_size *
@@ -269,8 +273,10 @@ Interpretation rule:
 
 - If `active_tasks_size=0`, `mq_queue_size=0`, and `pending_queue_size` is large,
   the issue is not SGLang generation. It is queue/staleness control flow.
-- If `staleness_samples >= max_required_samples`, raise the completed/staleness
-  budget or lower the sync interval for smoke.
+- The `count/staleness_samples` metric reports the live outstanding buffer
+  (`_outstanding_sample_count`). If it sits at `max_required_samples` while the
+  trainer cannot keep up, raise the completed/staleness budget or lower the sync
+  interval for smoke.
 - Do not diagnose GPU utilization from a skip/cache-heavy smoke as if it were a
   real generation workload.
 
