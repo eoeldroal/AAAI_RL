@@ -402,6 +402,34 @@ class TestComputeDataMetrics(unittest.TestCase):
         self.assertAlmostEqual(metrics["critic/rewards/mean"], 0.0)
         self.assertAlmostEqual(metrics["hpt/sft_pseudo_reward/mean"], 0.3)
 
+    def test_hpt_response_length_metrics_use_prerouting_generated_attempts(self):
+        """HPT response length should describe model generations, not tau rows."""
+        self.batch.batch["token_level_scores"] = torch.tensor([[0.0, 0.3]])
+        self.batch.batch["token_level_rewards"] = torch.tensor([[0.0, 0.3]])
+        self.batch.batch["advantages"] = torch.ones((1, 8))
+        self.batch.batch["returns"] = torch.ones((1, 8))
+        self.batch.batch["values"] = torch.zeros((1, 8))
+        self.batch.batch["prompts"] = torch.zeros((1, 2))
+        self.batch.batch["responses"] = torch.zeros((1, 8))
+        self.batch.batch["attention_mask"] = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1, 0, 0]], dtype=torch.long)
+        self.batch.batch["response_mask"] = torch.tensor([[1, 1, 1, 1, 1, 1, 0, 0]], dtype=torch.long)
+        self.batch.batch["hpt_is_sft"] = torch.tensor([True], dtype=torch.bool)
+        self.batch.non_tensor_batch = {
+            "hpt_success_probability": np.array([0.0], dtype=object),
+            "hpt_group_uid": np.array(["sft-group"], dtype=object),
+            "hpt_generated_response_lengths": np.array([(2, 4, 0, 8)], dtype=object),
+        }
+
+        metrics = compute_data_metrics(self.batch, use_critic=True)
+
+        self.assertAlmostEqual(metrics["response_length/mean"], 3.5)
+        self.assertAlmostEqual(metrics["response_length/max"], 8.0)
+        self.assertAlmostEqual(metrics["response_length/min"], 0.0)
+        self.assertAlmostEqual(metrics["response_length/clip_ratio"], 0.25)
+        self.assertAlmostEqual(metrics["response/aborted_ratio"], 0.25)
+        self.assertAlmostEqual(metrics["response_length_non_aborted/mean"], 14 / 3, places=6)
+        self.assertAlmostEqual(metrics["critic/score/mean"], 0.0)
+
     def test_hpt_onpolicy_success_rate_is_group_weighted_not_row_weighted(self):
         """On-policy success rate must be GROUP-weighted (unbiased), unlike the
         ROW-weighted critic/score/mean which over-represents RL groups (n rows each)

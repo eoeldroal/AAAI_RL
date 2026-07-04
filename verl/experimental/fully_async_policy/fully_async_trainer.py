@@ -37,7 +37,7 @@ from verl.experimental.fully_async_policy.training_dump import TrainingTensorDum
 from verl.experimental.separation.ray_trainer import SeparateRayPPOTrainer
 from verl.single_controller.ray import RayClassWithInitArgs, RayWorkerGroup
 from verl.trainer.ppo import core_algos
-from verl.trainer.ppo.metric_utils import _compute_response_info
+from verl.trainer.ppo.metric_utils import _compute_metric_response_length, _compute_response_info
 from verl.trainer.ppo.ray_trainer import ResourcePoolManager
 from verl.trainer.ppo.utils import Role, WorkerType, need_critic, need_reference_policy, need_reward_model
 from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path, should_save_ckpt_esi
@@ -931,10 +931,13 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
     def _collect_metric_aggregation_weights(self, batch: DataProto):
         response_info = _compute_response_info(batch)
         response_length = response_info["response_length"]
+        metric_response_length = _compute_metric_response_length(batch, response_length)
         response_mask = batch.batch["response_mask"].bool()
 
         row_count = len(batch)
         non_aborted_count = int((response_length != 0).sum().item())
+        metric_response_count = int(metric_response_length.numel())
+        metric_non_aborted_count = int((metric_response_length != 0).sum().item())
         response_token_count = int(response_mask.sum().item())
         sft_row_count = 0
         sft_token_count = response_token_count
@@ -959,11 +962,11 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
             "critic/vf_loss": response_token_count,
             "critic/vf_clipfrac": response_token_count,
             "critic/vpred_mean": response_token_count,
-            "response_length/mean": row_count,
-            "response_length/clip_ratio": row_count,
-            "response_length_non_aborted/mean": non_aborted_count,
-            "response_length_non_aborted/clip_ratio": non_aborted_count,
-            "response/aborted_ratio": row_count,
+            "response_length/mean": metric_response_count,
+            "response_length/clip_ratio": metric_response_count,
+            "response_length_non_aborted/mean": metric_non_aborted_count,
+            "response_length_non_aborted/clip_ratio": metric_non_aborted_count,
+            "response/aborted_ratio": metric_response_count,
             "prompt_length/mean": row_count,
             "prompt_length/clip_ratio": row_count,
             "actor/pg_loss": response_token_count,

@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from numbers import Real
+from numbers import Integral, Real
 from typing import Any
 
 import numpy as np
@@ -37,6 +37,7 @@ class HptRouteMetadata(BaseModel):
     success_probability: float = Field(ge=0.0, le=1.0)
     success_count: int = Field(ge=0)
     total_count: int = Field(gt=0)
+    generated_response_lengths: tuple[int, ...] = Field(default_factory=tuple)
     gamma: float = Field(ge=0.0, le=1.0)
     success_threshold: float
     success_score_key: str = Field(min_length=1)
@@ -48,6 +49,21 @@ class HptRouteMetadata(BaseModel):
         if not value:
             raise ValueError("value must not be empty")
         return value
+
+    @field_validator("generated_response_lengths")
+    @classmethod
+    def _validate_generated_response_lengths(cls, values: tuple[int, ...]) -> tuple[int, ...]:
+        if not values:
+            return values
+        normalized = []
+        for value in values:
+            if isinstance(value, bool) or not isinstance(value, Integral):
+                raise ValueError(f"generated_response_lengths must contain integers, got {value!r}")
+            value = int(value)
+            if value < 0:
+                raise ValueError(f"generated_response_lengths must be non-negative, got {value}.")
+            normalized.append(value)
+        return tuple(normalized)
 
 
 class HptRouteDecision(BaseModel):
@@ -137,6 +153,7 @@ class HptRolloutGate:
             success_probability=success_probability,
             success_count=success_count,
             total_count=total_count,
+            generated_response_lengths=extract_generated_response_lengths(payload),
             gamma=self.config.gamma,
             success_threshold=self.config.success_threshold,
             success_score_key=self.config.success_score_key,
@@ -222,6 +239,16 @@ def extract_score_values(payload: DataProto, *, score_key: str) -> list[float]:
             return [_coerce_score(rm_scores[-1].item(), "rm_scores")]
         return [_coerce_score(row[-1].item(), "rm_scores") for row in rm_scores.detach().cpu()]
     raise ValueError(f"HPT routing could not find success score key {score_key!r} in rollout payload.")
+
+
+def extract_generated_response_lengths(payload: DataProto) -> tuple[int, ...]:
+    if payload.batch is None or "response_mask" not in payload.batch:
+        raise ValueError("HPT routing requires generated payload batch['response_mask'] for response length metrics.")
+    response_mask = payload.batch["response_mask"]
+    if response_mask.dim() != 2:
+        raise ValueError(f"HPT routing response_mask must be rank 2, got rank {response_mask.dim()}.")
+    lengths = response_mask.sum(dim=-1).detach().cpu().tolist()
+    return tuple(int(length) for length in lengths)
 
 
 def _extract_single_string(payload: DataProto, key: str) -> str:

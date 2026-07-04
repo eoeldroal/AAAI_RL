@@ -141,6 +141,14 @@ class _EmptyTauStore:
         return None
 
 
+class _SingleTauStore:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def get(self, _prompt_uid):
+        return self.payload
+
+
 class _FakeAsyncRolloutManager:
     def __init__(self, rollout_n):
         self.rollout_n = rollout_n
@@ -239,6 +247,40 @@ def _make_rl_group_payload(*, group_uid, prompt_uid, rollout_n=4):
     return payload
 
 
+def _make_generated_group_with_lengths(*, group_uid, prompt_uid, lengths):
+    from verl.protocol import DataProto
+
+    rows = []
+    for rollout_index, length in enumerate(lengths):
+        response_mask = torch.tensor([[1] * length + [0] * (4 - length)], dtype=torch.long)
+        responses = torch.tensor([[10 + rollout_index, 20 + rollout_index, 30 + rollout_index, 40 + rollout_index]])
+        prompts = torch.tensor([[1, 2]], dtype=torch.long)
+        input_ids = torch.cat([prompts, responses], dim=-1)
+        attention_mask = torch.cat([torch.ones((1, 2), dtype=torch.long), response_mask], dim=-1)
+        rows.append(
+            DataProto.from_dict(
+                tensors={
+                    "prompts": prompts,
+                    "responses": responses,
+                    "input_ids": input_ids,
+                    "attention_mask": attention_mask,
+                    "position_ids": torch.arange(input_ids.shape[-1]).view(1, -1),
+                    "response_mask": response_mask,
+                    "rollout_log_probs": torch.zeros_like(response_mask, dtype=torch.float32),
+                    "rm_scores": torch.zeros_like(response_mask, dtype=torch.float32),
+                },
+                non_tensors={
+                    "uid": np.array([group_uid], dtype=object),
+                    "prompt_uid": np.array([prompt_uid], dtype=object),
+                    "min_global_steps": np.array([rollout_index], dtype=object),
+                    "max_global_steps": np.array([rollout_index], dtype=object),
+                    "extra_info": np.array([{"prompt_uid": prompt_uid, "rollout_index": rollout_index}], dtype=object),
+                },
+            )
+        )
+    return DataProto.concat(rows)
+
+
 def _make_sft_payload(*, group_uid, prompt_uid):
     from verl.protocol import DataProto
 
@@ -300,6 +342,30 @@ def _make_mixed_hpt_queue_samples(*, rollout_n=4):
         _make_hpt_queue_sample(route_kind="sft", idx=5, rollout_n=rollout_n),
         _make_hpt_queue_sample(route_kind="sft", idx=6, rollout_n=rollout_n),
     ]
+
+
+def test_hpt_gate_preserves_prerouting_generated_response_lengths_for_sft_route():
+    from verl.experimental.fully_async_policy.hpt_config import validate_async_hpt_config
+    from verl.experimental.fully_async_policy.hpt_gate import HptRolloutGate
+    from verl.experimental.fully_async_policy.hpt_payload import HptSftPayload
+
+    prompt_uid = "prompt-a"
+    group_uid = "uid_sample_0_1"
+    lengths = (2, 4, 0, 3)
+    config = _make_async_hpt_config(rollout_n=len(lengths))
+    hpt_config = validate_async_hpt_config(config)
+    tau_payload = HptSftPayload(
+        prompt_uid=prompt_uid,
+        messages=[{"role": "user", "content": "question"}, {"role": "assistant", "content": "answer"}],
+    )
+    gate = HptRolloutGate(config=hpt_config, tau_store=_SingleTauStore(tau_payload))
+    generated_batch = _make_generated_group_with_lengths(group_uid=group_uid, prompt_uid=prompt_uid, lengths=lengths)
+
+    decision = gate.route(generated_batch, group_uid=group_uid)
+
+    assert decision.metadata.is_sft is True
+    assert decision.metadata.generated_response_lengths == lengths
+    assert decision.metadata.success_probability == 0.0
 
 
 def _make_actor_config(

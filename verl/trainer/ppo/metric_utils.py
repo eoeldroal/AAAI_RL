@@ -18,6 +18,7 @@ Metrics related to the PPO trainer.
 import logging
 from collections import defaultdict
 from functools import partial
+from numbers import Integral
 from typing import Any, Callable
 
 import numpy as np
@@ -90,6 +91,53 @@ def _compute_response_info(batch: DataProto) -> dict[str, Any]:
         prompt_length=prompt_length,
         response_length=response_length,
     )
+
+
+def _compute_metric_response_length(batch: DataProto, response_length: torch.Tensor) -> torch.Tensor:
+    non_tensor_batch = getattr(batch, "non_tensor_batch", None)
+    if not isinstance(non_tensor_batch, dict):
+        return response_length
+    generated_lengths = non_tensor_batch.get("hpt_generated_response_lengths")
+    if generated_lengths is None:
+        return response_length
+    group_uids = non_tensor_batch.get("hpt_group_uid")
+    if group_uids is None:
+        raise ValueError("HPT generated response length metrics require non_tensor_batch['hpt_group_uid'].")
+    if len(generated_lengths) != len(group_uids):
+        raise ValueError(
+            "HPT generated response length metadata must match batch rows: "
+            f"{len(generated_lengths)} != {len(group_uids)}."
+        )
+
+    lengths: list[int] = []
+    seen_groups = set()
+    for group_uid, raw_lengths in zip(group_uids.tolist(), generated_lengths.tolist(), strict=True):
+        group_uid = group_uid.item() if isinstance(group_uid, np.generic) else group_uid
+        if group_uid in seen_groups:
+            continue
+        seen_groups.add(group_uid)
+
+        if isinstance(raw_lengths, np.ndarray):
+            raw_lengths = raw_lengths.tolist()
+        elif isinstance(raw_lengths, tuple | list):
+            raw_lengths = list(raw_lengths)
+        else:
+            raise ValueError(f"HPT generated response lengths must be a sequence, got {raw_lengths!r}.")
+        if not raw_lengths:
+            raise ValueError(f"HPT generated response lengths for group {group_uid!r} are empty.")
+
+        for value in raw_lengths:
+            value = value.item() if isinstance(value, np.generic) else value
+            if isinstance(value, bool) or not isinstance(value, Integral):
+                raise ValueError(f"HPT generated response length must be an integer, got {value!r}.")
+            value = int(value)
+            if value < 0:
+                raise ValueError(f"HPT generated response length must be non-negative, got {value}.")
+            lengths.append(value)
+
+    if not lengths:
+        raise ValueError("HPT generated response length metadata produced no lengths.")
+    return torch.tensor(lengths, dtype=response_length.dtype, device=response_length.device)
 
 
 def _get_nested_attr(obj: Any, name: str) -> Any:
@@ -502,12 +550,15 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
     response_info = _compute_response_info(batch)
     prompt_length = response_info["prompt_length"]
     response_length = response_info["response_length"]
+    metric_response_length = _compute_metric_response_length(batch, response_length)
 
-    aborted_mask = (response_length == 0).bool()
-    non_aborted_mask = ~aborted_mask
+    learner_aborted_mask = (response_length == 0).bool()
+    learner_non_aborted_mask = ~learner_aborted_mask
+    metric_aborted_mask = (metric_response_length == 0).bool()
+    metric_non_aborted_mask = ~metric_aborted_mask
 
-    non_aborted_sequence_score = sequence_score[non_aborted_mask]
-    non_aborted_sequence_reward = sequence_reward[non_aborted_mask]
+    non_aborted_sequence_score = sequence_score[learner_non_aborted_mask]
+    non_aborted_sequence_reward = sequence_reward[learner_non_aborted_mask]
 
     if non_aborted_sequence_score.numel() > 0:
         score_mean = torch.mean(non_aborted_sequence_score).detach().item()
@@ -546,9 +597,9 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
 
     # Aborted samples and non-aborted response length statistics
     # response_length_non_aborted/*: statistics computed on non-aborted samples only
-    aborted_ratio = torch.mean(aborted_mask.float()).detach().item()
+    aborted_ratio = torch.mean(metric_aborted_mask.float()).detach().item()
 
-    non_aborted_response_length = response_length[non_aborted_mask]
+    non_aborted_response_length = metric_response_length[metric_non_aborted_mask]
     if non_aborted_response_length.numel() > 0:
         non_aborted_response_length_mean = torch.mean(non_aborted_response_length).detach().item()
         non_aborted_response_length_max = torch.max(non_aborted_response_length).detach().item()
@@ -608,10 +659,10 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
         "critic/returns/min": returns_min,
         **critic_value_metrics,
         # response length
-        "response_length/mean": torch.mean(response_length).detach().item(),
-        "response_length/max": torch.max(response_length).detach().item(),
-        "response_length/min": torch.min(response_length).detach().item(),
-        "response_length/clip_ratio": torch.mean(torch.eq(response_length, max_response_length).float())
+        "response_length/mean": torch.mean(metric_response_length).detach().item(),
+        "response_length/max": torch.max(metric_response_length).detach().item(),
+        "response_length/min": torch.min(metric_response_length).detach().item(),
+        "response_length/clip_ratio": torch.mean(torch.eq(metric_response_length, max_response_length).float())
         .detach()
         .item(),
         # response length (non-aborted only)

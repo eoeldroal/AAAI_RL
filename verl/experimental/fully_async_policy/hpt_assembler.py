@@ -150,6 +150,12 @@ class HptBatchAssembler:
         self._ensure_repeated_non_tensor(batch, "hpt_route_is_sft", bool(route.is_sft))
         self._ensure_repeated_non_tensor(batch, "hpt_missing_tau", bool(route.missing_tau))
         self._ensure_repeated_non_tensor(batch, "hpt_success_probability", float(route.success_probability))
+        generated_response_lengths = tuple(route.generated_response_lengths)
+        if not generated_response_lengths:
+            generated_response_lengths = tuple(
+                int(length) for length in response_mask.sum(dim=-1).detach().cpu().tolist()
+            )
+        self._ensure_repeated_non_tensor(batch, "hpt_generated_response_lengths", generated_response_lengths)
         self._ensure_extra_info_prompt_uid(batch, route.prompt_uid)
         self._normalize_non_tensor_arrays(batch)
 
@@ -288,7 +294,9 @@ class HptBatchAssembler:
         if key in batch.non_tensor_batch:
             HptBatchAssembler._validate_repeated_non_tensor(batch, key, value)
             return
-        batch.non_tensor_batch[key] = np.array([value] * len(batch), dtype=object)
+        values = np.empty(len(batch), dtype=object)
+        values[:] = [value] * len(batch)
+        batch.non_tensor_batch[key] = values
 
     @staticmethod
     def _validate_repeated_non_tensor(batch: DataProto, key: str, value: Any) -> None:

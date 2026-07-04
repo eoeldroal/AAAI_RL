@@ -309,3 +309,35 @@ def test_fully_async_metric_weight_sidecars_match_sequence_and_token_denominator
     assert trainer.metrics["_metric_weight/rollout_rs_exact_mean"] == 4
     assert trainer.metrics["_metric_weight/rollout_rs_exact_seq_fraction_high"] == 3
     assert trainer.metrics["_metric_weight/response/aborted_ratio"] == 3
+
+
+def test_fully_async_hpt_response_length_weights_use_generated_attempt_count():
+    trainer_cls = FullyAsyncTrainer.__ray_metadata__.modified_class
+    trainer = object.__new__(trainer_cls)
+    trainer.use_critic = True
+    trainer.metrics = {
+        "critic/score/mean": 0.0,
+        "response_length/mean": 0.0,
+        "response_length_non_aborted/mean": 0.0,
+        "response/aborted_ratio": 0.0,
+    }
+    batch = DataProto.from_dict(
+        tensors={
+            "prompts": torch.ones((1, 2), dtype=torch.long),
+            "responses": torch.ones((1, 8), dtype=torch.long),
+            "attention_mask": torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1, 0, 0]], dtype=torch.long),
+            "response_mask": torch.tensor([[1, 1, 1, 1, 1, 1, 0, 0]], dtype=torch.long),
+            "hpt_is_sft": torch.tensor([True], dtype=torch.bool),
+        },
+        non_tensors={
+            "hpt_group_uid": ["sft-group"],
+            "hpt_generated_response_lengths": [(2, 4, 0, 8)],
+        },
+    )
+
+    trainer._collect_metric_aggregation_weights(batch)
+
+    assert trainer.metrics["_metric_weight/critic/score/mean"] == 1
+    assert trainer.metrics["_metric_weight/response_length/mean"] == 4
+    assert trainer.metrics["_metric_weight/response_length_non_aborted/mean"] == 3
+    assert trainer.metrics["_metric_weight/response/aborted_ratio"] == 4
