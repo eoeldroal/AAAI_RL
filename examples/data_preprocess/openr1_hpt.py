@@ -74,7 +74,22 @@ def build_hpt_rows(
     return train_rows
 
 
-def build_unify_eval_rows(raw_rows: Iterable[dict[str, Any]], *, split: str, data_source: str) -> list[dict[str, Any]]:
+def build_unify_eval_rows(
+    raw_rows: Iterable[dict[str, Any]],
+    *,
+    split: str,
+    data_source: str,
+    system_prompt: str | None = None,
+) -> list[dict[str, Any]]:
+    """Build eval rows.
+
+    ``system_prompt`` MUST match the training prompt: the OpenR1 train rows carry a
+    leading system message that defines the <think>/Solution/\\boxed{} answer format,
+    and every RL rollout is conditioned on it. If eval omits that system message, the
+    model is evaluated under a different (weaker) instruction than it was trained on,
+    which depresses accuracy and breaks train/val comparability. So when the train
+    split keeps its system prompt, the eval split must inject the identical one.
+    """
     eval_rows: list[dict[str, Any]] = []
     for index, item in enumerate(raw_rows):
         question = item.get("prompt")
@@ -90,10 +105,15 @@ def build_unify_eval_rows(raw_rows: Iterable[dict[str, Any]], *, split: str, dat
         if "source" in item:
             extra_info["source"] = item["source"]
 
+        prompt_messages: list[dict[str, Any]] = []
+        if system_prompt:
+            prompt_messages.append({"role": "system", "content": system_prompt})
+        prompt_messages.append({"role": "user", "content": question})
+
         eval_rows.append(
             {
                 "data_source": data_source,
-                "prompt": [{"role": "user", "content": question}],
+                "prompt": prompt_messages,
                 "ability": "math",
                 "reward_model": {"style": "rule", "ground_truth": answer},
                 "extra_info": extra_info,
@@ -205,6 +225,21 @@ def _strip_leading_system_prompt(messages: list[dict[str, Any]]) -> list[dict[st
     if messages and messages[0].get("role") == "system":
         return messages[1:]
     return messages
+
+
+def _leading_system_content(rows: Iterable[dict[str, Any]]) -> str | None:
+    """Return the (assumed uniform) leading system-prompt text from source rows.
+
+    OpenR1 rows all carry the same system message; we lift it verbatim so the eval
+    split can be conditioned on the identical instruction as the train split.
+    """
+    for row in rows:
+        messages = row.get("prompt")
+        if isinstance(messages, list) and messages and messages[0].get("role") == "system":
+            content = messages[0].get("content")
+            if isinstance(content, str) and content.strip():
+                return content
+    return None
 
 
 def _select_short_target_rows(
@@ -389,12 +424,24 @@ def main() -> None:
         strip_system_prompt=not args.keep_system_prompt,
     )
 
+    # Eval must be conditioned on the SAME system prompt as train. When we keep the
+    # system prompt on train, lift the (uniform) OpenR1 system message from the source
+    # and inject the identical one into every eval row; otherwise leave eval bare so it
+    # matches the stripped train split. This keeps train/val prompt distributions equal.
+    eval_system_prompt = _leading_system_content(train_source) if args.keep_system_prompt else None
+    if args.keep_system_prompt and not eval_system_prompt:
+        raise RuntimeError(
+            "keep_system_prompt=True but no leading system prompt found in source rows; "
+            "cannot guarantee train/val prompt parity."
+        )
+
     pd.DataFrame(train_rows).to_parquet(os.path.join(local_save_dir, "train.parquet"))
     pd.DataFrame(val_rows).to_parquet(os.path.join(local_save_dir, "test.parquet"))
     eval_counts = _write_unify_eval_parquets(
         eval_json_dir=args.eval_json_dir,
         eval_data_sources=args.eval_data_sources,
         local_save_dir=local_save_dir,
+        system_prompt=eval_system_prompt,
     )
     with open(os.path.join(local_save_dir, "metadata.json"), "w", encoding="utf-8") as f:
         json.dump(
@@ -410,6 +457,7 @@ def main() -> None:
                 "prompt_uid_prefix": args.prompt_uid_prefix,
                 "normalize_data_source": args.normalize_data_source,
                 "keep_system_prompt": args.keep_system_prompt,
+                "eval_system_prompt_injected": bool(eval_system_prompt),
                 "hpt_dataset_format": "unified_prompt_rows",
                 "eval_json_dir": args.eval_json_dir,
                 "eval_counts": eval_counts,
@@ -432,6 +480,7 @@ def _write_unify_eval_parquets(
     eval_json_dir: str | None,
     eval_data_sources: Iterable[str],
     local_save_dir: str,
+    system_prompt: str | None = None,
 ) -> dict[str, int]:
     if eval_json_dir is None:
         return {}
@@ -447,7 +496,7 @@ def _write_unify_eval_parquets(
         raw_rows = json.loads(source_path.read_text(encoding="utf-8"))
         if not isinstance(raw_rows, list):
             raise ValueError(f"Unify eval json must contain a list: {source_path}")
-        rows = build_unify_eval_rows(raw_rows, split="test", data_source=data_source)
+        rows = build_unify_eval_rows(raw_rows, split="test", data_source=data_source, system_prompt=system_prompt)
         output_dir = Path(local_save_dir) / data_source
         output_dir.mkdir(parents=True, exist_ok=True)
         pd.DataFrame(rows).to_parquet(output_dir / "test.parquet")

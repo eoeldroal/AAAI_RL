@@ -185,6 +185,114 @@ def test_openr1_hpt_preprocess_rejects_rows_outside_token_limits():
 
 
 # ---------------------------------------------------------------------------
+# System-prompt parity (train <-> val)
+#
+# OpenR1 rows carry a leading system message that defines the <think>/Solution/
+# \boxed{} answer format the SFT targets follow and every RL rollout is conditioned
+# on. Two silent-distortion risks these tests fail-close on:
+#   (1) train keeps the system prompt but eval omits it -> the model is graded under
+#       a different instruction than it was trained on (depressed, incomparable val);
+#   (2) tau (SFT) prompt drops the system message the RL prompt keeps -> the offline
+#       anchor and the online rollouts optimize toward different conditioning.
+# ---------------------------------------------------------------------------
+
+
+def test_openr1_hpt_keeps_system_prompt_and_tau_stays_consistent():
+    from examples.data_preprocess.openr1_hpt import build_hpt_rows
+
+    raw_rows = [
+        {
+            "data_source": "olympiads",
+            "prompt": [
+                {"role": "system", "content": "Reason in <think>..</think> then \\boxed{}."},
+                {"role": "user", "content": "What is 1+1?"},
+            ],
+            "target": [{"role": "assistant", "content": "<think>\n1+1</think> \\boxed{2}."}],
+            "ability": "math",
+            "reward_model": {"style": "rule", "ground_truth": "2"},
+            "extra_info": {"split": "default", "index": 0},
+        }
+    ]
+
+    train_rows = build_hpt_rows(
+        raw_rows,
+        split="train",
+        prompt_uid_prefix="p",
+        normalize_data_source="numina_olympiads",
+        strip_system_prompt=False,
+    )
+
+    # RL prompt keeps the system message.
+    assert [m["role"] for m in train_rows[0]["prompt"]] == ["system", "user"]
+    # tau (SFT target) prompt portion keeps the SAME system message the RL prompt uses,
+    # so the offline anchor and online rollouts share one conditioning distribution.
+    tau = json.loads(train_rows[0]["tau_messages"])
+    assert [m["role"] for m in tau] == ["system", "user", "assistant"]
+    assert tau[0] == train_rows[0]["prompt"][0]
+
+
+def test_leading_system_content_extracts_uniform_prompt_or_none():
+    from examples.data_preprocess.openr1_hpt import _leading_system_content
+
+    system = "Reason in <think>..</think> then \\boxed{}."
+    rows = [{"prompt": [{"role": "system", "content": system}, {"role": "user", "content": "q"}]}]
+    assert _leading_system_content(rows) == system
+    # fail-closed inputs: no system message -> None (this is what main() raises on when
+    # keep_system_prompt=True, so it can never silently ship a bare eval split).
+    assert _leading_system_content([{"prompt": [{"role": "user", "content": "q"}]}]) is None
+    assert _leading_system_content([]) is None
+
+
+def test_unify_eval_injects_system_prompt_matching_train():
+    from examples.data_preprocess.openr1_hpt import (
+        _leading_system_content,
+        build_hpt_rows,
+        build_unify_eval_rows,
+    )
+
+    system = "Reason in <think>..</think> then \\boxed{}."
+    source = [
+        {
+            "data_source": "olympiads",
+            "prompt": [{"role": "system", "content": system}, {"role": "user", "content": "q"}],
+            "target": [{"role": "assistant", "content": "\\boxed{1}"}],
+            "ability": "math",
+            "reward_model": {"style": "rule", "ground_truth": "1"},
+            "extra_info": {"split": "default", "index": 0},
+        }
+    ]
+    train_rows = build_hpt_rows(
+        source,
+        split="train",
+        prompt_uid_prefix="p",
+        normalize_data_source="numina_olympiads",
+        strip_system_prompt=False,
+    )
+    injected = _leading_system_content(source)
+
+    eval_rows = build_unify_eval_rows(
+        [{"prompt": "Solve x+1=2.", "answer": "1"}],
+        split="test",
+        data_source="MATH-500",
+        system_prompt=injected,
+    )
+
+    # Eval carries a system message, and it is byte-identical to the train system
+    # message -> train and val are graded under the same conditioning (parity).
+    assert [m["role"] for m in eval_rows[0]["prompt"]] == ["system", "user"]
+    assert eval_rows[0]["prompt"][0]["content"] == train_rows[0]["prompt"][0]["content"]
+
+
+def test_unify_eval_stays_bare_without_system_prompt():
+    # When no system prompt is injected (stripped-train mode), eval must stay bare so
+    # it still matches the (stripped) train split -- parity holds in this direction too.
+    from examples.data_preprocess.openr1_hpt import build_unify_eval_rows
+
+    rows = build_unify_eval_rows([{"prompt": "q", "answer": "1"}], split="test", data_source="AMC23")
+    assert [m["role"] for m in rows[0]["prompt"]] == ["user"]
+
+
+# ---------------------------------------------------------------------------
 # Main-run launcher contract
 #
 # These assertions are deliberately VALUE-FREE. A main-run launcher is a run
