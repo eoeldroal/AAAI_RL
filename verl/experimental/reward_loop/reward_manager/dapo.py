@@ -33,6 +33,7 @@ class DAPORewardManager(RewardManagerBase):
         overlong_buffer_cfg = config.reward.get("reward_kwargs", {}).get("overlong_buffer_cfg", None)
         self.overlong_buffer_cfg = overlong_buffer_cfg
         self.max_resp_len = config.reward.get("reward_kwargs", {}).get("max_resp_len", None)
+        self.compute_score_in_executor = config.reward.get("reward_kwargs", {}).get("compute_score_in_executor", True)
         self.reward_router_address = reward_router_address
         self.reward_model_tokenizer = reward_model_tokenizer
 
@@ -81,16 +82,19 @@ class DAPORewardManager(RewardManagerBase):
                 **extra_reward_kwargs,
             )
         else:
-            result = await self.loop.run_in_executor(
-                None,
-                lambda: self.compute_score(
+            def compute_score():
+                return self.compute_score(
                     data_source=data_source,
                     solution_str=response_str,
                     ground_truth=ground_truth,
                     extra_info=extra_info,
                     **extra_reward_kwargs,
-                ),
-            )
+                )
+
+            if self.compute_score_in_executor:
+                result = await self.loop.run_in_executor(None, compute_score)
+            else:
+                result = compute_score()
 
         reward_extra_info = {}
 
