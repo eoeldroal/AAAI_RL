@@ -18,9 +18,21 @@ export CONDA_PREFIX="${HOME}/miniconda3/envs/RL"
 export PATH="${CONDA_PREFIX}/bin:${PATH}"
 source "${CONDA_PREFIX}/etc/conda/activate.d/verl_cuda_stack.sh"
 
-DATA_DIR="${VERL_ROOT}/datas/openr1_hpt_main"
+# openr1_hpt_main_v2: 전처리에서 OpenR1 시스템 프롬프트를 train에 유지하고 val eval셋에
+# 동일 시스템 프롬프트를 주입한 데이터셋(train↔val 프롬프트 정합). 구 openr1_hpt_main은
+# 시스템 프롬프트가 strip되어 학습/평가가 서로 다른 조건에 놓였다(백업으로 보존).
+DATA_DIR="${VERL_ROOT}/datas/openr1_hpt_main_v2"
 MODEL_PATH="${VERL_ROOT}/models/Qwen2.5-Math-1.5B"
 RUN_TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+
+# [reward] 채점기는 HF Math-Verify(verl math_verify_adapter)로 통일한다. 근거:
+# (1) 실측상 후보 채점기(entropy_math/prime_math/math_reward/math_dapo) 중 recall이
+#     가장 높아 저평가가 가장 적고(박스 없이도 표현식 추출 + 기호적 등가 판정),
+#     그 상위집합이라 과대인정도 없다. (2) 커스텀 fn 하나로 train·val에 동일 적용해
+#     default_compute_score의 data_source 라우팅이 train↔val 채점을 가르는 것을 막는다.
+# (3) Math-Verify는 timeout/parse 실패 시 예외 대신 0으로 degrade해 async reward loop를
+#     죽이지 않는다(이전 upt_v6의 raise 크래시 계열을 원천 차단). 따라서 UPT entropy_math
+#     scorer 경로 의존성은 제거한다.
 
 # [각주 2] Qwen2.5-Math 계열은 LUFFY/UPT 설정과 맞추기 위해 긴 context를 쓴다.
 # 아래 Hydra override에서 max_position_embeddings=16384, rope_theta=40000을
@@ -86,6 +98,28 @@ MAX_COMPLETED_PROMPT_GROUPS=2048
 #   - actor loss aggregation은 seq-mean-token-sum-norm, L_max=8192로 둔다.
 #   - SFT row는 self-detach CE 의미를 갖고, entropy/KL auxiliary에서 제외한다.
 # 이 값들은 단순 튜닝값이 아니라 우리 방법의 정체성이므로 비교 run에서도 유지한다.
+#
+# [각주 7] rollout sampling parity: UPT exp_scripts/train.sh는 학습 rollout에
+# temperature=1.0만 명시하고 top_p/top_k는 두지 않아 verl config 기본값
+# (top_p=1.0, top_k=-1)을 쓴다. 우리 rollout config 기본값도 동일하므로
+# (rollout.yaml/rollout.py), 여기서도 temperature=1.0만 명시하고 top_p/top_k는
+# 기본값에 맡겨 UPT와 런처 형태·유효 샘플링을 일치시킨다. (val은 양쪽 모두
+# temperature=0.6, top_p=0.95를 명시하므로 val_kwargs는 그대로 둔다.)
+#
+# [각주 8] clip은 UPT와 의도적으로 다르다(선언). UPT exp_scripts/train.sh는
+# loss_remove_clip=True로 PPO ratio clip을 끈다 — UPT가 동기(near-on-policy)라
+# ratio가 1 근처에 머물러 unclipped가 안전하기 때문이다. 우리는 fully-async
+# off-policy라 stale ratio가 1에서 멀어지고 within-cycle drift가 sync 주기 내내
+# 누적되므로 trust region이 필수다(DR-005 §5: raw/no-clip 금지). 따라서
+# clip_ratio_low/high=0.2/0.28 (Clip-Higher, entropy 붕괴 방지) + clip_ratio_c=10.0
+# (dual-clip, A<0 ratio 폭주 유계화)를 유지한다. 이는 UPT 대비 편차가 아니라
+# async 아키텍처의 필수 안정화이며, all-SFT 국면에선 SFT self-detach(ρ≡1)라
+# clip이 no-op이다.
+#
+# [각주 9] grain은 UPT와 다르다(선언). UPT는 ppo_mini_batch_size=64(128/64 =
+# fit당 SGD 2회), 우리는 32(fit당 4회)다. 둘 다 fit당 128 prompt-group(=1024 row)
+# 스케일은 동일하고(각주 3) optimizer grain만 더 잘다 — async trainer scheduling과
+# HPT learner-row divisibility에 덜 brittle하려는 선택이다.
 
 # Keep only engine-runtime environment at the command boundary. All training,
 # rollout, validation, and HPT settings are explicit Hydra overrides below.
@@ -93,10 +127,10 @@ SGLANG_NUMA_BIND_V2=0 \
 SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1 \
 python3 -m verl.experimental.fully_async_policy.fully_async_main \
     data.train_files="${DATA_DIR}/train.parquet" \
-    "data.val_files=['${DATA_DIR}/AIME24/test.parquet','${DATA_DIR}/AMC23/test.parquet','${DATA_DIR}/MATH-500/test.parquet']" \
+    "data.val_files=['${DATA_DIR}/AIME24/test.parquet','${DATA_DIR}/AIME25/test.parquet','${DATA_DIR}/AMC23/test.parquet','${DATA_DIR}/MATH-500/test.parquet','${DATA_DIR}/Minerva/test.parquet','${DATA_DIR}/Olympiad-Bench/test.parquet']" \
     data.prompt_key=prompt \
     data.truncation=left \
-    data.max_prompt_length=1024 \
+    data.max_prompt_length=1536 \
     data.max_response_length=8192 \
     data.train_batch_size=0 \
     data.gen_batch_size=1 \
@@ -116,8 +150,6 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=1 \
     actor_rollout_ref.actor.use_dynamic_bsz=True \
     actor_rollout_ref.actor.optim.lr=5e-6 \
-    actor_rollout_ref.actor.optim.lr_warmup_steps=-1 \
-    actor_rollout_ref.actor.optim.weight_decay=0.1 \
     actor_rollout_ref.actor.optim.clip_grad=80.0 \
     actor_rollout_ref.actor.ppo_mini_batch_size=32 \
     actor_rollout_ref.actor.ppo_micro_batch_size=32 \
@@ -137,15 +169,13 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.rollout.calculate_log_probs=True \
     actor_rollout_ref.rollout.temperature=1.0 \
-    actor_rollout_ref.rollout.top_p=1.0 \
-    actor_rollout_ref.rollout.top_k=-1 \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.85 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
     actor_rollout_ref.rollout.disable_log_stats=False \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
-    actor_rollout_ref.rollout.max_model_len=9216 \
-    +actor_rollout_ref.rollout.engine_kwargs.sglang.context_length=9216 \
+    actor_rollout_ref.rollout.max_model_len=9728 \
+    +actor_rollout_ref.rollout.engine_kwargs.sglang.context_length=9728 \
     "+actor_rollout_ref.rollout.engine_kwargs.sglang.json_model_override_args='{\"max_position_embeddings\":16384,\"rope_theta\":40000}'" \
     actor_rollout_ref.rollout.val_kwargs.temperature=0.6 \
     actor_rollout_ref.rollout.val_kwargs.top_p=0.95 \
@@ -160,7 +190,11 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     algorithm.kl_ctrl.kl_coef=0.0 \
     algorithm.norm_adv_by_std_in_grpo=False \
     reward.reward_manager.name=dapo \
-    +reward.reward_kwargs.overlong_buffer_cfg.enable=True \
+    reward.custom_reward_function.path=verl/utils/reward_score/math_verify_adapter.py \
+    reward.custom_reward_function.name=compute_score \
+    +reward.custom_reward_function.reward_kwargs.timeout=30.0 \
+    +reward.reward_kwargs.compute_score_in_executor=True \
+    +reward.reward_kwargs.overlong_buffer_cfg.enable=False \
     +reward.reward_kwargs.overlong_buffer_cfg.len=128 \
     +reward.reward_kwargs.overlong_buffer_cfg.penalty_factor=1.0 \
     +reward.reward_kwargs.overlong_buffer_cfg.log=False \
@@ -169,7 +203,7 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     trainer.project_name=async-hpt-openr1 \
     trainer.experiment_name=qwen25_math_1_5b_openr1_async_hpt_beta03_constant \
     trainer.val_before_train=False \
-    trainer.save_freq=50 \
+    trainer.save_freq=10 \
     trainer.resume_mode=disable \
     trainer.nnodes=1 \
     trainer.n_gpus_per_node=2 \
