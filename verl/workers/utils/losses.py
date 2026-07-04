@@ -16,7 +16,13 @@
 import torch
 from tensordict import TensorDict
 
-from verl.trainer.ppo.core_algos import agg_loss, compute_value_loss, get_policy_loss_fn, kl_penalty
+from verl.trainer.ppo.core_algos import (
+    agg_loss,
+    compute_entropy_clip_diagnostics,
+    compute_value_loss,
+    get_policy_loss_fn,
+    kl_penalty,
+)
 from verl.utils import tensordict_utils as tu
 from verl.utils.dataset.dataset_utils import DatasetPadMode
 from verl.utils.metric import AggregationType, Metric
@@ -175,6 +181,30 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
         policy_loss -= entropy_coeff * entropy_loss
         metrics["actor/entropy"] = Metric(value=entropy_loss, aggregation=metric_aggregation)
         metrics["actor/entropy_loss"] = Metric(value=entropy_loss, aggregation=metric_aggregation)
+
+        # Entropy-resolved clip diagnostics over RL (rollout-provenance) tokens only.
+        # De-confounds the sum-normed entropy_loss (which rises with the RL-token count) and
+        # tests whether the low aggregate clip fraction concentrates on the high-entropy
+        # pivotal minority. Pure analysis metrics: detached, never affect policy_loss; empty
+        # on all-SFT microbatches. SFT tokens are always excluded regardless of
+        # sft_entropy_enabled (their ratio is 1 by self-detach, and they carry no rollout
+        # provenance to clip).
+        rl_diag_mask = response_mask
+        if hpt_sft_token_mask is not None:
+            rl_diag_mask = response_mask & ~hpt_sft_token_mask
+        _clip_ratio = config.clip_ratio
+        _clip_low = config.clip_ratio_low if config.clip_ratio_low is not None else _clip_ratio
+        _clip_high = config.clip_ratio_high if config.clip_ratio_high is not None else _clip_ratio
+        entropy_clip_diag = compute_entropy_clip_diagnostics(
+            entropy=entropy,
+            log_prob=log_prob,
+            old_log_prob=old_log_prob,
+            advantages=advantages,
+            rl_mask=rl_diag_mask,
+            cliprange_low=_clip_low,
+            cliprange_high=_clip_high,
+        )
+        metrics.update(Metric.from_dict(entropy_clip_diag, aggregation=AggregationType.MEAN))
 
     # add kl loss
     if config.use_kl_loss:

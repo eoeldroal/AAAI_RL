@@ -1275,6 +1275,101 @@ def compute_policy_loss(
     return pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower
 
 
+def pg_clip_active_mask(
+    ratio: torch.Tensor,
+    advantages: torch.Tensor,
+    cliprange_low: float,
+    cliprange_high: float,
+) -> torch.Tensor:
+    """Per-token boolean mask: ``True`` where the PPO ratio clip is active.
+
+    "Active" means the pessimistic ``max()`` in ``compute_policy_loss_vanilla`` selects the
+    clamped surrogate over the unclamped one — i.e. the token's gradient is frozen by the
+    trust-region clip. This is the exact predicate behind ``actor/pg_clipfrac`` (that metric
+    reduces ``torch.gt(pg_losses2, pg_losses1)`` with the same ``pg_losses1/pg_losses2``);
+    it is factored here so entropy-stratified clip diagnostics stay comparable with the
+    aggregate metric.
+
+    Args:
+        ratio: ``pi_theta / pi_old`` per token, shape ``(bs, response_length)``.
+        advantages: per-token advantages, same shape.
+        cliprange_low: lower clip epsilon; band lower bound is ``1 - cliprange_low``.
+        cliprange_high: upper clip epsilon; band upper bound is ``1 + cliprange_high``.
+
+    Returns:
+        Boolean tensor, ``True`` where the clamped surrogate is selected.
+    """
+    unclamped = -advantages * ratio
+    clamped = -advantages * torch.clamp(ratio, 1.0 - cliprange_low, 1.0 + cliprange_high)
+    return clamped > unclamped
+
+
+def compute_entropy_clip_diagnostics(
+    entropy: torch.Tensor,
+    log_prob: torch.Tensor,
+    old_log_prob: torch.Tensor,
+    advantages: torch.Tensor,
+    rl_mask: torch.Tensor,
+    cliprange_low: float,
+    cliprange_high: float,
+    top_frac: float = 0.2,
+) -> dict[str, float]:
+    """Entropy-resolved clip diagnostics over RL (rollout-provenance) tokens only.
+
+    Answers two analysis questions the aggregate ``actor/pg_clipfrac`` and the
+    count-confounded ``actor/entropy_loss`` cannot:
+      - is per-token entropy actually collapsing, vs the sum-normed ``entropy_loss`` that
+        rises simply because the RL-token population grows over HPT training?
+      - is the (low) clip fraction concentrated on the high-entropy "forking" minority
+        tokens that drive learning (Wang et al., NeurIPS 2025; MiniMax-M1 / CISPO)?
+
+    Pure analysis metrics: computed on detached tensors, never on the loss path. Returns an
+    empty dict when ``rl_mask`` selects no tokens (e.g. an all-SFT microbatch early in HPT
+    training) so callers emit nothing rather than crash.
+
+    Args:
+        entropy: per-token policy entropy, shape ``(bs, response_length)``.
+        log_prob: current-policy logprobs, same shape.
+        old_log_prob: behavior-anchor logprobs (rollout for HPT RL rows), same shape.
+        advantages: per-token advantages, same shape.
+        rl_mask: bool mask selecting RL tokens; SFT tokens must be excluded.
+        cliprange_low: lower clip epsilon, matching the policy loss.
+        cliprange_high: upper clip epsilon, matching the policy loss.
+        top_frac: high-entropy tail fraction (default 0.2, per the 80/20 result).
+
+    Returns:
+        Dict of python floats (or ``{}`` if no RL tokens):
+          - ``actor/entropy_mean``: masked mean per-token entropy over RL tokens.
+          - ``actor/entropy_top20_mean``: mean entropy of the top-``top_frac`` RL tokens.
+          - ``actor/pg_clipfrac_top20entropy``: clip-active fraction within that tail.
+    """
+    rl_mask = rl_mask.to(torch.bool)
+    if not torch.any(rl_mask):
+        return {}
+
+    entropy = entropy.detach().float()
+    entropy_mean = verl_F.masked_mean(entropy, rl_mask)
+
+    # High-entropy tail threshold from the RL-token entropy distribution (per microbatch).
+    rl_entropy = entropy[rl_mask]
+    threshold = torch.quantile(rl_entropy, 1.0 - top_frac)
+    top_mask = rl_mask & (entropy >= threshold)
+    if not torch.any(top_mask):  # degenerate all-equal entropy: fall back to the full RL set
+        top_mask = rl_mask
+    entropy_top_mean = verl_F.masked_mean(entropy, top_mask)
+
+    # Clip-active fraction within the high-entropy tail (the pivotal-token question).
+    ratio = torch.exp(torch.clamp(log_prob.detach() - old_log_prob.detach(), min=-20.0, max=20.0))
+    clip_active = pg_clip_active_mask(ratio, advantages.detach(), cliprange_low, cliprange_high).float()
+    clipfrac_top = verl_F.masked_mean(clip_active, top_mask)
+
+    return {
+        "actor/entropy_mean": entropy_mean.detach().item(),
+        "actor/entropy_top20_mean": entropy_top_mean.detach().item(),
+        "actor/pg_clipfrac_top20entropy": clipfrac_top.detach().item(),
+    }
+
+
 @register_policy_loss("vanilla")  # type: ignore[arg-type]
 def compute_policy_loss_vanilla(
     old_log_prob: torch.Tensor,
