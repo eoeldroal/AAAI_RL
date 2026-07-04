@@ -33,6 +33,7 @@ from verl.experimental.fully_async_policy.detach_utils import (
 )
 from verl.experimental.fully_async_policy.hpt_assembler import HptBatchAssembler
 from verl.experimental.fully_async_policy.message_queue import MessageQueueClient
+from verl.experimental.fully_async_policy.training_dump import TrainingTensorDumper, load_training_dump_config
 from verl.experimental.separation.ray_trainer import SeparateRayPPOTrainer
 from verl.single_controller.ray import RayClassWithInitArgs, RayWorkerGroup
 from verl.trainer.ppo import core_algos
@@ -139,6 +140,9 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
 
         self.message_queue_client = None
         self.hpt_assembler = None
+        # Off-path loss-boundary tensor dump for offline ablation analysis
+        # (docs/Ablation_RL.md). No-op unless training_dump.enable=true.
+        self._training_dumper = TrainingTensorDumper(load_training_dump_config(config))
 
         # Statistics
         self.local_trigger_step = 1
@@ -622,6 +626,17 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
             self.actor_rollout_wg.restore_model_from_cpu(self.local_trigger_step)
             self.actor_rollout_wg.clear_cpu_model(self.local_trigger_step)
         return old_log_prob, old_log_prob_mfu
+
+    def _fit_dump_data(self, batch: DataProto):
+        # Preserve the base rollout-generation logging, then sample the
+        # loss-boundary tensors for offline ablation analysis (read-only).
+        super()._fit_dump_data(batch)
+        self._training_dumper.maybe_dump(
+            batch,
+            step=self.global_steps,
+            param_version=self.current_param_version,
+            local_trigger_step=self.local_trigger_step,
+        )
 
     def _fit_update_local_step(self):
         time_str = datetime.now().strftime("%H:%M:%S.%f")[:-3]

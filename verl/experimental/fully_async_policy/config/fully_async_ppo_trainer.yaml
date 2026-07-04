@@ -30,6 +30,28 @@ async_training:
   # whether to use trainer do_validate
   use_trainer_do_validate: False
 
+training_dump:
+
+  # Training-side per-token dump for offline ablation analysis (docs/Ablation_RL.md).
+  # Captures loss-boundary tensors (log_probs / old_log_probs / rollout_log_probs /
+  # advantages / masks) that the generation-side rollout dump cannot. Read-only,
+  # sampled, and offloaded so training never blocks. Disabled by default.
+  enable: False
+
+  # Output directory (required when enable=true). One <dir>/step_<global_step>.dp per dump.
+  dir: null
+
+  # Sample cadence and per-step row cap bound disk + host-copy cost.
+  sample_every_n_steps: 20
+  max_rows: 256
+
+  # Storage precision for float tensors (masks/ids keep their dtype).
+  dtype: bf16
+
+  # Offload serialization + disk write to a background thread; skip a dump step
+  # if the previous write is still in flight (never blocks the trainer).
+  offload: True
+
 async_hpt:
 
   # Hybrid Prompt Trajectory routing is opt-in and disabled by default.
