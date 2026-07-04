@@ -349,6 +349,96 @@ class TestComputeDataMetrics(unittest.TestCase):
         self.assertIn("critic/rewards/mean", metrics)
         self.assertIn("response_length/mean", metrics)
 
+    def test_hpt_sft_rows_do_not_pollute_critic_score_metrics(self):
+        """HPT SFT pseudo rewards must not be logged as task scores."""
+        self.batch.batch["token_level_scores"] = torch.tensor(
+            [
+                [0.0, 0.3],
+                [0.0, 1.0],
+                [0.0, 0.3],
+            ]
+        )
+        self.batch.batch["token_level_rewards"] = torch.tensor(
+            [
+                [0.0, 0.3],
+                [0.0, 1.0],
+                [0.0, 0.3],
+            ]
+        )
+        self.batch.batch["advantages"] = torch.ones((3, 2))
+        self.batch.batch["returns"] = torch.ones((3, 2))
+        self.batch.batch["values"] = torch.zeros((3, 2))
+        self.batch.batch["prompts"] = torch.zeros((3, 2))
+        self.batch.batch["responses"] = torch.zeros((3, 2))
+        self.batch.batch["attention_mask"] = torch.ones((3, 4), dtype=torch.long)
+        self.batch.batch["response_mask"] = torch.ones((3, 2), dtype=torch.long)
+        self.batch.batch["hpt_is_sft"] = torch.tensor([True, False, True], dtype=torch.bool)
+        self.batch.non_tensor_batch = {
+            "hpt_success_probability": np.array([0.0, 1.0, 0.0], dtype=object),
+        }
+
+        metrics = compute_data_metrics(self.batch, use_critic=True)
+
+        self.assertAlmostEqual(metrics["critic/score/mean"], 1 / 3)
+        self.assertAlmostEqual(metrics["critic/score/max"], 1.0)
+        self.assertAlmostEqual(metrics["critic/score/min"], 0.0)
+        self.assertAlmostEqual(metrics["critic/rewards/mean"], 1 / 3)
+        self.assertAlmostEqual(metrics["hpt/sft_pseudo_reward/mean"], 0.3)
+        self.assertAlmostEqual(metrics["hpt/sft_pseudo_reward/max"], 0.3)
+        self.assertAlmostEqual(metrics["hpt/sft_pseudo_reward/min"], 0.3)
+
+    def test_hpt_all_sft_score_metrics_are_success_probability_not_beta(self):
+        """All-SFT HPT batches should report model score, not beta."""
+        self.batch.batch["token_level_scores"] = torch.tensor([[0.0, 0.3], [0.0, 0.3]])
+        self.batch.batch["token_level_rewards"] = torch.tensor([[0.0, 0.3], [0.0, 0.3]])
+        self.batch.batch["hpt_is_sft"] = torch.tensor([True, True], dtype=torch.bool)
+        self.batch.non_tensor_batch = {
+            "hpt_success_probability": np.array([0.0, 0.0], dtype=object),
+        }
+
+        metrics = compute_data_metrics(self.batch, use_critic=True)
+
+        self.assertAlmostEqual(metrics["critic/score/mean"], 0.0)
+        self.assertAlmostEqual(metrics["critic/rewards/mean"], 0.0)
+        self.assertAlmostEqual(metrics["hpt/sft_pseudo_reward/mean"], 0.3)
+
+    def test_hpt_onpolicy_success_rate_is_group_weighted_not_row_weighted(self):
+        """On-policy success rate must be GROUP-weighted (unbiased), unlike the
+        ROW-weighted critic/score/mean which over-represents RL groups (n rows each)
+        vs SFT groups (1 row each).
+
+        Setup: 1 RL group with 4 correct rollouts (success_probability=1.0) + 4 SFT
+        groups each with success_probability=0.0.
+          - critic/score/mean (row-weighted) = 4*1 / 8 rows          = 0.50  (biased up)
+          - hpt/onpolicy_success_rate (group-weighted) = 1 / 5 groups = 0.20  (true)
+        """
+        self.batch.batch["token_level_scores"] = torch.tensor(
+            [[0.0, 1.0], [0.0, 1.0], [0.0, 1.0], [0.0, 1.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]]
+        )
+        self.batch.batch["token_level_rewards"] = self.batch.batch["token_level_scores"].clone()
+        self.batch.batch["advantages"] = torch.ones((8, 2))
+        self.batch.batch["returns"] = torch.ones((8, 2))
+        self.batch.batch["values"] = torch.zeros((8, 2))
+        self.batch.batch["prompts"] = torch.zeros((8, 2))
+        self.batch.batch["responses"] = torch.zeros((8, 2))
+        self.batch.batch["attention_mask"] = torch.ones((8, 4), dtype=torch.long)
+        self.batch.batch["response_mask"] = torch.ones((8, 2), dtype=torch.long)
+        self.batch.batch["hpt_is_sft"] = torch.tensor(
+            [False, False, False, False, True, True, True, True], dtype=torch.bool
+        )
+        self.batch.non_tensor_batch = {
+            "hpt_success_probability": np.array([1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0], dtype=object),
+            "hpt_group_uid": np.array(["g_rl", "g_rl", "g_rl", "g_rl", "s1", "s2", "s3", "s4"], dtype=object),
+        }
+
+        metrics = compute_data_metrics(self.batch, use_critic=True)
+
+        # Biased (row-weighted) score over-counts the successful RL group 4x.
+        self.assertAlmostEqual(metrics["critic/score/mean"], 0.5)
+        # Debiased (group-weighted) on-policy success rate: 1 of 5 groups succeeded.
+        self.assertAlmostEqual(metrics["hpt/onpolicy_success_rate"], 0.2)
+        self.assertAlmostEqual(metrics["hpt/onpolicy_num_groups"], 5.0)
+
 
 class TestComputeTimingMetrics(unittest.TestCase):
     """Tests for the compute_timing_metrics function."""

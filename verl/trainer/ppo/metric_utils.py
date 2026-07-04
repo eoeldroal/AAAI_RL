@@ -434,6 +434,62 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
     """
     sequence_score = batch.batch["token_level_scores"].sum(-1)
     sequence_reward = batch.batch["token_level_rewards"].sum(-1)
+    hpt_score_metrics = {}
+    hpt_is_sft = batch.batch.get("hpt_is_sft")
+    if hpt_is_sft is not None:
+        if hpt_is_sft.dim() != 1 or int(hpt_is_sft.shape[0]) != int(sequence_score.shape[0]):
+            raise ValueError(
+                "HPT metric field 'hpt_is_sft' must have shape "
+                f"({int(sequence_score.shape[0])},), got {tuple(hpt_is_sft.shape)}."
+            )
+        success_probability = batch.non_tensor_batch.get("hpt_success_probability")
+        if success_probability is None:
+            raise ValueError("HPT metric computation requires non_tensor_batch['hpt_success_probability'].")
+        if len(success_probability) != int(sequence_score.shape[0]):
+            raise ValueError(
+                "HPT metric field 'hpt_success_probability' must have one value per row: "
+                f"{len(success_probability)} != {int(sequence_score.shape[0])}."
+            )
+        values = []
+        for row_idx, value in enumerate(success_probability):
+            normalized = value.item() if isinstance(value, np.generic) else value
+            try:
+                values.append(float(normalized))
+            except (TypeError, ValueError) as e:
+                raise ValueError(
+                    f"hpt_success_probability[{row_idx}] must be a numeric value, got {value!r}."
+                ) from e
+
+        # Unbiased on-policy success rate: GROUP-weighted mean of success_probability.
+        # critic/score/mean (computed below) is ROW-weighted, so it over-represents
+        # RL-routed groups (rollout.n rows each) relative to SFT-routed groups (1 row
+        # each) and overstates the true per-prompt on-policy pass rate by a large,
+        # time-varying factor. Deduping by group_uid recovers the unbiased
+        # training-time avg@n success rate -- the correct on-policy-ability signal.
+        group_uids = batch.non_tensor_batch.get("hpt_group_uid")
+        if group_uids is not None and len(group_uids) == len(values):
+            group_success: dict = {}
+            for gid, sp in zip(group_uids, values, strict=False):
+                key = gid.item() if isinstance(gid, np.generic) else gid
+                group_success[key] = sp  # success_probability is constant within a group
+            if group_success:
+                rates = list(group_success.values())
+                hpt_score_metrics["hpt/onpolicy_success_rate"] = float(sum(rates) / len(rates))
+                hpt_score_metrics["hpt/onpolicy_num_groups"] = float(len(rates))
+
+        sft_mask = hpt_is_sft.to(device=sequence_score.device, dtype=torch.bool)
+        if bool(sft_mask.any().item()):
+            success_probability_tensor = torch.tensor(values, dtype=sequence_score.dtype, device=sequence_score.device)
+            sft_pseudo_reward = sequence_score[sft_mask]
+            sequence_score = torch.where(sft_mask, success_probability_tensor, sequence_score)
+            sequence_reward = torch.where(
+                sft_mask,
+                success_probability_tensor.to(sequence_reward.dtype),
+                sequence_reward,
+            )
+            hpt_score_metrics["hpt/sft_pseudo_reward/mean"] = torch.mean(sft_pseudo_reward).detach().item()
+            hpt_score_metrics["hpt/sft_pseudo_reward/max"] = torch.max(sft_pseudo_reward).detach().item()
+            hpt_score_metrics["hpt/sft_pseudo_reward/min"] = torch.min(sft_pseudo_reward).detach().item()
 
     advantages = batch.batch["advantages"]
     returns = batch.batch["returns"]
@@ -572,6 +628,7 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
         "prompt_length/max": torch.max(prompt_length).detach().item(),
         "prompt_length/min": torch.min(prompt_length).detach().item(),
         "prompt_length/clip_ratio": torch.mean(torch.eq(prompt_length, max_prompt_length).float()).detach().item(),
+        **hpt_score_metrics,
     }
 
     # multi-turn conversation

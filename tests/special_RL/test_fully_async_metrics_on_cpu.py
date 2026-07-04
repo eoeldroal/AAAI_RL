@@ -148,9 +148,11 @@ def test_fully_async_explicit_weighted_metrics_without_mean_keywords():
         {
             "actor/entropy": 2.0,
             "actor/hpt/sft_nll": 10.0,
+            "hpt/sft_pseudo_reward/mean": 0.3,
             "rollout_is_eff_sample_size": 0.5,
             "_metric_weight/actor/entropy": 2,
             "_metric_weight/actor/hpt/sft_nll": 1,
+            "_metric_weight/hpt/sft_pseudo_reward/mean": 1,
             "_metric_weight/rollout_is_eff_sample_size": 4,
         },
         sample_count=100,
@@ -159,9 +161,11 @@ def test_fully_async_explicit_weighted_metrics_without_mean_keywords():
         {
             "actor/entropy": 6.0,
             "actor/hpt/sft_nll": 30.0,
+            "hpt/sft_pseudo_reward/mean": 0.9,
             "rollout_is_eff_sample_size": 0.25,
             "_metric_weight/actor/entropy": 6,
             "_metric_weight/actor/hpt/sft_nll": 3,
+            "_metric_weight/hpt/sft_pseudo_reward/mean": 3,
             "_metric_weight/rollout_is_eff_sample_size": 4,
         },
         sample_count=100,
@@ -171,6 +175,7 @@ def test_fully_async_explicit_weighted_metrics_without_mean_keywords():
 
     assert metrics["actor/entropy"] == pytest.approx((2.0 * 2 + 6.0 * 6) / 8)
     assert metrics["actor/hpt/sft_nll"] == pytest.approx((10.0 * 1 + 30.0 * 3) / 4)
+    assert metrics["hpt/sft_pseudo_reward/mean"] == pytest.approx((0.3 * 1 + 0.9 * 3) / 4)
     assert metrics["rollout_is_eff_sample_size"] == pytest.approx((0.5 * 4 + 0.25 * 4) / 8)
 
 
@@ -252,7 +257,10 @@ def test_fully_async_metric_weight_sidecars_match_sequence_and_token_denominator
     trainer.use_critic = True
     trainer.metrics = {
         "actor/pg_loss": 0.0,
+        "actor/entropy": 0.0,
+        "actor/entropy_loss": 0.0,
         "actor/hpt/sft_nll": 0.0,
+        "hpt/sft_pseudo_reward/mean": 0.0,
         "critic/score/mean": 0.0,
         "critic/advantages/mean": 0.0,
         "critic/values/mean": 0.0,
@@ -289,7 +297,10 @@ def test_fully_async_metric_weight_sidecars_match_sequence_and_token_denominator
     trainer._collect_metric_aggregation_weights(batch)
 
     assert trainer.metrics["_metric_weight/actor/pg_loss"] == 4
+    assert trainer.metrics["_metric_weight/actor/entropy"] == 1
+    assert trainer.metrics["_metric_weight/actor/entropy_loss"] == 1
     assert trainer.metrics["_metric_weight/actor/hpt/sft_nll"] == 3
+    assert trainer.metrics["_metric_weight/hpt/sft_pseudo_reward/mean"] == 2
     assert trainer.metrics["_metric_weight/critic/score/mean"] == 2
     assert trainer.metrics["_metric_weight/response_length_non_aborted/mean"] == 2
     assert trainer.metrics["_metric_weight/critic/advantages/mean"] == 4

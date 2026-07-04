@@ -921,10 +921,20 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
         row_count = len(batch)
         non_aborted_count = int((response_length != 0).sum().item())
         response_token_count = int(response_mask.sum().item())
+        sft_row_count = 0
         sft_token_count = response_token_count
+        entropy_token_count = response_token_count
+        group_count = row_count
         if "hpt_is_sft" in batch.batch:
-            hpt_is_sft = batch.batch["hpt_is_sft"].to(dtype=torch.bool).unsqueeze(-1)
-            sft_token_count = int((response_mask & hpt_is_sft).sum().item())
+            hpt_is_sft = batch.batch["hpt_is_sft"].to(dtype=torch.bool)
+            sft_row_count = int(hpt_is_sft.sum().item())
+            sft_token_count = int((response_mask & hpt_is_sft.unsqueeze(-1)).sum().item())
+            if not bool(batch.meta_info.get("hpt_sft_entropy_enabled", False)):
+                entropy_token_count = response_token_count - sft_token_count
+        # Unique prompt-groups: the correct cross-window weight for the group-weighted
+        # on-policy success rate (so it is not re-biased by row counts during aggregation).
+        if "hpt_group_uid" in batch.non_tensor_batch:
+            group_count = len(set(batch.non_tensor_batch["hpt_group_uid"].tolist()))
 
         metric_weights = {
             "critic/score/mean": non_aborted_count,
@@ -945,10 +955,12 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
             "actor/pg_clipfrac": response_token_count,
             "actor/pg_clipfrac_lower": response_token_count,
             "actor/ppo_kl": response_token_count,
-            "actor/entropy": response_token_count,
-            "actor/entropy_loss": response_token_count,
+            "actor/entropy": entropy_token_count,
+            "actor/entropy_loss": entropy_token_count,
             "actor/kl_loss": response_token_count,
             "actor/hpt/sft_nll": sft_token_count,
+            "hpt/sft_pseudo_reward/mean": sft_row_count,
+            "hpt/onpolicy_success_rate": group_count,
             "kl": response_token_count,
             "k3_kl": response_token_count,
             "chi2_token": response_token_count,

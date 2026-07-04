@@ -207,6 +207,7 @@ class MetricsAggregator:
             "time_sum": ["perf/time_per_step"],
             "sum": [
                 "actor/hpt/sft_response_token_count",
+                "hpt/onpolicy_num_groups",
                 "fully_async/hpt_collected_queue_samples",
                 "fully_async/partial/total_partial_num",
                 "hpt/missing_tau_count",
@@ -223,6 +224,7 @@ class MetricsAggregator:
             "weighted_avg": [
                 "actor/entropy",
                 "actor/hpt/sft_nll",
+                "hpt/onpolicy_success_rate",
                 "rollout_is_eff_sample_size",
             ],
             "last": [

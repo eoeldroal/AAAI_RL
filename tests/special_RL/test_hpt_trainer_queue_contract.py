@@ -1047,6 +1047,7 @@ def test_hpt_sft_self_detach_keeps_ratio_one_and_masks_auxiliary_terms():
     _, metrics = ppo_loss(config, {"log_probs": log_probs, "entropy": entropy}, data)
 
     assert metrics["actor/ppo_kl"].aggregate() == pytest.approx(-0.125, abs=1e-6)
+    assert metrics["actor/entropy"].aggregate() == pytest.approx(0.5, abs=1e-6)
     assert metrics["actor/entropy_loss"].aggregate() == pytest.approx(0.5, abs=1e-6)
     assert metrics["kl_loss"].aggregate() == pytest.approx(0.36, abs=1e-6)
 
@@ -1083,6 +1084,7 @@ def test_hpt_sft_auxiliary_terms_can_be_enabled_explicitly():
 
     _, metrics = ppo_loss(config, {"log_probs": log_probs, "entropy": entropy}, data)
 
+    assert metrics["actor/entropy"].aggregate() == pytest.approx(50.5, abs=1e-6)
     assert metrics["actor/entropy_loss"].aggregate() == pytest.approx(50.5, abs=1e-6)
     assert metrics["kl_loss"].aggregate() == pytest.approx(25.25, abs=1e-6)
 
