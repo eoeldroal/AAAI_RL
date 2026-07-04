@@ -616,6 +616,14 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
         If local_trigger_step == 2, 3, ..., restore the parameters of version 1 to calculate the old_log_prob,
         then restore the parameters of the current version.
         """
+        async_hpt_enabled = bool(OmegaConf.select(self.config, "async_hpt.enabled", default=False))
+        old_logprob_source = OmegaConf.select(self.config, "async_hpt.rl_old_logprob_source", default="rollout")
+        entry_proximal = OmegaConf.select(self.config, "async_hpt.entry_proximal", default="recent")
+        if async_hpt_enabled and old_logprob_source == "entry":
+            if entry_proximal != "recent":
+                raise ValueError(f"Unsupported async_hpt.entry_proximal={entry_proximal!r}.")
+            return super()._compute_old_log_prob(batch)
+
         if self.local_trigger_step == 1:
             self.actor_rollout_wg.save_model_to_cpu(1)
             old_log_prob, old_log_prob_mfu = super()._compute_old_log_prob(batch)

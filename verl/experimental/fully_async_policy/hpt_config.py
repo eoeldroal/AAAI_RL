@@ -19,7 +19,7 @@ from typing import Any, Literal
 from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-SUPPORTED_HPT_BASE_POLICY_LOSS_MODES = frozenset({"vanilla"})
+SUPPORTED_HPT_BASE_POLICY_LOSS_MODES = frozenset({"cispo", "vanilla"})
 
 
 class AsyncHptTrajectorySchedulerConfig(BaseModel):
@@ -43,7 +43,8 @@ class AsyncHptConfig(BaseModel):
     sft_beta_mode: Literal["constant", "length_inverse"] = "constant"
     sft_entropy_enabled: bool = False
     sft_kl_enabled: bool = False
-    rl_old_logprob_source: Literal["rollout"] = "rollout"
+    rl_old_logprob_source: Literal["rollout", "entry"] = "rollout"
+    entry_proximal: Literal["recent"] = "recent"
     tau_dataset_path: str | None = None
     tau_messages_key: str = "tau_messages"
     success_score_key: str = "reward_score"
@@ -139,6 +140,46 @@ def validate_async_hpt_config(config: DictConfig) -> AsyncHptConfig:
             "async_hpt.enabled=true currently supports "
             f"actor_rollout_ref.actor.policy_loss.loss_mode in {{{supported}}}; got {loss_mode!r}"
         )
+    if loss_mode == "cispo":
+        cispo_clip_mode = OmegaConf.select(
+            config, "actor_rollout_ref.actor.policy_loss.cispo_clip_mode", default="upper"
+        )
+        if cispo_clip_mode != "upper":
+            raise ValueError(
+                "async_hpt.enabled=true with actor_rollout_ref.actor.policy_loss.loss_mode=cispo "
+                f"requires actor_rollout_ref.actor.policy_loss.cispo_clip_mode=upper; got {cispo_clip_mode!r}"
+            )
+        cispo_epsilon_high = OmegaConf.select(
+            config, "actor_rollout_ref.actor.policy_loss.cispo_epsilon_high", default=5.0
+        )
+        if (
+            isinstance(cispo_epsilon_high, bool)
+            or not isinstance(cispo_epsilon_high, int | float)
+            or cispo_epsilon_high < 1.0
+        ):
+            raise ValueError(
+                "async_hpt.enabled=true with CISPO requires "
+                "actor_rollout_ref.actor.policy_loss.cispo_epsilon_high >= 1.0."
+            )
+
+    if hpt_config.rl_old_logprob_source == "entry":
+        rollout_is = OmegaConf.select(config, "algorithm.rollout_correction.rollout_is", default=None)
+        if rollout_is != "token":
+            raise ValueError(
+                "async_hpt.rl_old_logprob_source=entry requires "
+                f"algorithm.rollout_correction.rollout_is=token; got {rollout_is!r}"
+            )
+        rollout_rs = OmegaConf.select(config, "algorithm.rollout_correction.rollout_rs", default=None)
+        if rollout_rs is not None:
+            raise ValueError(
+                "async_hpt.rl_old_logprob_source=entry requires "
+                f"algorithm.rollout_correction.rollout_rs=null; got {rollout_rs!r}"
+            )
+        bypass_mode = OmegaConf.select(config, "algorithm.rollout_correction.bypass_mode", default=False)
+        if bypass_mode is True:
+            raise ValueError(
+                "async_hpt.rl_old_logprob_source=entry is incompatible with rollout correction bypass_mode."
+            )
 
     calculate_log_probs = OmegaConf.select(config, "actor_rollout_ref.rollout.calculate_log_probs", default=False)
     if calculate_log_probs is not True:

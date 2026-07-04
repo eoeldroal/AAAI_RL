@@ -131,8 +131,10 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
 
     hpt_sft_token_mask = None
     if hpt_policy_loss:
-        if loss_mode != "vanilla":
-            raise ValueError("HPT branch-blind policy loss supports only vanilla as the base policy loss mode.")
+        if loss_mode not in {"cispo", "vanilla"}:
+            raise ValueError(
+                "HPT branch-blind policy loss supports only vanilla or cispo as the base policy loss mode."
+            )
         hpt_sft_token_mask = _hpt_sft_mask(data["hpt_is_sft"], response_mask, log_prob) & response_mask
         old_log_prob = torch.where(hpt_sft_token_mask, log_prob.detach(), old_log_prob)
         if rollout_is_weights is not None:

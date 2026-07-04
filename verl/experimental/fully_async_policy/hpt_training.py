@@ -34,9 +34,11 @@ def should_use_hpt_rollout_logprob_anchor(config: Any, batch: DataProto) -> bool
     if not bool(OmegaConf.select(config, "async_hpt.enabled", default=False)):
         return False
     source = OmegaConf.select(config, "async_hpt.rl_old_logprob_source", default="rollout")
-    if source != "rollout":
-        raise ValueError(f"HPT v1 requires async_hpt.rl_old_logprob_source=rollout, got {source!r}.")
-    return True
+    if source == "rollout":
+        return True
+    if source == "entry":
+        return False
+    raise ValueError(f"Unsupported async_hpt.rl_old_logprob_source={source!r}.")
 
 
 def apply_hpt_rollout_logprob_anchor(batch: DataProto) -> dict[str, float]:

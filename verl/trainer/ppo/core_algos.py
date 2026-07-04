@@ -2116,8 +2116,16 @@ def compute_policy_loss_cispo(
 
     assert config is not None
     assert isinstance(config, ActorConfig)
-    clip_ratio_low = config.clip_ratio_low if config.clip_ratio_low is not None else config.clip_ratio
-    clip_ratio_high = config.clip_ratio_high if config.clip_ratio_high is not None else config.clip_ratio
+    cispo_clip_mode = config.policy_loss.get("cispo_clip_mode", "upper")
+    cispo_epsilon_high = config.policy_loss.get("cispo_epsilon_high", 5.0)
+    if cispo_clip_mode == "upper":
+        if cispo_epsilon_high < 1.0:
+            raise ValueError(f"CISPO upper clipping requires cispo_epsilon_high >= 1.0, got {cispo_epsilon_high}.")
+    elif cispo_clip_mode == "two_sided":
+        clip_ratio_low = config.clip_ratio_low if config.clip_ratio_low is not None else config.clip_ratio
+        clip_ratio_high = config.clip_ratio_high if config.clip_ratio_high is not None else config.clip_ratio
+    else:
+        raise ValueError(f"Unsupported CISPO clip mode: {cispo_clip_mode!r}.")
 
     # Compute importance sampling ratio: π_θ / π_θ_old
     negative_approx_kl = log_prob - old_log_prob
@@ -2126,11 +2134,16 @@ def compute_policy_loss_cispo(
     ratio = torch.exp(negative_approx_kl)
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
 
-    # CISPO: Clip the importance sampling weights
+    # CISPO: Clip the coefficient, then stop gradients through the clipped ratio.
     # KEY: Apply stop gradient to the clipped ratio
     # This prevents gradients from flowing through the ratio computation and clipping
     # Gradients only flow through log_prob in the final loss term
-    clipped_ratio = torch.clamp(ratio, 1 - clip_ratio_low, 1 + clip_ratio_high)
+    if cispo_clip_mode == "upper":
+        clipped_ratio = torch.clamp(ratio, max=cispo_epsilon_high)
+        clipped_lower = torch.zeros_like(ratio, dtype=torch.bool)
+    else:
+        clipped_ratio = torch.clamp(ratio, 1 - clip_ratio_low, 1 + clip_ratio_high)
+        clipped_lower = ratio < 1 - clip_ratio_low
     clipped_ratio_sg = clipped_ratio.detach()
 
     # CISPO objective function (to maximize): J = sg(clip(ratio)) * A * log π_θ
@@ -2148,8 +2161,7 @@ def compute_policy_loss_cispo(
         loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode=loss_agg_mode, **config.global_batch_info
     )
 
-    # For compatibility, return zero for pg_clipfrac_lower (not used in CISPO)
-    pg_clipfrac_lower = torch.tensor(0.0, device=pg_loss.device)
+    pg_clipfrac_lower = verl_F.masked_mean(clipped_lower.float(), response_mask)
 
     pg_metrics = {
         "actor/pg_clipfrac": pg_clipfrac.detach().item(),
