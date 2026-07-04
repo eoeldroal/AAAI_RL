@@ -66,6 +66,12 @@ export XDG_CACHE_HOME="${RUNTIME_CACHE_DIR}/xdg"
 # 빠듯하면 all_steps=False + steps=[...]로 일부 step만 저장해 제한한다.
 ROLLOUT_DUMP_DIR="${VERL_ROOT}/.cache/rollout_dump/openr1_async_hpt_qwen25_math_1_5b_${RUN_TIMESTAMP}"
 
+# 학습-side per-token dump (docs/Ablation_RL.md §10). 위 생성 dump가 담을 수 없는
+# loss 경계 텐서(log_probs/old_log_probs/rollout_log_probs/advantages/mask)를 저장한다.
+# A1(정답×길이)·A6c(death 밀도) offline 분석의 유일한 소스라 D0 baseline부터 켠다.
+# read-only·sampled·offload라 학습을 막지 않는다(§10 무게 검토). run별 유니크 dir.
+TRAIN_DUMP_DIR="${VERL_ROOT}/.cache/train_dump/openr1_async_hpt_qwen25_math_1_5b_${RUN_TIMESTAMP}"
+
 # [각주 3] batch scale은 UPT train_batch_size=128 prompt groups와 맞춘다.
 # queue sample은 row가 아니라 prompt group이다. rollout.n=8이므로
 # ppo_mini_batch_size(32) * require_batches(4) = 128 prompt groups,
@@ -243,6 +249,12 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     skip.async_rollout.steps=[] \
     skip.async_rollout.all_steps=True \
     skip.async_rollout.action=dump \
+    training_dump.enable=True \
+    training_dump.dir="${TRAIN_DUMP_DIR}" \
+    training_dump.sample_every_n_steps=20 \
+    training_dump.max_rows=256 \
+    training_dump.dtype=bf16 \
+    training_dump.offload=True \
     async_hpt.enabled=True \
     async_hpt.gamma=0.0 \
     async_hpt.beta=0.3 \
