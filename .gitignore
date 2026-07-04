@@ -133,3 +133,8 @@ logs
 log
 outputs
 .history
+scratch_hpt_fair_viz.html
+docs/papers_RL/AsyncFlow- An Asynchronous Streaming RL Framework for Efficient LLM Post-Training.pdf
+docs/papers_RL/Learning to Reason under Off-Policy Guidance(LUFFY).pdf
+docs/papers_RL/StreamRL- Scalable, Heterogeneous, and Elastic RL for LLMs with Disaggregated Stream Generation.pdf
+docs/papers_RL/Towards a Unified View of Large Language Model Post-Training.pdf
