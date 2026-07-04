@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import multiprocessing
 import threading
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
+from contextlib import contextmanager
 
 try:
     from math_verify.errors import TimeoutException
@@ -25,6 +27,28 @@ except ImportError:
         pass
 
     print("To use Math-Verify, please install it first by running `pip install math-verify`.")
+
+# math_verify's own grader/parser log a full traceback (via logging.error) for every
+# pathological comparison it internally times out or fails to parse -- e.g. a huge
+# power expression, an integral needing numeric quadrature, or garbled unicode from a
+# degenerate rollout. It still returns a valid (usually 0) score in these cases; the
+# logging is just noisy. Silence it inside the worker process where grading runs.
+_NOISY_MATH_VERIFY_LOGGERS = ("math_verify.grader", "math_verify.parser")
+
+
+@contextmanager
+def _suppress_math_verify_tracebacks():
+    states = []
+    for logger_name in _NOISY_MATH_VERIFY_LOGGERS:
+        logger = logging.getLogger(logger_name)
+        states.append((logger, logger.disabled))
+        logger.disabled = True
+    try:
+        yield
+    finally:
+        for logger, disabled in states:
+            logger.disabled = disabled
+
 
 _pool = None
 _pool_lock = threading.Lock()
@@ -47,10 +71,11 @@ def _verify_in_subprocess(ground_truth_boxed: str, model_output: str) -> float:
     gold_targets = (LatexExtractionConfig(),)
     pred_targets = (ExprExtractionConfig(), LatexExtractionConfig())
 
-    extracted_gold = parse(ground_truth_boxed, gold_targets)
-    extracted_pred = parse(model_output, pred_targets)
-    if extracted_gold and extracted_pred:
-        return max(1.0 if any(verify(g, p) for g in extracted_gold) else 0.0 for p in extracted_pred)
+    with _suppress_math_verify_tracebacks():
+        extracted_gold = parse(ground_truth_boxed, gold_targets)
+        extracted_pred = parse(model_output, pred_targets)
+        if extracted_gold and extracted_pred:
+            return max(1.0 if any(verify(g, p) for g in extracted_gold) else 0.0 for p in extracted_pred)
     return 0.0
 
 
