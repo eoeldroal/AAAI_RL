@@ -120,6 +120,21 @@ MAX_COMPLETED_PROMPT_GROUPS=2048
 # fit당 SGD 2회), 우리는 32(fit당 4회)다. 둘 다 fit당 128 prompt-group(=1024 row)
 # 스케일은 동일하고(각주 3) optimizer grain만 더 잘다 — async trainer scheduling과
 # HPT learner-row divisibility에 덜 brittle하려는 선택이다.
+#
+# [각주 10] D0 정체성 명시 (docs/Ablation_RL.md). 아래 세 값은 verl 기본값과
+# 동일해 동작은 바뀌지 않지만, ablation 비교의 앵커(D0)를 코드에 못박기 위해
+# 명시한다. 누락이 아니라 의도된 고정이다.
+#   - actor.ppo_epochs=1
+#       A6c(g-슬롯 CISPO) 정보성 논증이 이 값에 의존한다(DR-005 §4.1: anchor B +
+#       ppo_epochs=1이라 r 표류가 작아 death 표면이 작다). 기본 1이지만 명시 고정.
+#   - async_hpt.rl_old_logprob_source=rollout
+#       coupled anchor 고정. entry(decoupling, DR-004 §9)는 A5 arm에서만 켠다.
+#       현재 Literal["rollout"]이라 강제되지만, entry 추가 후에도 D0가 명시로 남게 한다.
+#   - async_hpt.k_max=null
+#       RL row의 학습-시점 staleness 드롭을 의도적으로 끈다. 낡음은 예산 레벨
+#       (async_training.staleness_threshold=2.0)로만 제어하고, A5에서 절단 IS(C_w)로
+#       보정한다(DR-005 §7-1의 C_w×k_max 공동 조율). A5 arm에서도 null로 고정해
+#       델타가 anchor 한 축만 벌어지게 한다.
 
 # Keep only engine-runtime environment at the command boundary. All training,
 # rollout, validation, and HPT settings are explicit Hydra overrides below.
@@ -153,6 +168,7 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     actor_rollout_ref.actor.optim.clip_grad=80.0 \
     actor_rollout_ref.actor.ppo_mini_batch_size=32 \
     actor_rollout_ref.actor.ppo_micro_batch_size=32 \
+    actor_rollout_ref.actor.ppo_epochs=1 \
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=32768 \
     actor_rollout_ref.actor.clip_ratio_low=0.2 \
     actor_rollout_ref.actor.clip_ratio_high=0.28 \
@@ -234,6 +250,8 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     async_hpt.sft_beta_mode=constant \
     async_hpt.sft_entropy_enabled=False \
     async_hpt.sft_kl_enabled=False \
+    async_hpt.rl_old_logprob_source=rollout \
+    async_hpt.k_max=null \
     async_hpt.tau_dataset_path="${DATA_DIR}/train.parquet" \
     async_hpt.tau_messages_key=tau_messages \
     async_hpt.fail_on_missing_tau=True \
