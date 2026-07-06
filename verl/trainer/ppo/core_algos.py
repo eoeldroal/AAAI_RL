@@ -1323,9 +1323,11 @@ def compute_entropy_clip_diagnostics(
       - is the (low) clip fraction concentrated on the high-entropy "forking" minority
         tokens that drive learning (Wang et al., NeurIPS 2025; MiniMax-M1 / CISPO)?
 
-    Pure analysis metrics: computed on detached tensors, never on the loss path. Returns an
-    empty dict when ``rl_mask`` selects no tokens (e.g. an all-SFT microbatch early in HPT
-    training) so callers emit nothing rather than crash.
+    Pure analysis metrics: computed on detached tensors, never on the loss path. Emits
+    token-weighted *sum/count components* (SUM-aggregated) rather than per-microbatch means, so
+    they reduce correctly across dynamic-batch microbatches and DP ranks; the reported ratios are
+    recovered by ``finalize_entropy_clip_diagnostics``. All keys are ALWAYS returned (0 on an
+    all-SFT microbatch) so the per-rank value count stays uniform for ``Metric.aggregate_dp``.
 
     Args:
         entropy: per-token policy entropy, shape ``(bs, response_length)``.
@@ -1338,17 +1340,31 @@ def compute_entropy_clip_diagnostics(
         top_frac: high-entropy tail fraction (default 0.2, per the 80/20 result).
 
     Returns:
-        Dict of python floats (or ``{}`` if no RL tokens):
-          - ``actor/entropy_mean``: masked mean per-token entropy over RL tokens.
-          - ``actor/entropy_top20_mean``: mean entropy of the top-``top_frac`` RL tokens.
-          - ``actor/pg_clipfrac_top20entropy``: clip-active fraction within that tail.
+        Dict of five scalar tensors (always present; SUM-aggregate them, then call
+        ``finalize_entropy_clip_diagnostics``):
+          - ``actor/_entropy_rl_sum`` / ``actor/_entropy_rl_count``: Σ entropy and token count over RL tokens.
+          - ``actor/_entropy_top20_sum`` / ``actor/_entropy_top20_count``: same over the top-``top_frac`` tail.
+          - ``actor/_pg_clip_top20entropy_sum``: Σ clip-active over that tail (denominator = top20_count).
     """
     rl_mask = rl_mask.to(torch.bool)
-    if not torch.any(rl_mask):
-        return {}
-
     entropy = entropy.detach().float()
-    entropy_mean = verl_F.masked_mean(entropy, rl_mask)
+    zero = torch.zeros((), device=entropy.device)
+
+    rl_count = rl_mask.sum().float()
+    # All-SFT microbatch (no RL tokens): every component is 0. We STILL return all five keys —
+    # returning {} here made these keys appear on only a rank-dependent SUBSET of microbatches,
+    # so Metric.aggregate_dp saw unequal per-rank value counts (e.g. [3, 5]) and raised. Keeping
+    # the keys always present makes the per-rank count identical to the always-emitted base metrics.
+    if rl_count == 0:
+        return {
+            "actor/_entropy_rl_sum": zero,
+            "actor/_entropy_rl_count": zero,
+            "actor/_entropy_top20_sum": zero,
+            "actor/_entropy_top20_count": zero,
+            "actor/_pg_clip_top20entropy_sum": zero,
+        }
+
+    entropy_rl_sum = (entropy * rl_mask).sum()
 
     # High-entropy tail threshold from the RL-token entropy distribution (per microbatch).
     rl_entropy = entropy[rl_mask]
@@ -1356,18 +1372,64 @@ def compute_entropy_clip_diagnostics(
     top_mask = rl_mask & (entropy >= threshold)
     if not torch.any(top_mask):  # degenerate all-equal entropy: fall back to the full RL set
         top_mask = rl_mask
-    entropy_top_mean = verl_F.masked_mean(entropy, top_mask)
+    top_count = top_mask.sum().float()
+    entropy_top_sum = (entropy * top_mask).sum()
 
     # Clip-active fraction within the high-entropy tail (the pivotal-token question).
     ratio = torch.exp(torch.clamp(log_prob.detach() - old_log_prob.detach(), min=-20.0, max=20.0))
     clip_active = pg_clip_active_mask(ratio, advantages.detach(), cliprange_low, cliprange_high).float()
-    clipfrac_top = verl_F.masked_mean(clip_active, top_mask)
+    clip_top_sum = (clip_active * top_mask).sum()
 
+    # Token-weighted components (SUM-aggregated by the caller): the reported ratios are recovered
+    # by finalize_entropy_clip_diagnostics as sum/count once cross-microbatch/DP reduction is done.
+    # The shared aggregation factors cancel in each quotient, so the result is the exact
+    # token-weighted mean, not a confounded per-microbatch mean.
     return {
-        "actor/entropy_mean": entropy_mean.detach().item(),
-        "actor/entropy_top20_mean": entropy_top_mean.detach().item(),
-        "actor/pg_clipfrac_top20entropy": clipfrac_top.detach().item(),
+        "actor/_entropy_rl_sum": entropy_rl_sum,
+        "actor/_entropy_rl_count": rl_count,
+        "actor/_entropy_top20_sum": entropy_top_sum,
+        "actor/_entropy_top20_count": top_count,
+        "actor/_pg_clip_top20entropy_sum": clip_top_sum,
     }
+
+
+def finalize_entropy_clip_diagnostics(metrics: dict[str, Any]) -> dict[str, Any]:
+    """Collapse the token-weighted §11 diagnostic components into the three reported metrics.
+
+    ``compute_entropy_clip_diagnostics`` emits per-microbatch *sums* and *counts* (SUM-aggregated),
+    which survive DP/microbatch reduction with identical value counts across ranks. Call this once
+    the components have been reduced to scalars (i.e. after ``reduce_metrics``): the shared
+    aggregation factors cancel in each quotient, so the quotient is the exact token-weighted mean
+    rather than an unweighted per-microbatch mean.
+
+    Emits (popping the raw components):
+      - ``actor/entropy_mean``           = entropy_rl_sum / entropy_rl_count
+      - ``actor/entropy_top20_mean``     = entropy_top20_sum / entropy_top20_count
+      - ``actor/pg_clipfrac_top20entropy`` = pg_clip_top20entropy_sum / entropy_top20_count
+
+    A whole update step with no RL tokens (all counts 0) omits the derived keys rather than emit a
+    misleading 0. No-op when the components are absent (e.g. non-HPT paths that never set them).
+    """
+    components = (
+        "actor/_entropy_rl_sum",
+        "actor/_entropy_rl_count",
+        "actor/_entropy_top20_sum",
+        "actor/_entropy_top20_count",
+        "actor/_pg_clip_top20entropy_sum",
+    )
+    if not all(key in metrics for key in components):
+        return metrics
+    rl_sum = metrics.pop("actor/_entropy_rl_sum")
+    rl_count = metrics.pop("actor/_entropy_rl_count")
+    top_sum = metrics.pop("actor/_entropy_top20_sum")
+    top_count = metrics.pop("actor/_entropy_top20_count")
+    clip_top_sum = metrics.pop("actor/_pg_clip_top20entropy_sum")
+    if rl_count > 0:
+        metrics["actor/entropy_mean"] = float(rl_sum / rl_count)
+    if top_count > 0:
+        metrics["actor/entropy_top20_mean"] = float(top_sum / top_count)
+        metrics["actor/pg_clipfrac_top20entropy"] = float(clip_top_sum / top_count)
+    return metrics
 
 
 @register_policy_loss("vanilla")  # type: ignore[arg-type]
@@ -2116,16 +2178,12 @@ def compute_policy_loss_cispo(
 
     assert config is not None
     assert isinstance(config, ActorConfig)
-    cispo_clip_mode = config.policy_loss.get("cispo_clip_mode", "upper")
-    cispo_epsilon_high = config.policy_loss.get("cispo_epsilon_high", 5.0)
-    if cispo_clip_mode == "upper":
-        if cispo_epsilon_high < 1.0:
-            raise ValueError(f"CISPO upper clipping requires cispo_epsilon_high >= 1.0, got {cispo_epsilon_high}.")
-    elif cispo_clip_mode == "two_sided":
-        clip_ratio_low = config.clip_ratio_low if config.clip_ratio_low is not None else config.clip_ratio
-        clip_ratio_high = config.clip_ratio_high if config.clip_ratio_high is not None else config.clip_ratio
-    else:
-        raise ValueError(f"Unsupported CISPO clip mode: {cispo_clip_mode!r}.")
+    # CISPO clips the IS weight with the standard band [1 - clip_ratio_low, 1 + clip_ratio_high].
+    # Upper-only clipping (MiniMax-M1 disables the lower IS bound; verl cispo_trainer uses
+    # clip_ratio_low=10) is realized by clip_ratio_low >= 1.0 so that 1 - clip_ratio_low <= 0
+    # never binds (ratio > 0). The upper cap 1 + clip_ratio_high is the movement-scale g-slot cap.
+    clip_ratio_low = config.clip_ratio_low if config.clip_ratio_low is not None else config.clip_ratio
+    clip_ratio_high = config.clip_ratio_high if config.clip_ratio_high is not None else config.clip_ratio
 
     # Compute importance sampling ratio: π_θ / π_θ_old
     negative_approx_kl = log_prob - old_log_prob
@@ -2134,16 +2192,11 @@ def compute_policy_loss_cispo(
     ratio = torch.exp(negative_approx_kl)
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
 
-    # CISPO: Clip the coefficient, then stop gradients through the clipped ratio.
-    # KEY: Apply stop gradient to the clipped ratio
-    # This prevents gradients from flowing through the ratio computation and clipping
-    # Gradients only flow through log_prob in the final loss term
-    if cispo_clip_mode == "upper":
-        clipped_ratio = torch.clamp(ratio, max=cispo_epsilon_high)
-        clipped_lower = torch.zeros_like(ratio, dtype=torch.bool)
-    else:
-        clipped_ratio = torch.clamp(ratio, 1 - clip_ratio_low, 1 + clip_ratio_high)
-        clipped_lower = ratio < 1 - clip_ratio_low
+    # CISPO: clip the coefficient, then stop gradients through the clipped ratio.
+    # KEY: the clipped ratio is detached, so gradients flow ONLY through log_prob in the
+    # final loss term — every token keeps a gradient (never zeroed like PPO's min-clip).
+    clipped_ratio = torch.clamp(ratio, 1 - clip_ratio_low, 1 + clip_ratio_high)
+    clipped_lower = ratio < 1 - clip_ratio_low
     clipped_ratio_sg = clipped_ratio.detach()
 
     # CISPO objective function (to maximize): J = sg(clip(ratio)) * A * log π_θ

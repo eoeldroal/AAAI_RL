@@ -37,7 +37,7 @@ from verl.experimental.fully_async_policy.hpt_training import (
 )
 from verl.single_controller.ray import RayClassWithInitArgs, RayWorkerGroup, ResourcePoolManager
 from verl.single_controller.ray.base import create_colocated_worker_cls
-from verl.trainer.ppo.core_algos import AdvantageEstimator, agg_loss
+from verl.trainer.ppo.core_algos import AdvantageEstimator, agg_loss, finalize_entropy_clip_diagnostics
 from verl.trainer.ppo.metric_utils import (
     compute_data_metrics,
     compute_throughout_metrics,
@@ -642,6 +642,9 @@ class SeparateRayPPOTrainer(RayPPOTrainer):
                 actor_output = self._update_actor(batch)
 
             actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
+            # Collapse token-weighted §11 diagnostic sum/count components into their ratios,
+            # now that they are reduced scalars (no-op if the components are absent).
+            actor_output_metrics = finalize_entropy_clip_diagnostics(actor_output_metrics)
             metrics.update(actor_output_metrics)
         return batch
 

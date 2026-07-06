@@ -187,10 +187,12 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
         # Entropy-resolved clip diagnostics over RL (rollout-provenance) tokens only.
         # De-confounds the sum-normed entropy_loss (which rises with the RL-token count) and
         # tests whether the low aggregate clip fraction concentrates on the high-entropy
-        # pivotal minority. Pure analysis metrics: detached, never affect policy_loss; empty
-        # on all-SFT microbatches. SFT tokens are always excluded regardless of
-        # sft_entropy_enabled (their ratio is 1 by self-detach, and they carry no rollout
-        # provenance to clip).
+        # pivotal minority. Pure analysis metrics: detached, never affect policy_loss. Emitted
+        # as token-weighted SUM components (always present, 0 on all-SFT microbatches) so they
+        # reduce correctly across dynamic-batch microbatches / DP ranks with uniform value
+        # counts; finalize_entropy_clip_diagnostics recovers the ratios post-reduction. SFT
+        # tokens are always excluded regardless of sft_entropy_enabled (their ratio is 1 by
+        # self-detach, and they carry no rollout provenance to clip).
         rl_diag_mask = response_mask
         if hpt_sft_token_mask is not None:
             rl_diag_mask = response_mask & ~hpt_sft_token_mask
@@ -206,7 +208,7 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
             cliprange_low=_clip_low,
             cliprange_high=_clip_high,
         )
-        metrics.update(Metric.from_dict(entropy_clip_diag, aggregation=AggregationType.MEAN))
+        metrics.update(Metric.from_dict(entropy_clip_diag, aggregation=AggregationType.SUM))
 
     # add kl loss
     if config.use_kl_loss:
