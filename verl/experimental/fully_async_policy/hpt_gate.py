@@ -234,10 +234,22 @@ def extract_score_values(payload: DataProto, *, score_key: str) -> list[float]:
             return [_coerce_score(tensor.item(), score_key)]
         return [_coerce_score(value, score_key) for value in tensor.detach().cpu().reshape(-1).tolist()]
     if score_key == "reward_score" and payload.batch is not None and "rm_scores" in payload.batch:
+        # rm_scores carries the outcome reward at the TERMINAL response token
+        # (valid_response_length - 1), NOT at the last tensor index — every position after the
+        # terminal token is right-padding (0). Reduce with sum(-1), the same sequence-reward
+        # reduction verl uses everywhere (core_algos GRPO `token_level_rewards.sum(-1)`,
+        # metric_utils `token_level_scores.sum(-1)`).
+        #
+        # BUGFIX (Improvement_RL.md §6): the previous `[-1]` read the LAST index, so it only saw
+        # the reward for responses that filled the entire budget (terminal == last index, i.e.
+        # truncated/non-terminating). Every early-terminating (clean) rollout was silently scored 0
+        # and its group routed to SFT. Combined with zero_reward_if_truncated (which zeros the
+        # truncated rewards that `[-1]` *could* see), this drove on-policy success to exactly 0 and
+        # collapsed the run to pure SFT. sum(-1) sees the terminal reward regardless of position.
         rm_scores = payload.batch["rm_scores"]
         if rm_scores.dim() == 1:
-            return [_coerce_score(rm_scores[-1].item(), "rm_scores")]
-        return [_coerce_score(row[-1].item(), "rm_scores") for row in rm_scores.detach().cpu()]
+            return [_coerce_score(rm_scores.sum().item(), "rm_scores")]
+        return [_coerce_score(row.sum().item(), "rm_scores") for row in rm_scores.detach().cpu()]
     raise ValueError(f"HPT routing could not find success score key {score_key!r} in rollout payload.")
 
 

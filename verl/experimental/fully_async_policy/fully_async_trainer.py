@@ -393,6 +393,7 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
             batch = assemble_batch_from_rollout_samples(queue_samples, self.tokenizer, self.config, None)
 
         batch.meta_info["fully_async/total_wait_time"] = total_wait_time
+        batch.meta_info["fully_async/mq_len"] = queue_len  # observability: message-queue depth (was console-only)
         return 0, batch
 
     def _hpt_max_queue_samples_for_trainable_batch(self, required_multiple: int) -> int:
@@ -580,6 +581,7 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
             batch = self._fit_compute_ref_log_prob(batch)
             batch = self._fit_compute_critic(batch)
             batch = self._fit_compute_advantage(batch)
+            batch = self._fit_filter_truncated_rl_advantage(batch)
             batch = self._fit_update_critic(batch)
             batch = self._fit_update_actor(batch)
             self._fit_update_local_step()
@@ -932,6 +934,42 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
                 if key.startswith("fully_async") or key.startswith("timing_s"):
                     metrics[key] = value
 
+    def _fit_filter_truncated_rl_advantage(self, batch: DataProto) -> DataProto:
+        """P0-2 (Improvement_RL.md §5.1/§5.5): zero the advantage of truncated RL rollouts.
+
+        A truncated (budget-exhausting, non-terminating) rollout is a length artifact, not a
+        reasoning signal: leaving its typically-negative advantage in the loss floods the
+        gradient with ~8k-token degenerate sequences and flattens the policy (the observed
+        entropy blow-up). Zeroing its advantage makes it contribute no policy gradient.
+
+        Ordering invariant (§5.5.2): this runs AFTER compute_advantage, so the GRPO baseline
+        has already counted these rows as failures (giving the surviving clean rows their
+        correct positive advantage); only then is the truncated row's own advantage removed.
+        SFT rows (hpt_is_sft) are never touched. Under the fixed seq-mean-token-sum-norm
+        denominator (global_batch_size = ppo_mini_batch_size * n) this is gradient-equivalent
+        to physical row removal, with no dilution and no batch-shape/divisibility risk.
+        """
+        if not self.config.reward.get("reward_kwargs", {}).get("zero_truncated_rl_advantage", False):
+            return batch
+        if "advantages" not in batch.batch or "response_mask" not in batch.batch:
+            return batch
+        resp_len = batch.batch["response_mask"].sum(dim=-1)
+        cap = int(self.config.data.max_response_length)
+        truncated = resp_len >= cap
+        if "hpt_is_sft" in batch.batch:
+            is_sft = batch.batch["hpt_is_sft"].to(torch.bool)
+            rl_truncated = truncated & (~is_sft)
+            n_rl = int((~is_sft).sum().item())
+        else:
+            rl_truncated = truncated
+            n_rl = int(len(batch))
+        n_zeroed = int(rl_truncated.sum().item())
+        if n_zeroed > 0:
+            batch.batch["advantages"][rl_truncated] = 0.0
+        self.metrics["hpt/truncated_rl_rows_zeroed"] = n_zeroed
+        self.metrics["hpt/truncated_rl_frac"] = (n_zeroed / n_rl) if n_rl > 0 else 0.0
+        return batch
+
     def _fit_collect_metrics(self, batch: DataProto):
         super()._fit_collect_metrics(batch)
         self._collect_metric_aggregation_weights(batch)
@@ -1012,6 +1050,24 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
             metric_weights["num_turns/mean"] = int(len(batch.non_tensor_batch["__num_turns__"]))
         if "tool_call_counts" in batch.non_tensor_batch:
             metric_weights["tool_call_counts/mean"] = int(len(batch.non_tensor_batch["tool_call_counts"]))
+
+        # Observability (Improvement_RL.md §5.2 #9): the true GRPO-centered advantage signal.
+        # The stock critic/advantages/mean tracks raw reward (bit-alias of critic/score/mean), so it
+        # shows no centering signal; log the actual masked mean / abs-mean of the advantage tensor
+        # over RL response tokens (SFT rows carry the constant beta pseudo-reward and are excluded).
+        if "advantages" in batch.batch:
+            advantages = batch.batch["advantages"]
+            adv_mask = response_mask
+            if "hpt_is_sft" in batch.batch:
+                adv_mask = response_mask & (~batch.batch["hpt_is_sft"].to(torch.bool).unsqueeze(-1))
+            adv_tok = int(adv_mask.sum().item())
+            if adv_tok > 0:
+                self.metrics["critic/advantages/centered_mean"] = float((advantages * adv_mask).sum().item() / adv_tok)
+                self.metrics["critic/advantages/centered_absmean"] = float(
+                    (advantages.abs() * adv_mask).sum().item() / adv_tok
+                )
+                metric_weights["critic/advantages/centered_mean"] = adv_tok
+                metric_weights["critic/advantages/centered_absmean"] = adv_tok
 
         for metric_name in self.metrics:
             if metric_name.startswith("rollout_is_seq_"):

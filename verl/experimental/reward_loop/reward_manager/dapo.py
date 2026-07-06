@@ -37,6 +37,15 @@ class DAPORewardManager(RewardManagerBase):
         self.reward_router_address = reward_router_address
         self.reward_model_tokenizer = reward_model_tokenizer
 
+        # P0-1 (Improvement_RL.md §5.1/§5.5): treat a truncated (non-terminating) response as a
+        # failure by zeroing its reward. This single point feeds BOTH the HPT routing gate
+        # (success = reward_score > threshold) and the GRPO advantage (rm_scores is reused by the
+        # trainer, not recomputed), so it simultaneously (a) stops rewarding non-termination,
+        # (b) re-routes "correct-but-truncated" groups to SFT, (c) keeps the GRPO baseline honest.
+        self.zero_reward_if_truncated = config.reward.get("reward_kwargs", {}).get(
+            "zero_reward_if_truncated", False
+        )
+
         if self.overlong_buffer_cfg is not None and self.overlong_buffer_cfg.enable:
             assert self.max_resp_len is not None, (
                 f"max_resp_len must be provided if {overlong_buffer_cfg=}, but got None"
@@ -119,5 +128,16 @@ class DAPORewardManager(RewardManagerBase):
             if self.overlong_buffer_cfg.log:
                 reward_extra_info["overlong_reward"] = overlong_reward
                 reward_extra_info["overlong"] = overlong_reward < 0
+
+        # P0-1: a response that consumed its entire generation budget without stopping is truncated
+        # (a length artifact, not a graded reasoning outcome). Zero its reward regardless of the raw
+        # grade. The raw correctness stays in reward_extra_info["acc"] for observability; only the
+        # reward that drives routing/advantage is gated. `is_truncated` is emitted for logging.
+        if self.zero_reward_if_truncated:
+            cap = self.max_resp_len if self.max_resp_len is not None else response_length
+            is_truncated = int(valid_response_length) >= int(cap)
+            reward_extra_info["is_truncated"] = is_truncated
+            if is_truncated:
+                reward = 0.0
 
         return {"reward_score": reward, "reward_extra_info": reward_extra_info}
