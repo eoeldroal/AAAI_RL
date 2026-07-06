@@ -1,0 +1,175 @@
+Appendix A. Async-HPT: 비동기 experience stream 위의 의미 보존형 Hybrid Post-Training
+
+Async-HPT는 computer-use agent의 post-training을 하나의 비동기 experience stream으로 본다. Rollouter는 환경과 상호작용하며 prompt 단위의 experience를 생성하고, trainer는 이 experience를 받아 policy를 갱신한다. 이 stream은 두 개의 설계 축 위에서 움직인다. 하나는 학습을 효율적으로 진행하기 위한 실행의 축이고, 다른 하나는 유효한 학습 신호를 확보하기 위한 estimator의 축이다. Async-HPT는 두 축을 각각 다룬 뒤 둘을 하나의 learner 안에서 정합적으로 결합한다.
+
+실행의 축에서 computer-use는 긴 trajectory를 요구한다. generation 시간이 크게 늘어나고, 동기식 RL에서는 이 시간이 곧장 pipeline bubble로 노출된다. trajectory 길이가 한쪽으로 치우쳐 소수의 긴 trajectory가 전체 generation을 지연시키는 straggler 현상은 이 부담의 한 양상이다. 비동기 RL은 이 부담을 더는 방향으로 발전해 왔다 [StreamRL, AsyncFlow, ...]. generation과 training을 stream으로 연결하고 두 stage의 의존성을 끊으면, generation이 진행되는 동안 training이 함께 진행되어 pipeline bubble이 줄어든다. 
+
+estimator의 축에서 computer-use는 어려운 task가 많다. 우리는 보상을 별도의 reward model이 아니라 규칙으로 검증하는 RLVR로 학습하며, 보상은 
+[
+0
+,
+1
+]
+[0,1] 값을 갖는다. 이 설계는 reward model 학습을 요구하지 않아 간결하고 채점 기준이 명시적이어서 재현이 쉽지만, 난이도가 높은 prompt에서는 online rollout이 모두 실패하여 보상이 희박해진다. 이런 영역에서는 online rollout만으로 유효한 gradient를 얻을 수 없다. post-training을 하나의 unified policy-gradient estimator로 보는 관점은 이 문제에 답을 준다 [UPGE/HPT, ...]. 이 관점에서 SFT와 RL은 data source, reference policy, advantage estimate, stabilization mask의 선택이 다른 하나의 estimator로 표현되며, rollout 성능에 따라 두 신호를 전환하면 실패 영역에는 검증된 trajectory의 supervised 신호를, 그렇지 않은 영역에는 online RL 신호를 매끄럽게 배분할 수 있다.
+
+두 축은 따로 보면 각자 성숙한 해법을 갖는다. 그러나 두 축이 하나의 learner로 수렴하는 순간 어느 축도 혼자서는 답하지 않는 문제가 드러난다. 비동기 실행의 정합성은 모든 sample이 rollout policy의 산물이라는 전제 위에 서 있다. 생성 시점과 학습 시점의 policy 차이를 보정하고 지나치게 어긋난 sample을 걸러내는 장치가 모두 이 전제에 기댄다. 그런데 estimator 축이 실패 영역에 주입하는 verified trajectory는 rollout이 아니라 고정된 target이다. 두 축을 단순히 포개어 이질적인 두 신호를 같은 비동기 기제에 통과시키면, supervised 신호는 자신을 위해 만들어지지 않은 보정과 필터에 노출되어 그 의미를 잃는다. 효율을 위한 asynchrony와 신호를 위한 hybrid estimator는 경계에서 충돌한다.
+
+Async-HPT는 이 경계를 결합의 실패 지점이 아니라 설계의 대상으로 삼는다. 두 축을 포개는 대신, 경험이 흐르는 통로와 그 경험이 learner에서 갖는 의미를 분리하여, 두 신호가 같은 비동기 stream을 공유하면서도 각자의 estimator 의미를 온전히 유지하도록 learner contract를 구성한다. 그 결과 asynchrony는 효율을 그대로 제공하고 hybrid estimator는 신호를 그대로 제공하며, 둘은 서로의 전제를 훼손하지 않는다. 이어지는 절들은 이 learner contract가 routing, materialization, optimization, 그리고 execution의 각 단계에서 어떻게 두 축의 의미를 보존하는지를 다룬다.
+
+A.1 원리: Transport와 Semantics의 분리
+
+
+두 축이 learner에서 만나며 드러난 경계의 문제는, 경험의 운반과 경험의 의미가 같은 자리에서 처리되기 때문에 발생한다. 운반 과정이 모든 sample을 동일한 rollout으로 취급하면, 그 취급 자체가 supervised 신호의 의미를 덮어쓴다. Async-HPT의 원리는 transport와 semantics를 분리하는 것이다. 경험을 운반하는 통로와 branch의 학습 의미를 규정하는 지점을 구분하면, 두 branch가 같은 stream을 지나더라도 의미가 운반 과정에서 섞이지 않는다.
+
+이 분리는 하나의 prompt-level sample이 학습에 도달하기까지의 경로 위에 놓인다.
+
+Rollouter  ──────────▶  Queue  ──────────▶  Trainer  ──────────▶  Actor update
+route metadata 부착      해석 없이 운반       loss-visible tensor로     branch별 objective
+                                            materialize
+위 줄은 sample이 지나는 단계이고, 아래 줄은 각 단계에서 branch의 의미가 갖는 상태이다. 핵심은 컴포넌트의 물리적 배치가 아니라, branch의 의미가 queue 안에서 해석되지 않고 learner boundary까지 보존된다는 점이다. Rollouter는 하나의 prompt 
+x
+i
+xi​를 
+n
+n개의 online trajectory로 확장하고, 그 group의 success profile에 따라 route metadata를 붙인다. 이 metadata는 아직 학습 의미로 실행되지 않은 정보이며, queue는 이를 해석하지 않고 그대로 운반한다. queue가 흡수하는 것은 generation과 training 사이의 시간 간극뿐이다. metadata가 비로소 loss에 참여하는 것은 learner boundary, 곧 queue payload가 actor update에 쓰일 tensor batch로 바뀌는 지점이다. 이곳에서 trainer는 sample을 하나의 batch contract로 materialize하고, 각 sample의 branch identity와 loss semantics가 tensor로 드러난다.
+
+세 지점을 차례로 짚으면 다음과 같다. Rollouter는 prompt-level rollout group을 생성하고 route metadata를 붙인다. 하나의 prompt $x_i$는 $n$개의 online trajectory로 확장되며, 이 group의 success profile이 route의 근거가 된다. Rollouter는 이 group을 그대로 RL branch로 보낼지, 같은 prompt에 대응하는 verified trajectory $\tau_i^\star$로 대체할지를 정해 metadata로 기록한다. Queue는 route가 붙은 sample을 운반하는 통로로 남는다. 어떤 sample이 어느 branch인지, 어떤 reference와 loss weight를 가져야 하는지는 queue의 책임이 아니며, queue는 generation과 training 사이의 시간 간극을 흡수하는 역할만 한다. Branch의 의미는 learner boundary에서 규정된다. 여기서 learner boundary란 queue payload가 actor update에 쓰일 tensor batch로 바뀌는 지점을 말한다. Trainer는 queue에서 받은 sample을 하나의 batch contract로 materialize하고, 이 지점에서 각 sample의 branch identity와 loss semantics가 tensor로 드러난다.
+
+이 분리는 세 가지 불변식으로 구체화된다.
+
+첫째, route decision은 prompt group을 단위로 한다. 같은 prompt의 verified trajectory와 RL group advantage가 모두 prompt에 묶여 있으므로, routing도 같은 grain에서 이루어져야 두 branch가 정합적으로 대응한다.
+
+둘째, learner interface는 하나로 유지된다. RL branch와 supervised branch는 모두 동일한 batch 자료구조로 actor에 전달된다. Branch semantics는 별도의 학습 루프가 아니라 batch 안의 tensor contract로 표현되며, 이 tensor들이 actor loss로 하여금 어느 reference, 어느 sequence weight, 어느 normalization rule을 적용할지 결정하게 한다.
+
+셋째, optimization semantics는 branch별로 규정된다. 두 branch는 학습할 때 서로 다르게 다루어진다. RL branch는 rollout policy가 생성한 sample이므로, 생성 당시의 확률을 기준으로 현재 policy와의 차이를 보정하거나 오래된 sample을 제외하는 기제의 대상이 된다. supervised branch는 고정된 trajectory이므로 이런 보정과 제외의 대상이 아니며, 다른 기준으로 학습된다. 중요한 것은 이 차이가 별도의 학습 절차로 분리되지 않고 동일한 actor objective 안에서 처리된다는 점이다.
+
+이 세 불변식이 Async-HPT의 구조를 결정한다. Route는 경험의 출처를 정하고, materialization은 branch를 batch 안에 명시하며, actor objective는 branch별 reference와 stabilization rule을 적용한다. 이어지는 절들은 각 불변식이 어떻게 구현되는지를 차례로 다루며, 마지막 절은 이 불변식들이 실행 계층에서도 보존됨을 보인다.
+
+A.2 Prompt-Level Performance Feedback Routing
+
+
+이 절은 첫째 불변식을 구현한다. branch는 individual trajectory가 아니라 prompt를 단위로 정해지며, 그 결정은 prompt에 대한 policy의 성능에서 나온다.
+
+하나의 prompt $x_i$에 대해 rollout policy $\pi_{\theta_g}$는 $n$개의 online trajectory를 생성한다. 여기서 $g$는 생성 시점의 policy version이다.
+
+$$\tau_{i,1}, \ldots, \tau_{i,n} \sim \pi_{\theta_g}(\cdot \mid x_i)$$
+
+각 trajectory는 rule 기반 verifier로 채점되어 score $s_{i,j}$를 얻는다. success threshold를 $\delta$라 하면, 이 prompt에 대한 policy의 성능은 $n$개 rollout의 성공률로 정의된다.
+
+$$P_i = \frac{1}{n} \sum_{j=1}^{n} \mathbf{1}[s_{i,j} > \delta]$$
+
+$P_i$를 gate threshold $\gamma$와 비교하여 branch를 정한다. 성능이 임계 이하인 prompt에는 검증된 trajectory $\tau_i^\star$의 supervised 신호를, 그렇지 않은 prompt에는 online rollout group의 RL 신호를 배분한다.
+
+$$\mathrm{branch}(x_i) = \begin{cases} \mathrm{SFT}(\tau_i^\star) & P_i \le \gamma \ \text{and}\ \tau_i^\star\ \text{exists} \ \mathrm{RL}({\tau_{i,j}}_{j=1}^{n}) & \text{otherwise} \end{cases}$$
+
+여기서 $\tau_i^\star$는 같은 prompt에 대응하는 verified trajectory이다. verified trajectory는 모든 prompt에 존재하지 않는다. dataset은 prompt마다 $\tau_i^\star$를 optional하게 보유하며, $\tau_i^\star$가 없는 prompt는 supervised coverage를 갖지 않는다. 이 경우 $P_i \le \gamma$로 SFT가 지시되더라도 공급할 trajectory가 없으므로, 해당 prompt는 생성된 rollout group을 그대로 RL branch로 사용한다. routing 규칙의 SFT 조건이 $\tau_i^\star$의 존재를 함께 요구하는 것은 이 때문이다.
+
+branch 결정을 prompt 단위로 두는 것은 두 branch의 학습 신호가 모두 prompt 단위에서 정의되기 때문이다. supervised 신호는 prompt에 대응하는 $\tau_i^\star$에서 나오고, RL 신호의 advantage는 같은 prompt의 rollout group 안에서 계산된다. 따라서 routing이 prompt를 단위로 이루어질 때 결정의 단위와 신호의 단위가 일치한다.
+
+결정된 branch는 route metadata로 기록되어 sample과 함께 운반되고, 이후 학습 단계에서 각 branch의 의미로 실행된다.
+
+A.3 Verified Trajectory and Learner Contract
+
+
+이 절은 둘째 불변식을 구현한다. RL branch와 supervised branch는 입력의 grain이 다르지만, 하나의 learner interface를 통해 actor에 도달한다.
+
+computer-use에서 verified trajectory는 정답 문자열이 아니라 상호작용의 기록이다. 하나의 trajectory는 instruction에서 시작해 observation과 assistant의 reasoning, action이 번갈아 이어지고 종료 결정으로 끝나는 message sequence이며, 여기서 observation은 screenshot이나 tool response처럼 환경이 돌려준 정보이다. 이 sequence에서 모든 token이 학습 대상은 아니다. observation은 다음 action을 조건화하는 context일 뿐이고, 학습 신호는 assistant가 생성해야 하는 reasoning과 action token에만 적용된다. 따라서 verified trajectory는 text answer가 아니라 response mask로 학습 구간이 표시된 interaction trace이다.
+
+생성 과정은 다르지만, materialization을 거치고 나면 두 branch는 같은 형식이 된다. RL row와 supervised row 모두 context와 response, 그리고 학습 구간을 가리키는 response mask로 이루어진 하나의 trajectory이다. learner가 보는 형식의 층위에서 두 branch는 같은 공간에 놓인다.
+
+같은 형식으로 내려오더라도 prompt가 row로 펼쳐지는 방식은 다르다. RL branch에서는 하나의 prompt $x_i$가 $n$개의 rollout row로 확장되고, supervised branch에서는 같은 prompt에 대응하는 verified trajectory $\tau_i^\star$가 하나의 row로 들어온다. 그러므로 learner contract가 풀어야 하는 것은 형식의 불일치가 아니라, 하나의 prompt가 한 branch에서는 $n$개 row로, 다른 branch에서는 1개 row로 들어온다는 row 수의 비대칭이다.
+
+Async-HPT는 이 비대칭을 두 층의 identity로 다룬다. 한 층은 prompt를 식별하여 어떤 row가 어느 prompt에서 왔고 어떤 verified trajectory에 대응하는지를 보존하고, 다른 한 층은 advantage가 계산될 row group을 식별한다. 출처를 가리키는 식별과 계산 단위를 가리키는 식별을 나눔으로써, 두 branch는 row 수가 달라도 각자의 신호가 올바른 단위에서 해석되는 채로 하나의 batch에 함께 놓인다. 각 row가 어느 branch이며 어떤 weight와 normalization으로 읽혀야 하는지도 이 batch 안에 함께 표시되므로, 두 branch를 가르는 것은 별도의 학습 경로가 아니라 batch가 실어 나르는 정보이다.
+
+같은 비대칭은 관찰의 층위에서도 따라온다. 두 branch의 사용량을 row 수로 세면 하나의 prompt가 
+n
+n개로 펼쳐지는 RL branch가 1개로 들어오는 supervised branch보다 
+n
+n배 크게 잡히므로, branch가 얼마씩 기여했는지는 계산의 단위인 row가 아니라 prompt group을 단위로 읽어야 실제 비율이 드러난다.
+
+이렇게 두 branch는 서로 다른 row 수를 가지면서도 하나의 learner interface 위에 정렬된다. 같은 batch에 담겼을 뿐 둘이 어떻게 다르게 학습되는지는 아직 규정되지 않았으며, 그 차이가 gradient의 의미로 펼쳐지는 것은 다음 절의 optimization objective이다.
+
+
+
+A.4 Optimization Objective
+
+
+이 절은 셋째 불변식을 구현한다. 두 branch는 서로 다른 학습 절차로 분리되지 않고 하나의 policy-gradient objective 안에서 처리된다.
+
+출발점은 post-training을 하나의 unified policy-gradient estimator로 보는 관점이다. 이 관점에서 SFT와 RL은 별개의 목적이 아니라 advantage estimate와 reference policy denominator의 선택이 다른 같은 estimator이다. Async-HPT는 이 관점을 그대로 실행한다. supervised branch를 위한 새 loss를 정의하지 않고, RL이 사용하는 advantage 경로와 reference 경로를 그대로 쓰되 두 지점에서만 branch에 따라 갈라지게 한다. 따라서 이 절의 내용은 두 재사용으로 요약된다. advantage 경로의 재사용과 reference 경로의 재사용이다.
+
+Advantage. verified trajectory는 별도의 optimizer step으로 처리되지 않고, RL이 사용하는 group-relative advantage 경로를 그대로 통과한다. RL branch에서 같은 prompt의 rollout들이 한 group을 이루듯, supervised branch에서는 verified trajectory가 혼자 하나의 group을 이룬다. 이 singleton group에 token reward 합이 $\beta$가 되도록 pseudo reward를 부여하면, group standard deviation으로 정규화하지 않는 advantage 계산에서 singleton group의 advantage는 그 reward가 supervised token mask 위에 그대로 퍼진 형태가 된다.
+
+$$A^{\mathrm{SFT}}{r,t} = \beta, m{r,t}$$
+
+여기서 $m_{r,t}$는 row $r$의 token $t$에 대한 response mask이다. 새로운 advantage estimator는 추가되지 않는다. singleton group과 $\beta$ pseudo reward라는 입력만으로 기존 group-relative 경로가 supervised positive signal을 생성한다.
+
+Reference. RL row와 supervised row는 reference로 삼는 old-policy가 다르다. 현재 policy의 token log-probability를 $\ell_{\theta,r,t} = \log \pi_\theta(a_{r,t} \mid h_{r,t})$로 쓰자. 여기서 $a_{r,t}$는 row $r$의 $t$번째 token이고 $h_{r,t}$는 그 history이다. RL row는 rollout policy가 생성한 sample이므로 생성 시점의 log-probability $\ell^{\mathrm{rollout}}_{r,t}$가 reference가 된다. supervised row는 rollout policy의 sample이 아니므로 그러한 reference가 없고, 대신 현재 policy의 log-probability를 detach하여 reference로 삼는다. branch indicator $z_r \in {0,1}$을 supervised일 때 1로 두면, effective old log-probability는 두 경우를 하나로 표현한다.
+
+$$\tilde{\ell}^{\mathrm{old}}{r,t} = (1 - z_r),\ell^{\mathrm{rollout}}{r,t} + z_r,\mathrm{stopgrad}(\ell_{\theta,r,t})$$
+
+PPO ratio는 이 effective old log-probability로부터 동일한 형태로 정의된다.
+
+$$\rho_{r,t} = \exp!\big(\ell_{\theta,r,t} - \tilde{\ell}^{\mathrm{old}}_{r,t}\big)$$
+
+supervised row에서는 $\tilde{\ell}^{\mathrm{old}}{r,t} = \mathrm{stopgrad}(\ell{\theta,r,t})$이므로 forward value가 $\rho_{r,t} = 1$이다. 그러나 gradient는 사라지지 않는다. stop-gradient는 forward 값만 고정하고 미분에는 참여하지 않으므로,
+
+$$\nabla_\theta, \rho_{r,t} = \rho_{r,t},\nabla_\theta, \ell_{\theta,r,t} = \nabla_\theta \log \pi_\theta(a_{r,t} \mid h_{r,t}) = \frac{1}{\pi_\theta(a_{r,t} \mid h_{r,t})},\nabla_\theta, \pi_\theta(a_{r,t} \mid h_{r,t})$$
+
+가 남는다. supervised row의 token loss가 $-A_{r,t},\rho_{r,t}$ 형태일 때 gradient descent가 만드는 update direction은 그 음의 gradient이므로,
+
+$$A_{r,t},\nabla_\theta, \rho_{r,t} = A_{r,t},\frac{1}{\pi_\theta(a_{r,t} \mid h_{r,t})},\nabla_\theta, \pi_\theta(a_{r,t} \mid h_{r,t})$$
+
+가 된다. 이것은 unified estimator에서 SFT가 갖는 형태, 곧 reference denominator가 현재 policy $\pi_\theta$이고 advantage가 상수인 형태와 일치한다. supervised branch는 별도의 cross-entropy loss로 구현되지 않으면서도, self-detached reference를 통해 RL과 같은 ratio 경로 위에서 SFT가 요구하는 current-policy denominator를 복원한다.
+
+Token objective. ratio가 정해지면 두 branch는 같은 token objective를 통과한다. 이 objective는 표준 clipped PPO surrogate이며, HPT는 이를 새로 정의하지 않고 그대로 호출한다.
+
+$$\mathcal{L}^{\mathrm{tok}}{r,t} = \phi{\mathrm{PPO}}\big(\rho_{r,t},, A_{r,t}\big)$$
+
+supervised row에서는 $\rho_{r,t} = 1$이므로 clipping이 활성화되지 않는다. 같은 objective를 쓰되 supervised branch에서는 clip이 항등적으로 비활성인 채로 통과한다.
+
+Reduction. branch별 차이는 token objective가 아니라 이후의 reduction에서 나타난다. token loss를 sequence로 모으고 sequence를 batch로 모을 때, 각 branch는 서로 다른 length divisor $d_r$, sequence weight $w_r$, 그리고 batch가 공유하는 denominator $B_{\mathrm{eff}}$를 적용받는다.
+
+$$\mathcal{L}^{\mathrm{seq}}r = \frac{\sum_t m{r,t},\mathcal{L}^{\mathrm{tok}}{r,t}}{d_r}, \qquad \mathcal{L}{\mathrm{Async\text{-}HPT}} = \frac{1}{B_{\mathrm{eff}}}\sum_r w_r, \mathcal{L}^{\mathrm{seq}}_r$$
+
+$$w_r = \begin{cases} \alpha/n & z_r = 0 \ 1 & z_r = 1 \end{cases} \qquad d_r = \begin{cases} T^{\mathrm{rollout}}r & z_r = 0 \ \sum_t m{r,t} & z_r = 1 \end{cases} \qquad B_{\mathrm{eff}} = \sum_r w_r$$
+
+RL row의 divisor $T^{\mathrm{rollout}}_r$는 그 row가 materialize될 때의 response width이고, supervised row의 divisor는 supervised token 수이다. sequence weight는 RL branch에서 $\alpha/n$으로, 하나의 prompt가 $n$개 row로 펼쳐지더라도 그 prompt의 총 기여가 한 단위가 되게 한다. supervised branch는 prompt당 row가 하나이므로 weight가 1이다. 두 weight가 함께 작동하여, 하나의 prompt는 RL이든 SFT든 row 수와 무관하게 batch에 동등하게 기여한다.
+
+여기서 $\alpha$와 $\beta$가 서로 다른 위치에 등장하는 것은 원 HPT의 계수가 Async-HPT에서 다르게 작동하기 때문이다. 원 HPT는 performance feedback으로 $\alpha L_{\mathrm{RL}} + \beta L_{\mathrm{SFT}}$의 두 계수를 정해 하나의 loss를 섞는다. Async-HPT에서는 이 선택이 loss mixing이 아니라 route 단위 branch 선택으로 내려온다. gate가 prompt마다 RL 또는 SFT branch를 고르고 나면, 선택된 branch 안에서 두 계수는 서로 다른 위치의 scale로 작동한다. RL로 route된 prompt에서는 $\alpha$가 $n$개 rollout row에 $\alpha/n$으로 나뉘어 prompt-level RL 기여를 조절하고, SFT로 route된 prompt에서는 $\beta$가 pseudo reward scale로 들어가 supervised advantage의 크기를 조절한다.
+
+이로써 두 branch는 advantage 경로와 reference 경로를 공유한 채 하나의 objective로 합산된다. branch에 따라 달라지는 것은 advantage가 group에서 오는지 pseudo reward에서 오는지, 그리고 reference가 rollout policy인지 self-detached current policy인지뿐이다. 남은 한 가지 차이는 이 reference 위에 비동기 보정을 어떻게 적용하는가이며, 이는 다음 절이 다룬다.
+
+
+
+
+A.5 Asynchrony Validity
+
+이 절은 셋째 불변식의 시간축을 다룬다. A.4는 두 branch가 하나의 ratio 기반 objective 안에서 어떻게 서로 다른 reference를 갖는지 정의했다. 이 절은 그 reference 위에 비동기 RL의 validity 기제가 어떻게 놓이는지를 다룬다. 핵심은 provenance이다.
+
+비동기 stream에서 sample은 생성 시점의 policy에서 나오지만 학습은 그보다 뒤의 policy에서 이루어진다. 비동기 RL은 이 시간적 간극을 두 가지 기제로 관리한다. 하나는 rollout policy와 current policy의 mismatch를 보정하는 correction이고, 다른 하나는 지나치게 오래된 sample을 거르는 version 기반 staleness이다. 두 기제는 모두 sample이 특정 rollout policy version에서 생성되었다는 provenance에 의존한다. RL row는 rollout policy가 환경과 상호작용하여 만든 sample이므로 rollout log-probability와 generation version을 갖는다. supervised row는 prompt에 주어진 verified target이므로, batch schema를 맞추기 위한 같은 모양의 field가 있더라도 rollout provenance를 갖지 않는다.
+
+이 차이가 correction에서 먼저 드러난다. correction은 A.4의 ratio를 다시 정의하는 것이 아니라 그 위에 놓이는 validity overlay이며, rollout policy와 current policy 사이의 mismatch를 다루는 장치이다. 따라서 correction은 rollout provenance를 가진 RL row에만 의미를 갖는다. supervised row의 reference는 A.4에서 self-detached current policy로 이미 정의되었으므로, 여기에 rollout correction을 다시 적용하면 supervised target이 자신과 무관한 placeholder 값에 의해 mask되거나 reweight될 수 있다. 그러므로 supervised row는 이 overlay를 identity로 통과한다.
+
+version 기반 staleness도 같은 원리를 따른다. RL row는 특정 rollout version에서 생성되므로 learner version과의 거리를 정의할 수 있고, 그 거리를 기준으로 유효성을 제한할 수 있다. supervised row는 fixed verified trajectory이므로 generation version gap이 validity의 기준이 되지 않는다. 따라서 supervised row는 version 기반 filtering의 대상이 아니다.
+
+두 기제의 바탕에는 rollout log-probability의 의미 차이가 있다. RL row에서 rollout log-probability는 A.4의 reference anchor이면서 correction이 살펴보는 policy mismatch의 근거이다. supervised row에서 같은 모양의 tensor는 batch schema를 맞추기 위한 값일 뿐, reference도 correction의 근거도 아니다. supervised reference는 loss 시점에 self-detached current log-probability로 정의되고, validity 기제는 placeholder 값을 supervised target의 증거로 해석하지 않는다.
+
+이 절은 도입부에서 제기한 경계 문제를 닫는다. asynchrony는 generation과 training을 stream으로 겹쳐 실행 효율을 얻지만 그 대가로 sample의 시간적 유효성을 관리해야 하고, hybrid estimator는 실패 영역에 verified trajectory를 넣어 학습 신호를 보강하지만 그 trajectory는 rollout sample이 아니다. RL row는 비동기 rollout data이므로 correction과 version validity의 대상이 될 수 있고, supervised row는 fixed target이므로 그 기제를 identity로 통과한다. learner는 하나의 mixed batch를 받지만, 각 branch의 시간적 전제는 그대로 보존된다.
+
+A.6 Execution Model: Semantic Unit과 Execution Unit의 분리
+
+이 절은 앞의 불변식들이 실행 계층에서 어떻게 보존되는지를 다룬다. 앞 절들이 semantic 계층의 계약을 세웠다면, 이 절은 그 계약이 실행의 사정에 흔들리지 않도록 실행이 어떻게 설계되었는지를 보인다.
+
+긴장은 단위에서 생긴다. computer-use trajectory는 길이와 실행 시간의 편차가 크므로, 하나의 prompt group을 통째로 하나의 실행 단위로 잡으면 group 안의 가장 긴 trajectory가 나머지 전부의 완료를 붙잡는다. 실행 효율은 더 작은 단위를 원한다. 그러나 Async-HPT의 의미론은 반대 방향을 요구한다. routing은 group의 success profile을 보고(A.2), contract의 identity는 group을 가리키며(A.3), advantage는 group 안에서 계산된다(A.4). 의미의 단위를 낮추면 이 계약들이 함께 무너진다. 이 긴장은 hybrid이기에 생기는 고유한 문제이다. 모든 sample이 동일한 RL 신호라면 group 의미론이 이만큼 무겁지 않으므로 실행 단위를 낮추는 데 거리낌이 없다.
+
+Async-HPT는 어느 쪽도 양보하지 않는다. 실행 단위를 group으로 유지해 효율을 포기하지도, 의미론을 attempt 단위로 낮춰 계약을 약화시키지도 않는다. 대신 두 단위를 서로 다른 계층에 둔다. 실행의 단위는 개별 trajectory attempt이고, 의미의 단위는 prompt group이다. rollouter는 하나의 prompt group을 $n$개의 attempt로 풀어 각각 독립적으로 실행하고, 완성된 attempt들은 accumulator가 다시 하나의 group으로 복원한다. routing gate는 이 복원이 끝난 뒤에야 동작한다.
+
+semantic unit   :  prompt group  ─────────(보이지 않음)─────────▶  prompt group 복원  ─▶  gate
+                        │                                              ▲
+execution unit  :       └──▶  attempt 1 … attempt n  (독립 실행)  ──────┘
+위 층은 의미론이 보는 세계이고, 아래 층은 실행이 지나가는 구간이다. 분할은 실행에만 존재한다. 의미론이 세계를 보는 시점, 곧 gate가 success profile을 계산하는 시점에는 분할이 이미 사라져 있다. 그래서 A.2의 routing도, A.3의 contract도, A.4와 A.5의 objective와 validity도 이 절의 존재를 알 필요가 없었다. 실행 계층은 semantic 계층이 자신을 몰라도 성립하도록 설계되었고, 그 보장의 실체가 gate 이전의 복원이다.
+
+단위를 attempt로 낮춘 선택은 자신이 만든 상태까지 책임진다. 비동기 실행에서 생성은 학습보다 빠를 수 있으므로, Async-HPT는 진행 중인 작업과 완료된 작업의 양을 유한하게 제한하고, 한도에 이르면 생성을 멈췄다가 소비가 따라오면 재개한다. 이때 attempt 분할은 새로운 상태를 낳는다. group이 아직 완성되지 않았지만 일부 attempt는 이미 끝나 저장되어 있는 부분 완료이다. 이 부분 완료는 queue에 보이지 않지만 실재하는 backlog이므로, 계량은 group이 아니라 attempt까지 내려간다. 완료된 group과 완성을 기다리는 attempt를 합산한 저장량이 한도를 넘지 않도록 생성이 제어된다.
+
+이 절의 분리는 A.1의 분리와 같은 사상의 두 사례이다. A.1은 경험을 운반하는 통로와 의미가 규정되는 지점을 분리하여, branch의 의미가 운반 과정에서 섞이지 않게 했다. 이 절은 실행의 단위와 의미의 단위를 분리하여, group의 계약이 실행의 형편에 침식되지 않게 한다. 이질적인 두 신호를 하나의 비동기 stream에 결합하면서 Async-HPT가 일관되게 취하는 방법은, 이질성이 문제를 일으키는 지점마다 계층을 나누고 의미론이 보는 세계를 실행의 사정으로부터 격리하는 것이다.

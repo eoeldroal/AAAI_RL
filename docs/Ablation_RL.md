@@ -393,6 +393,14 @@ D0 코너의 실행은 **`eoeldroal-sogang-university/async-hpt-openr1/gvqi3cgq`
 | **M′** | `olh2hynl` (run-20260706_173147) | `..._Mprime_v2` | **post-fix (라우팅 sum(-1) + P0-1/2 + entropy0 + beta1.0)** | 재실행(진행 중). `M′` = M + P0 이므로 **2×2 격자 밖의 상위 앵커**(P0 축 추가). `M′−D0`=풀스택, `M′−M`=P0+라우팅수정 |
 | ~~M′(폐기)~~ | ~~`uz72mzb9` (run-20260706_051453)~~ | `..._Mprime_v2` | pre-fix 라우팅 | **버그 라우팅으로 순수-SFT 붕괴(success 전 스텝 0). 비교 금지·폐기**(Improvement_RL.md §5.7) |
 
+#### 공정 비교 방법 (cross-generation, 2026-07-06 방향 고정 — 실행은 나중에)
+
+라우팅 위치버그(`rm_scores[-1]`)는 **메트릭만이 아니라 라우팅 결정=학습 레짐 자체**를 바꿨다(gamma=0.0에서 clean-correct 그룹을 SFT로 오배정 → pre-fix D0·M은 초기 과-SFT + 길이보상 레짐에서 훈련됨). 덤프 검증(2026-07-06): pre-fix M의 학습-시점 "success 우상향"은 대부분 **절단율 0→95%와 함께 truncated-correct가 뒤늦게 카운트된 착시**였고(초기 window: raw avg@8=0.13인데 버그-카운트=0.00), post-fix M′은 step1부터 진짜 ~0.10에서 출발. ⇒ **학습-시점 wandb 지표(critic/score·hpt/onpolicy_success_rate·batch 통계)는 라우팅 세대(pre↔post)가 다르면 스텝정렬 비교 무효.**
+
+- **채택 방향**: 재실행 대신 **라우팅-무관 신호로만** 교차비교 — (a) **롤아웃 덤프 raw `acc`의 param_version 정렬 avg@8 궤적**(그룹균등=per-rollout mean, 채점기 직접 산출이라 `rm_scores[-1]`·row-weighting·P0-1 게이팅 전부 무관), (b) `val-core/*/mean@8`(홀드아웃). 두 축이 실제 "생성 능력" 궤적을 준다. 스크립트는 §12.5 substrate 재사용(입력=run별 rollout_dump dir, 버킷=gen_batch `global_steps`=param_version, 지표=mean acc + 절단율).
+- **캐비엇**: 이 비교조차 D0·M은 버그 레짐에서 *훈련된* 체크포인트라 baseline이 오염(측정은 공정하나 학습 과정은 아님). 정밀 factorial이 필요하면 D0(+격자) post-fix 재실행이 유일 해법. **M′−M은 5-인자 묶음**(P0-1·P0-2·entropy0·beta1.0·+라우팅수정)이라 단일축 귀속 불가 = "개선 총합 앵커"로만 유효; P0 순효과 분리 시 `M+P0만`(beta·entropy 유지) arm 별도.
+- 진단 상세: `Improvement_RL.md §5.7`(라우팅버그) + 본 세션 덤프분석.
+
 ## 유지보수
 
 이 문서는 실험 *설계·분석*의 단일 진실 출처다. arm이 추가/변경되면 §3·§4·§9와 함께 **분석 절차 §11·§12**도 갱신한다(지표·수식·판정 규칙이 arm과 어긋나면 안 됨). 수치 판정선(예: "오답 길이 +X%")이 정해지면 §3 각 arm에, `clipfrac_top20entropy/pg_clipfrac`의 "≫1" 임계 등 라우터 판정선이 정해지면 §12.4에 박는다. §12.5의 분석 스크립트가 이 절차의 실행 대응물이다. 결정의 *근거*는 여기서 재서술하지 말고 해당 DR을 인용한다(line 번호 회피, symbol 기준 — `Codemap_RL.md` 관례).
