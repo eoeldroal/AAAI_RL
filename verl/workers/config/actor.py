@@ -88,8 +88,6 @@ class PolicyLossConfig(BaseConfig):
         clip_cov_ub (float): Upper bound for clip-cov loss.
         kl_cov_ratio (float): Ratio of tokens to be applied KL penalty for kl-cov loss.
         ppo_kl_coef (float): KL divergence penalty coefficient.
-        cispo_clip_mode (str): CISPO coefficient clipping mode. Use 'upper' for an upper-only absolute cap.
-        cispo_epsilon_high (float): Upper CISPO ratio cap when cispo_clip_mode='upper'.
         rollout_correction (RolloutCorrectionConfig): Configuration for rollout correction.
     """
 
@@ -99,8 +97,6 @@ class PolicyLossConfig(BaseConfig):
     clip_cov_ub: float = 5.0
     kl_cov_ratio: float = 0.0002
     ppo_kl_coef: float = 0.1
-    cispo_clip_mode: str = "upper"
-    cispo_epsilon_high: float = 5.0
     rollout_correction: RolloutCorrectionConfig = field(default_factory=RolloutCorrectionConfig)
 
 

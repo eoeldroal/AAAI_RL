@@ -141,25 +141,15 @@ def validate_async_hpt_config(config: DictConfig) -> AsyncHptConfig:
             f"actor_rollout_ref.actor.policy_loss.loss_mode in {{{supported}}}; got {loss_mode!r}"
         )
     if loss_mode == "cispo":
-        cispo_clip_mode = OmegaConf.select(
-            config, "actor_rollout_ref.actor.policy_loss.cispo_clip_mode", default="upper"
-        )
-        if cispo_clip_mode != "upper":
+        # CISPO is upper-only (MiniMax-M1 disables the lower IS-weight bound). Enforce it by
+        # requiring clip_ratio_low >= 1.0 so the lower clamp bound (1 - clip_ratio_low) <= 0
+        # never binds. The upper cap is 1 + clip_ratio_high (the movement-scale g-slot cap).
+        clip_ratio_low = OmegaConf.select(config, "actor_rollout_ref.actor.clip_ratio_low", default=None)
+        if isinstance(clip_ratio_low, bool) or not isinstance(clip_ratio_low, int | float) or clip_ratio_low < 1.0:
             raise ValueError(
                 "async_hpt.enabled=true with actor_rollout_ref.actor.policy_loss.loss_mode=cispo "
-                f"requires actor_rollout_ref.actor.policy_loss.cispo_clip_mode=upper; got {cispo_clip_mode!r}"
-            )
-        cispo_epsilon_high = OmegaConf.select(
-            config, "actor_rollout_ref.actor.policy_loss.cispo_epsilon_high", default=5.0
-        )
-        if (
-            isinstance(cispo_epsilon_high, bool)
-            or not isinstance(cispo_epsilon_high, int | float)
-            or cispo_epsilon_high < 1.0
-        ):
-            raise ValueError(
-                "async_hpt.enabled=true with CISPO requires "
-                "actor_rollout_ref.actor.policy_loss.cispo_epsilon_high >= 1.0."
+                "requires actor_rollout_ref.actor.clip_ratio_low >= 1.0 (CISPO upper-only: the lower "
+                f"IS-weight bound must be disabled, e.g. set clip_ratio_low=10.0); got {clip_ratio_low!r}"
             )
 
     if hpt_config.rl_old_logprob_source == "entry":

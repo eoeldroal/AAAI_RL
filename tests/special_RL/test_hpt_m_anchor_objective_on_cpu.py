@@ -6,8 +6,9 @@ from tensordict import TensorDict
 from verl import DataProto
 from verl.experimental.fully_async_policy.hpt_config import validate_async_hpt_config
 from verl.experimental.fully_async_policy.hpt_training import should_use_hpt_rollout_logprob_anchor
-from verl.trainer.ppo.core_algos import compute_policy_loss_cispo
+from verl.trainer.ppo.core_algos import compute_policy_loss_cispo, finalize_entropy_clip_diagnostics
 from verl.utils import tensordict_utils as tu
+from verl.utils.metric import AggregationType, reduce_metrics
 from verl.workers.config import ActorConfig
 from verl.workers.utils.losses import ppo_loss
 
@@ -18,8 +19,7 @@ def _make_hpt_config(
     rollout_is: str | None = "token",
     rollout_rs: str | None = None,
     loss_mode: str = "cispo",
-    cispo_clip_mode: str = "upper",
-    cispo_epsilon_high: float = 5.0,
+    clip_ratio_low: float = 10.0,
 ):
     return OmegaConf.create(
         {
@@ -56,10 +56,10 @@ def _make_hpt_config(
                 "actor": {
                     "loss_agg_mode": "seq-mean-token-sum-norm",
                     "loss_scale_factor": 8192,
+                    "clip_ratio_low": clip_ratio_low,
+                    "clip_ratio_high": 0.28,
                     "policy_loss": {
                         "loss_mode": loss_mode,
-                        "cispo_clip_mode": cispo_clip_mode,
-                        "cispo_epsilon_high": cispo_epsilon_high,
                     },
                 },
             },
@@ -67,15 +67,16 @@ def _make_hpt_config(
     )
 
 
-def _make_actor_config(*, cispo_clip_mode: str = "upper", cispo_epsilon_high: float = 5.0) -> ActorConfig:
+def _make_actor_config(*, clip_ratio_low: float = 10.0, clip_ratio_high: float = 0.28) -> ActorConfig:
+    # CISPO upper-only: clip_ratio_low >= 1.0 disables the lower bound; upper cap = 1 + clip_ratio_high.
     return ActorConfig(
         strategy="fsdp",
         rollout_n=8,
         ppo_mini_batch_size=1,
         ppo_micro_batch_size=1,
         clip_ratio=0.2,
-        clip_ratio_low=0.2,
-        clip_ratio_high=0.28,
+        clip_ratio_low=clip_ratio_low,
+        clip_ratio_high=clip_ratio_high,
         clip_ratio_c=10.0,
         loss_agg_mode="token-mean",
         use_kl_loss=False,
@@ -83,8 +84,6 @@ def _make_actor_config(*, cispo_clip_mode: str = "upper", cispo_epsilon_high: fl
         global_batch_info={"dp_size": 1},
         policy_loss={
             "loss_mode": "cispo",
-            "cispo_clip_mode": cispo_clip_mode,
-            "cispo_epsilon_high": cispo_epsilon_high,
         },
     )
 
@@ -100,11 +99,8 @@ def test_hpt_entry_recent_config_requires_token_tis_and_upper_cispo():
     with pytest.raises(ValueError, match="rollout_rs"):
         validate_async_hpt_config(_make_hpt_config(rollout_rs="token"))
 
-    with pytest.raises(ValueError, match="cispo_clip_mode"):
-        validate_async_hpt_config(_make_hpt_config(cispo_clip_mode="two_sided"))
-
-    with pytest.raises(ValueError, match="cispo_epsilon_high"):
-        validate_async_hpt_config(_make_hpt_config(cispo_epsilon_high=0.5))
+    with pytest.raises(ValueError, match="clip_ratio_low"):
+        validate_async_hpt_config(_make_hpt_config(clip_ratio_low=0.2))
 
 
 def test_hpt_entry_source_recomputes_old_log_probs_instead_of_using_rollout_anchor():
@@ -181,8 +177,10 @@ def test_fully_async_rollout_source_keeps_existing_mis_weight_restore(monkeypatc
     assert trainer.actor_rollout_wg.calls == [("save", 3), ("restore", 1), ("restore", 3), ("clear", 3)]
 
 
-def test_cispo_upper_only_uses_absolute_cap_without_lower_floor():
-    config = _make_actor_config(cispo_clip_mode="upper", cispo_epsilon_high=5.0)
+def test_cispo_upper_only_clips_coefficient_keeps_gradient_without_lower_floor():
+    # clip_ratio_low=10 -> lower bound 1-10=-9 never binds (no lower floor);
+    # clip_ratio_high=0.28 -> upper cap = 1.28 (movement-scale g-slot cap).
+    config = _make_actor_config(clip_ratio_low=10.0, clip_ratio_high=0.28)
     ratio = torch.tensor([[0.1, 2.0, 10.0]])
     old_log_prob = torch.zeros_like(ratio)
     log_prob = torch.log(ratio).detach().clone().requires_grad_(True)
@@ -197,10 +195,11 @@ def test_cispo_upper_only_uses_absolute_cap_without_lower_floor():
         config=config,
     )
 
-    expected_coeff = torch.tensor([[0.1, 2.0, 5.0]])
+    # 0.1 keeps its value (no lower floor); 2.0 and 10.0 are capped to 1.28; gradient flows via log_prob.
+    expected_coeff = torch.tensor([[0.1, 1.28, 1.28]])
     expected_loss = (-(expected_coeff * advantages * log_prob)).mean()
     assert pg_loss.item() == pytest.approx(expected_loss.item())
-    assert metrics["actor/pg_clipfrac"] == pytest.approx(1.0 / 3.0)
+    assert metrics["actor/pg_clipfrac"] == pytest.approx(2.0 / 3.0)
 
     pg_loss.backward()
     assert torch.allclose(log_prob.grad, -expected_coeff / 3.0)
@@ -241,7 +240,7 @@ def _make_hpt_cispo_batch(*, sft_old_value: float) -> TensorDict:
 
 
 def test_hpt_cispo_preserves_sft_self_detach_and_ignores_sft_rollout_is_weight():
-    config = _make_actor_config(cispo_clip_mode="upper", cispo_epsilon_high=5.0)
+    config = _make_actor_config()
     model_output = {"log_probs": torch.full((8,), -0.25)}
 
     low_old_loss, _ = ppo_loss(
@@ -256,3 +255,39 @@ def test_hpt_cispo_preserves_sft_self_detach_and_ignores_sft_rollout_is_weight()
     )
 
     assert torch.allclose(low_old_loss, high_old_loss)
+
+
+def test_ppo_loss_emits_token_weighted_entropy_clip_components_and_excludes_sft():
+    # With per-token entropy present, ppo_loss must emit the five SUM sum/count §11 components (so
+    # they survive DP/microbatch aggregation with uniform value counts), NOT the derived means; and
+    # SFT tokens must be excluded from the RL-only diagnostics. finalize then recovers the ratio.
+    config = _make_actor_config()
+    batch = _make_hpt_cispo_batch(sft_old_value=0.0)  # row0 = SFT, row1 = RL; 2 response tokens each
+    model_output = {
+        "log_probs": torch.full((8,), -0.25),
+        "entropy": torch.full((8,), 0.5),  # per-token entropy -> the §11 block runs
+    }
+
+    _, metrics = ppo_loss(config=config, model_output=model_output, data=batch)
+
+    components = [
+        "actor/_entropy_rl_sum",
+        "actor/_entropy_rl_count",
+        "actor/_entropy_top20_sum",
+        "actor/_entropy_top20_count",
+        "actor/_pg_clip_top20entropy_sum",
+    ]
+    for k in components:
+        assert k in metrics, f"missing component {k}"
+        assert metrics[k].aggregation == AggregationType.SUM
+    # the reported ratios are produced by finalize post-reduction, not emitted here
+    assert "actor/entropy_mean" not in metrics
+    assert "actor/pg_clipfrac_top20entropy" not in metrics
+    # SFT row excluded: only row1's two response tokens are RL, each with entropy 0.5
+    assert float(metrics["actor/_entropy_rl_count"].aggregate()) == pytest.approx(2.0)
+    assert float(metrics["actor/_entropy_rl_sum"].aggregate()) == pytest.approx(1.0)
+
+    reduced = reduce_metrics(dict(metrics))
+    out = finalize_entropy_clip_diagnostics(reduced)
+    assert out["actor/entropy_mean"] == pytest.approx(0.5)  # 1.0 / 2.0
+    assert not any(k in out for k in components)  # components popped after finalize
