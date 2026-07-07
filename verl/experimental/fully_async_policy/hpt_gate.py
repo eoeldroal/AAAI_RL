@@ -55,7 +55,7 @@ class HptRouteMetadata(BaseModel):
     def _validate_generated_response_lengths(cls, values: tuple[int, ...]) -> tuple[int, ...]:
         if not values:
             return values
-        normalized = []
+        normalized: list[int] = []
         for value in values:
             if isinstance(value, bool) or not isinstance(value, Integral):
                 raise ValueError(f"generated_response_lengths must contain integers, got {value!r}")
@@ -81,6 +81,8 @@ def build_hpt_rollout_gate(config) -> HptRolloutGate | None:
     hpt_config = validate_async_hpt_config(config)
     if not hpt_config.enabled:
         return None
+    # validate_async_hpt_config guarantees tau_dataset_path is set when enabled.
+    assert hpt_config.tau_dataset_path is not None
     tau_store = HptTauStore.from_parquet(hpt_config.tau_dataset_path, messages_key=hpt_config.tau_messages_key)
     return HptRolloutGate(config=hpt_config, tau_store=tau_store)
 

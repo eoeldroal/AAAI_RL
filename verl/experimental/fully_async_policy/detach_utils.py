@@ -55,8 +55,8 @@ def prepare_single_generation_data(batch_dict, config) -> DataProto:
 
     full_batch = DataProto.from_single_dict(batch_dict)
 
-    batch_keys_to_pop = []
-    non_tensor_batch_keys_to_pop = []
+    batch_keys_to_pop: list[str] = []
+    non_tensor_batch_keys_to_pop: list[str] = []
 
     existing_batch_keys = [k for k in batch_keys_to_pop if k in full_batch.batch]
     existing_non_tensor_keys = [k for k in non_tensor_batch_keys_to_pop if k in full_batch.non_tensor_batch]
@@ -200,7 +200,7 @@ class MetricsAggregator:
         # Metric aggregation rule configuration
         self.aggregation_rules = self._init_aggregation_rules()
 
-    def _init_aggregation_rules(self) -> dict[str, dict[str, list[str]]]:
+    def _init_aggregation_rules(self) -> dict[str, list[str]]:
         """Initialize metrics aggregation rules"""
         return {
             # Time-Based metrics, can add metrics here

@@ -34,9 +34,9 @@ class MessageQueue:
         if max_queue_size is None:
             raise ValueError(f"max_queue_size cannot be None, got: {max_queue_size}")
         self.max_queue_size = int(max_queue_size)
-        self.queue = deque(maxlen=self.max_queue_size)
+        self.queue: deque[Any] = deque(maxlen=self.max_queue_size)
 
-        self.val_queue = deque()
+        self.val_queue: deque[Any] = deque()
 
         # Asyncio for message handling
         self.running = True

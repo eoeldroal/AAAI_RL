@@ -294,7 +294,7 @@ class HptBatchAssembler:
         if key in batch.non_tensor_batch:
             HptBatchAssembler._validate_repeated_non_tensor(batch, key, value)
             return
-        values = np.empty(len(batch), dtype=object)
+        values: np.ndarray = np.empty(len(batch), dtype=object)
         values[:] = [value] * len(batch)
         batch.non_tensor_batch[key] = values
 
@@ -367,7 +367,7 @@ class HptBatchAssembler:
 
 
 def _object_array(values: list[Any]) -> np.ndarray:
-    array = np.empty(len(values), dtype=object)
+    array: np.ndarray = np.empty(len(values), dtype=object)
     for idx, value in enumerate(values):
         array[idx] = value
     return array

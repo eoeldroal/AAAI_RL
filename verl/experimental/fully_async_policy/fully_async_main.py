@@ -96,7 +96,7 @@ class FullyAsyncTaskRunner:
         # max_queue_size
         max_queue_size = ray.get(self.components["rollouter"].get_max_queue_size.remote())
         print(f"[ASYNC MAIN] Creating MessageQueue... max_queue_size {max_queue_size}")
-        message_queue = MessageQueue.remote(config, max_queue_size)
+        message_queue = MessageQueue.remote(config, max_queue_size)  # type: ignore[attr-defined]  # ray .remote
         message_queue_client = MessageQueueClient(message_queue)
         self.components["message_queue"] = message_queue
         self.components["message_queue_client"] = message_queue_client

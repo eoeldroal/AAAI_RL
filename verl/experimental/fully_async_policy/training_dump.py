@@ -162,6 +162,7 @@ class TrainingTensorDumper:
         self._pending: Optional[Future] = None
         self._dropped_busy = 0
         if config.enable:
+            assert config.dir is not None, "TrainingDumpConfig.dir must be set when enable=True"
             self._dir = Path(config.dir).expanduser().resolve()
             self._dir.mkdir(parents=True, exist_ok=True)
             if config.offload:
@@ -228,6 +229,7 @@ class TrainingTensorDumper:
         payload = self._extract(batch, step, param_version, local_trigger_step)
         if payload is None:
             return None
+        assert self._dir is not None  # should_dump() is only true when enabled, which sets _dir
         path = str(self._dir / f"step_{int(step):08d}.dp")
 
         if self._executor is None:

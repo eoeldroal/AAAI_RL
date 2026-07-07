@@ -86,6 +86,20 @@ module = [
 "verl.trainer.ppo.reward",
 "verl.workers.reward_manager",
 "verl.workers.reward_manager.*",
+# Async-HPT fork: type-checked incrementally. The HPT-core + supporting modules are clean and
+# enabled here; the orchestration files (fully_async_trainer/rollouter, separation.ray_trainer)
+# still carry Optional-attribute-narrowing and ray `.remote` noise and are enabled as they are
+# cleaned up (see docs/Debug_RL.md "Static type-checking").
+"verl.experimental.fully_async_policy.hpt_config",
+"verl.experimental.fully_async_policy.hpt_gate",
+"verl.experimental.fully_async_policy.hpt_training",
+"verl.experimental.fully_async_policy.hpt_assembler",
+"verl.experimental.fully_async_policy.hpt_payload",
+"verl.experimental.fully_async_policy.hpt_rollout_accumulator",
+"verl.experimental.fully_async_policy.detach_utils",
+"verl.experimental.fully_async_policy.message_queue",
+"verl.experimental.fully_async_policy.training_dump",
+"verl.experimental.fully_async_policy.fully_async_main",
 ]
 ignore_errors = false
 
