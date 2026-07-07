@@ -152,12 +152,16 @@ config validated        hpt_config.validate_async_hpt_config
 **Key asymmetry (memorize this):** an **SFT** route collapses a prompt group to
 **1 learner row**; an **RL** route expands to **`rollout.n` rows**. So
 *queue-sample count != learner-row count*. The trainer collects `required_samples`
-queue samples, then keeps pulling until learner rows are divisible by
-`_hpt_required_training_multiple` (= `lcm(dp_size, ppo_mini_batch_size*rollout_n)`),
-bounded by `max_completed_prompt_groups`. This produces the log line:
+queue samples, grows only if the batch is under one `_hpt_required_training_multiple`
+(= `lcm(dp_size, ppo_mini_batch_size*rollout_n)`), then **trims to the largest
+aligned batch and defers the residue (< one multiple) to the next step via
+`_hpt_carryover_samples`** (`_plan_row_alignment_deferral`; see `Improvement_RL.md`
+§5.8.6 and `AsyncBudget_RL.md` Principle 6). The batch stays bounded near
+`required_samples`. Log line:
 
 ```
-[FullyAsyncTrainer] Loop collection completed: <q>/<req> samples, learner_rows=<r>, required_multiple=<m>
+[FullyAsyncTrainer] Loop collection completed: <retained>/<req> samples, learner_rows=<r>,
+  required_multiple=<m>, carryover_in=<n>, carried_forward=<n>, discarded=<n>, deferred_rows=<n>
 ```
 
 ## HPT Objective (the research core)
@@ -233,7 +237,7 @@ via `CheckpointEngineManager.update_weights`, then RPCs rollouter `reset_stalene
 | Symptom | Look first |
 | --- | --- |
 | Run stalls: `active_tasks=0, mq_queue=0, pending>0` | Circular wait, not generation. Async budget too small — `_should_pause_generation` vs trainer `_get_samples_from_queue`. Fix via `AsyncBudget_RL.md` sizing. |
-| `ValueError: could not form a trainable batch` | `_get_samples_from_queue` row-aware loop exhausted `max_completed_prompt_groups` window; check `_hpt_required_training_multiple` and assembler row counts. |
+| `ValueError: could not trim to an aligned batch` / `could not reach one trainable multiple` | Near-impossible with trim+carryover (only if a batch has almost no SFT groups to move the residue mod `rollout.n`, or is smaller than one multiple with an exhausted queue); check `_plan_row_alignment_deferral`, `_hpt_required_training_multiple`, and assembler row counts. The old grow-until-aligned crash (`could not form a trainable batch` at large `learner_rows`) is fixed — `Improvement_RL.md` §5.8.6. |
 | `ValueError` mentioning `min_global_steps` | `_add_hpt_async_sample_meta` requires param-version metadata after assembly. |
 | `libcudart.so.13: cannot open shared object` | SGLang subprocess without `conda activate RL`. See `Readme_RL.md` step 2, `scripts/install_vllm_sglang_mcore.sh`, `verl/utils/cuda_env.py`. |
 | Prompt groups missing / lower throughput than expected | Whole-group fail-closed drop on any attempt's `infra_abort` marker — `_has_infra_abort_marker` / `_drop_hpt_scheduler_group`. Check rollout-side exceptions before assuming a queue/staleness issue. |

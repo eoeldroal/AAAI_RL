@@ -5,6 +5,52 @@ _Last updated: 2026-07-07_
 How to size the fully-async queue, staleness, and HPT learner-row budgets.
 Environment/log commands: `Readme_RL.md`. Code enforcement: `Codemap_RL.md`. Rules: `../AGENTS.md`.
 
+## Operating Principles
+
+Distilled from the async M-run experiments (case record: `Improvement_RL.md` §5.8).
+These are the headline rules; where the detailed sizing below predates them, they win.
+
+1. **Bounded-fresh beats large-stale.** The completed queue is a backlog of aging
+   rollouts. Training on a large *stale* batch does not just cost compute — it
+   measurably degrades the model (a leg resumed onto stale batches lost ~3 val
+   points). Prefer a small, fresh, bounded batch over a large, stale one.
+
+2. **Bound the queue to stop the batch-explosion loop.** A slow learner lets the
+   queue fill; a fuller queue makes the next batch bigger; a bigger batch makes
+   the learner slower. Left unbounded this self-amplifies (batch ran 22M→90M
+   tokens, steps to ~30 min). Capping the completed queue at a small multiple of
+   the per-step batch keeps the loop from starting.
+
+3. **Drops are backpressure, not failure.** With a bounded queue and the learner
+   as the bottleneck, rollouters overproduce and the excess pauses or drops.
+   `Queue full, dropped sample` is the cap working. Rollout is not the bottleneck,
+   so its wasted work is cheap; freshness is the payoff.
+
+4. **Step time ∝ batch size; throughput is ~constant.** A slow step from a big
+   batch is more-work, not slower-work (effective learner tok/s stayed constant
+   through the explosion). The lever for step time is the batch/queue bound, not
+   more train GPUs (and note the checkpoint is FSDP-sharded to a fixed world size,
+   so changing the train GPU count is not a drop-in resume anyway).
+
+5. **Fix plumbing, not the learning problem.** When utilization or step time is
+   bad, do not reach for learning-facing knobs (mini-batch size, sync cadence) —
+   that changes the experiment. Reconcile the stream-to-batch mismatch in the
+   collection layer instead.
+
+6. **Variable HPT group sizes → trim + carryover, not grow-to-align.** RL groups
+   contribute `rollout.n` rows, SFT groups 1, but the learner needs a fixed
+   row-multiple. Do not grow the batch until it happens to land on a multiple
+   (over-collects 2-3x and can fail to converge → crash). Collect the intended
+   `required_samples`, trim down to the largest aligned batch, and carry the small
+   residue (< one multiple) to the next step where it trains first. Bounded,
+   zero-waste, crash-free.
+
+**Sizing that follows from these:** bound `max_completed_prompt_groups` to ~2-3×
+the per-step prompt-group batch (e.g. ~384 for a 128-group batch), not thousands;
+expect and accept drops; keep the batch-scale knobs (`ppo_mini_batch_size ×
+require_batches`) at baseline parity — never retune them to chase throughput; let
+the queue cap, not a large `staleness_threshold`, do the freshness work.
+
 ## Run Correctness Checklist
 
 Before a main run, in addition to `Readme_RL.md`'s environment checklist:
@@ -36,28 +82,32 @@ Before a main run, in addition to `Readme_RL.md`'s environment checklist:
 
 ## HPT Queue And Staleness Settings
 
-HPT changes the trainer queue contract. A trainer update no longer necessarily
-uses exactly `required_samples` queue samples. The trainer first collects queue
-samples, assembles HPT learner rows, and may keep consuming queue samples until
-the learner row count satisfies the distributed training multiple.
+HPT changes the trainer queue contract. RL groups materialize to `rollout.n`
+learner rows and SFT groups to 1, so `required_samples` prompt groups rarely land
+exactly on the `required_multiple` the learner needs. The trainer collects the
+intended `required_samples` groups (growing only if the batch is under one
+multiple), then **trims down to the largest aligned batch and carries the small
+residue (< one multiple) to the next step**, where it is trained first (Principle
+6; `Improvement_RL.md` §5.8.6). The batch is therefore bounded near
+`required_samples` — it does not balloon to whatever the queue holds.
 
 The relevant trainer log is:
 
 ```text
 [FullyAsyncTrainer] Loop collection completed:
-  <queue_samples>/<required_samples> samples,
-  learner_rows=<rows>,
-  required_multiple=<multiple>
+  <retained>/<required_samples> samples, learner_rows=<rows>, required_multiple=<multiple>,
+  carryover_in=<n>, carried_forward=<n>, discarded=<n>, deferred_rows=<n>
 ```
 
 This means:
 
-- `queue_samples` can be larger than `required_samples`.
-- `learner_rows` must be divisible by `required_multiple`.
-- A single trainer update can consume many queue samples.
-- `async_training.max_completed_prompt_groups` also bounds how many completed
-  queue samples the HPT trainer may read while trying to form one trainable
-  learner batch.
+- `learner_rows` is a multiple of `required_multiple`, bounded near
+  `required_samples * rollout.n` (not the whole queue).
+- `carryover_in`/`carried_forward` are the residue groups deferred across steps;
+  they stay small (< one multiple in rows) and are consumed with priority next
+  step. `discarded` is a rare bounded drop when a carried group cannot be placed.
+- `async_training.max_completed_prompt_groups` bounds the *completed queue depth*
+  (freshness + backpressure), no longer a large grow-until-aligned read window.
 
 Because of that, async run budgets must be chosen together:
 
@@ -133,7 +183,7 @@ rollout.n=8
 async_training.require_batches=4
 async_training.trigger_parameter_sync_step=4
 async_training.staleness_threshold=2.0
-async_training.max_completed_prompt_groups=2048
+async_training.max_completed_prompt_groups=384   # bounded: ~3x the 128-group batch
 ```
 
 This gives:
@@ -153,12 +203,14 @@ system can look like it's "not training" while actually waiting for enough
 HPT rows.
 
 `max_completed_prompt_groups` is not a batch-size parity knob. It is the
-completed-queue/backlog cap used by the rollouter and the HPT row-aware trainer
-read window. Setting it to 256 would make queue capacity only two fit_steps for
-the main launcher and can trigger `Queue full, dropped sample` during rollout
-bursts. Keeping it at 2048 is an async-only buffer choice: it does not change
-the learner batch scale, but it prevents completed samples from being dropped
-before the trainer can assemble HPT rows.
+completed-queue/backlog cap. **Bound it** to a small multiple of the per-step
+batch (~384 for the 128-group main launcher). It does not change the learner
+batch scale — the collection now bounds the batch by trim+carryover regardless
+(Principle 6) — so a small cap simply keeps the queue fresh and the batch from
+riding a stale backlog. Do not size it in the thousands: the old `2048` was what
+let the batch-explosion loop run (Principle 2), and once bounded, `Queue full,
+dropped sample` is the expected, safe backpressure signal (Principle 3), not a
+symptom to size away.
 
 Raise `require_batches` only when fixed per-fit_step overhead (Ray RPC, queue
 deserialization) starts to dominate at the smaller scale. Do not raise it to
@@ -243,18 +295,21 @@ to 7680 gives roughly 100+ cycles for the strict HPT route if rows aren't droppe
 
 ### Main Run Rule
 
-For a main run, do not copy smoke values blindly. Size the budgets from the
-observed HPT learner-row consumption:
+For a main run, do not copy smoke values blindly, and do not size the completed
+queue to the p95 of grow-until-aligned consumption — that was the pre-trim regime
+that let the batch explode. With trim+carryover the batch is bounded near
+`required_samples` on its own, so size the completed queue for **freshness and
+backpressure**, not to hold a large grow window:
 
 ```text
-completed budget >=
-  trigger_parameter_sync_step
-  * p95(queue_samples consumed per trainer update)
-  * safety_margin
+max_completed_prompt_groups ≈ 2-3 * (ppo_mini_batch_size * require_batches)   # prompt groups
 ```
 
-Use a safety margin of at least `1.5` for early experiments, taking the p95
-from the actual mixed RL/HPT workload rather than a toy all-HPT or all-RL sample.
+That is ~2-3 fit_steps of headroom: enough that the learner never starves, small
+enough that consumed data is at most a few parameter versions stale. Expect
+`Queue full, dropped sample` under this cap — it is the bound working
+(Principle 3), and watch `fully_async/trainer/idle_ratio` (≈0 healthy; if it
+rises, the cap is too tight, raise it one step).
 
 ## Skip/Cache Caveat
 
