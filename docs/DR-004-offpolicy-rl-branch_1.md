@@ -1,5 +1,7 @@
 # DR-004. RL Branch의 Off-Policy 처리 — Staleness 보정과 Trust-Region Clip의 분리 (Decoupling)
 
+_Last updated: 2026-07-07_
+
 Status: 분석부 정리 · C1 config/routing/MIS-bypass 구현 완료(2026-07-04) · M-first ablation에서는 C1로 채택(entry-recent + TIS-w) · 기본값 `rollout` 유지 시 D0 경로 불변
 범위: mixed HPT batch에서 **RL branch**의 off-policy 처리 — clip anchor를 `rollout` vs `entry`로 둘 때의 semantics, 그리고 그에 딸려 활성화되는 off-policy correction. **SFT branch**의 off-policy 처리는 DR-003, aggregation/정규화는 DR-001, auxiliary 정칙화(entropy/KL)는 DR-002 소관.
 관련 코드: `verl/workers/utils/losses.py::ppo_loss`, `verl/trainer/ppo/core_algos.py::compute_policy_loss_vanilla`, `verl/trainer/ppo/rollout_corr_helper.py::{_compute_hpt_rollout_correction_and_add_to_batch, compute_rollout_correction_and_rejection_mask}`, `verl/experimental/fully_async_policy/hpt_training.py::{apply_hpt_rollout_logprob_anchor, should_use_hpt_rollout_logprob_anchor, filter_hpt_stale_rollout_samples}`, `verl/experimental/fully_async_policy/hpt_config.py::AsyncHptConfig`, `verl/experimental/separation/ray_trainer.py::{_fit_compute_log_prob, _compute_old_log_prob}`

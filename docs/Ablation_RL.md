@@ -1,5 +1,7 @@
 # Ablation_RL — Async-HPT Ablation Study 설계
 
+_Last updated: 2026-07-07_
+
 Status: 설계 확정(M-앵커 2×2로 재배향, 2026-07-04) · D0 런처 반영·run 완료 · C1 decoupling / C2 CISPO config+loss+routing 구현 완료(런처/run은 별도) · A1은 config-only · 라벨 대응: 구 A5≡M−cispo, 구 A6c≡M(§3)
 범위: DR-001~005가 내린 **결정 요소를 D0 기준으로 하나씩 뒤집어** 각 결정의 기여를 격리하는 ablation. 결정의 근거·이론은 각 DR 소관이며, 이 문서는 그 결정들을 **실행 가능한 실험**으로 배치한다.
 관련 문서: `DR-001-loss-normalization_1.md`(집계) · `DR-002-auxiliary-terms_1.md`(aux) · `DR-003-offpolicy-supervised-branch_1.md`(SFT branch) · `DR-004-offpolicy-rl-branch_1.md`(decoupling) · `DR-005-rl-objective-composition_1.md`(결합 문법) · `Codemap_RL.md`(코드 위치)

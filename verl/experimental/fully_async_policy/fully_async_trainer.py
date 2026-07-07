@@ -890,9 +890,7 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
     def _fit_postprocess_step(self, batch: DataProto):
         self.global_steps += 1
 
-        self.metrics_aggregator.add_step_metrics(
-            metrics=self.metrics, sample_count=len(batch), timestamp=time.time()
-        )
+        self.metrics_aggregator.add_step_metrics(metrics=self.metrics, sample_count=len(batch), timestamp=time.time())
 
         if self.local_trigger_step == 1:
             self.progress_bar.update(1)

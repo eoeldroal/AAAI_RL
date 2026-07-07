@@ -1,5 +1,7 @@
 # DR-005. RL Branch 목적함수의 결합 설계 — 통일 추정량, 슬롯 분리, 정준 조합
 
+_Last updated: 2026-07-07_
+
 Status: **방향 문서** · C2 upper-only CISPO config+loss 구현 완료(2026-07-04) · M-first ablation에서는 C2=CISPO로 채택 · 기본값은 여전히 `rollout` anchor(D0 불변)
 범위: async-HPT **RL branch** 목적함수에서 staleness 처리와 trust-region 처리를 **어떻게 결합해도 되는가**의 수학적 판별과, 그 판별을 통과한 목표 조합의 고정. SFT branch(DR-003)·aggregation(DR-001)·auxiliary(DR-002)는 **불변 전제이자 보존 조건**이다.
 관련 코드: `verl/workers/utils/losses.py::ppo_loss`, `verl/trainer/ppo/core_algos.py::compute_policy_loss_vanilla`(및 `rollout_is_weights` 적용점), `verl/trainer/ppo/rollout_corr_helper.py::compute_rollout_correction_and_rejection_mask`, `verl/experimental/fully_async_policy/hpt_training.py`, `verl/experimental/separation/ray_trainer.py::_compute_old_log_prob`

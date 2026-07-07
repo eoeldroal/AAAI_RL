@@ -1,3 +1,16 @@
+# Copyright 2026 Bytedance Ltd. and/or its affiliates
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import asyncio
 
 import numpy as np
@@ -797,10 +810,7 @@ async def test_async_hpt_trainer_topup_materializes_each_queue_sample_once():
     from verl.experimental.fully_async_policy.fully_async_trainer import FullyAsyncTrainer
 
     rollout_n = 4
-    queue_samples = [
-        _make_hpt_queue_sample(route_kind="sft", idx=idx, rollout_n=rollout_n)
-        for idx in range(8)
-    ]
+    queue_samples = [_make_hpt_queue_sample(route_kind="sft", idx=idx, rollout_n=rollout_n) for idx in range(8)]
 
     trainer_cls = FullyAsyncTrainer.__ray_metadata__.modified_class
     trainer = object.__new__(trainer_cls)
@@ -821,9 +831,7 @@ async def test_async_hpt_trainer_topup_materializes_each_queue_sample_once():
     assert trainer.message_queue_client.calls == 8
     assert trainer.hpt_assembler.full_assembly_calls == 0
     assert trainer.hpt_assembler.concat_calls == 1
-    assert trainer.hpt_assembler.materialized_sample_ids == [
-        f"sample-{idx}" for idx in range(8)
-    ]
+    assert trainer.hpt_assembler.materialized_sample_ids == [f"sample-{idx}" for idx in range(8)]
     assert batch.meta_info["fully_async/hpt_collected_queue_samples"] == 8
     assert batch.meta_info["fully_async/hpt_required_training_multiple"] == 8
 

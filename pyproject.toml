@@ -30,7 +30,9 @@ requires-python = ">=3.10"
 # Note: While the formatter will attempt to format lines such that they remain within the line-length,
 # it isn't a hard upper bound, and formatted lines may exceed the line-length.
 line-length = 120
-exclude = ["scripts/legacy_model_merger.py"]
+# make_asynchpt_slides.py is a one-off paper/slide generator whose content is long
+# Korean presentation strings that cannot be line-wrapped; exclude it like the merger util.
+exclude = ["scripts/legacy_model_merger.py", "docs/papers_RL/make_asynchpt_slides.py"]
 
 [tool.ruff.lint]
 isort = {known-first-party = ["verl"]}

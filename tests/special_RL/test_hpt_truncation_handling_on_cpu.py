@@ -134,12 +134,22 @@ def _payload(rm_scores):
 
 def _cispo_config(global_batch_size, loss_scale_factor):
     return ActorConfig(
-        strategy="fsdp", rollout_n=1, ppo_mini_batch_size=1, ppo_micro_batch_size=1,
-        clip_ratio=0.2, clip_ratio_low=10.0, clip_ratio_high=0.28, clip_ratio_c=10.0,
-        loss_agg_mode="seq-mean-token-sum-norm", use_kl_loss=False, entropy_coeff=0.0,
+        strategy="fsdp",
+        rollout_n=1,
+        ppo_mini_batch_size=1,
+        ppo_micro_batch_size=1,
+        clip_ratio=0.2,
+        clip_ratio_low=10.0,
+        clip_ratio_high=0.28,
+        clip_ratio_c=10.0,
+        loss_agg_mode="seq-mean-token-sum-norm",
+        use_kl_loss=False,
+        entropy_coeff=0.0,
         global_batch_info={
-            "dp_size": 1, "batch_num_tokens": None,
-            "global_batch_size": global_batch_size, "loss_scale_factor": loss_scale_factor,
+            "dp_size": 1,
+            "batch_num_tokens": None,
+            "global_batch_size": global_batch_size,
+            "loss_scale_factor": loss_scale_factor,
         },
         policy_loss={"loss_mode": "cispo"},
     )
@@ -151,8 +161,11 @@ def _cispo_grad(*, advantages, global_batch_size, loss_scale_factor=8.0):
     response_mask = torch.ones(n_rows, T, dtype=torch.bool)
     log_prob = torch.zeros(n_rows, T, requires_grad=True)
     pg_loss, _ = compute_policy_loss_cispo(
-        old_log_prob=torch.zeros(n_rows, T), log_prob=log_prob, advantages=advantages,
-        response_mask=response_mask, loss_agg_mode="seq-mean-token-sum-norm",
+        old_log_prob=torch.zeros(n_rows, T),
+        log_prob=log_prob,
+        advantages=advantages,
+        response_mask=response_mask,
+        loss_agg_mode="seq-mean-token-sum-norm",
         config=_cispo_config(global_batch_size, loss_scale_factor),
     )
     pg_loss.backward()
@@ -339,7 +352,9 @@ def test_p0_2_ordering_invariant_baseline_reflects_truncated_failures():
     response_mask = torch.ones(4, resp_len, dtype=torch.bool)
     index = np.array(["g0", "g0", "g0", "g0"], dtype=object)
     advantages, _ = compute_grpo_outcome_advantage(
-        token_level_rewards=token_level_rewards, response_mask=response_mask, index=index,
+        token_level_rewards=token_level_rewards,
+        response_mask=response_mask,
+        index=index,
         norm_adv_by_std_in_grpo=False,
     )
     assert advantages[0].mean().item() == pytest.approx(0.75)  # baseline 0.25 reflects 3/4 failures

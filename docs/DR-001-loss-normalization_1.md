@@ -1,5 +1,7 @@
 # DR-001. Loss Normalization, the Removal of B_eff, and Branch-Blind Reduction
 
+_Last updated: 2026-07-07_
+
 Status: 확정 (phase-1) · 구현됨 (`feat/async-hpt-branch-blind-loss`) · CPU 계약 테스트 통과
 범위: Async-HPT actor loss의 reduction 계층. routing / learner contract / reference 계약은 불변.
 관련 코드: `verl/workers/utils/losses.py`, `verl/experimental/fully_async_policy/hpt_assembler.py`, `verl/trainer/ppo/core_algos.py`, `verl/workers/engine/*/transformer_impl.py`

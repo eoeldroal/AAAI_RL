@@ -1,5 +1,7 @@
 # Async Queue & HPT Budget Sizing
 
+_Last updated: 2026-07-07_
+
 How to size the fully-async queue, staleness, and HPT learner-row budgets.
 Environment/log commands: `Readme_RL.md`. Code enforcement: `Codemap_RL.md`. Rules: `../AGENTS.md`.
 

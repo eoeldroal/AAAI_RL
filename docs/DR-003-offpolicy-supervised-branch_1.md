@@ -1,5 +1,7 @@
 # DR-003. Off-Policy Treatment of the Supervised Branch — Why It Needs Neither Correction nor a Statistical Trust Region
 
+_Last updated: 2026-07-07_
+
 Status: 분석부 확정 · self-detach 유지 구현됨 (`feat/async-hpt-branch-blind-loss`) · 안정성 가설 미검증(사전 계측 후 ablation 대상)
 범위: mixed batch에서 supervised branch(τ*)의 off-policy 처리 — 보정(IS)과 제동(trust region)의 필요 여부. aggregation/정규화는 DR-001, auxiliary 정칙화는 DR-002 소관.
 관련 코드: `verl/workers/utils/losses.py::ppo_loss`, `verl/trainer/ppo/rollout_corr_helper.py`

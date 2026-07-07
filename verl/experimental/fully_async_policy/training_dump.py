@@ -175,9 +175,7 @@ class TrainingTensorDumper:
     def should_dump(self, step: int) -> bool:
         return self.config.enable and step >= 0 and (step % self.config.sample_every_n_steps == 0)
 
-    def _extract(
-        self, batch: DataProto, step: int, param_version: int, local_trigger_step: int
-    ) -> Optional[DataProto]:
+    def _extract(self, batch: DataProto, step: int, param_version: int, local_trigger_step: int) -> Optional[DataProto]:
         """Build an independent CPU DataProto of the loss-boundary tensors (read-only)."""
         if batch is None or batch.batch is None:
             return None

@@ -504,9 +504,7 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
             try:
                 values.append(float(normalized))
             except (TypeError, ValueError) as e:
-                raise ValueError(
-                    f"hpt_success_probability[{row_idx}] must be a numeric value, got {value!r}."
-                ) from e
+                raise ValueError(f"hpt_success_probability[{row_idx}] must be a numeric value, got {value!r}.") from e
 
         # Unbiased on-policy success rate: GROUP-weighted mean of success_probability.
         # critic/score/mean (computed below) is ROW-weighted, so it over-represents

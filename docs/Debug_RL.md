@@ -1,5 +1,7 @@
 # RL Debugging & Profiling Notes
 
+_Last updated: 2026-07-07_
+
 How we keep this fork's code clean and diagnose performance in the async
 RL + HPT stack. This is not a replacement for upstream tool docs (`ruff`,
 `py-spy`, `line_profiler`, `pyinstrument`) — it records the project- and

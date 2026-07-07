@@ -1,5 +1,7 @@
 # Async-HPT: What This Fork Is
 
+_Last updated: 2026-07-07_
+
 Upstream `verl` (RL for LLMs) plus one research line: **HPT (Hybrid
 Post-Training)** as a first-class objective on the **fully-asynchronous** RL runtime
 — a prompt-level RL/SFT hybrid objective, decided per prompt group, running

@@ -1,5 +1,7 @@
 # RL Run Notes
 
+_Last updated: 2026-07-07_
+
 This document records environment and launch practice for the clean
 RL-focused `verl` fork. It is not a replacement for the upstream docs. For
 queue/staleness/HPT budget sizing, see `AsyncBudget_RL.md`. For what this

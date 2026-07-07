@@ -1,5 +1,7 @@
 # RL Code Map
 
+_Last updated: 2026-07-07_
+
 Navigation and debugging map for this async-HPT `verl` fork. Use it to find
 where code lives, how a rollout sample becomes a learner update, and — when a
 run breaks — which file/symbol to open first.

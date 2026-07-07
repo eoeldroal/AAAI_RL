@@ -42,9 +42,7 @@ class DAPORewardManager(RewardManagerBase):
         # (success = reward_score > threshold) and the GRPO advantage (rm_scores is reused by the
         # trainer, not recomputed), so it simultaneously (a) stops rewarding non-termination,
         # (b) re-routes "correct-but-truncated" groups to SFT, (c) keeps the GRPO baseline honest.
-        self.zero_reward_if_truncated = config.reward.get("reward_kwargs", {}).get(
-            "zero_reward_if_truncated", False
-        )
+        self.zero_reward_if_truncated = config.reward.get("reward_kwargs", {}).get("zero_reward_if_truncated", False)
 
         if self.overlong_buffer_cfg is not None and self.overlong_buffer_cfg.enable:
             assert self.max_resp_len is not None, (
@@ -91,6 +89,7 @@ class DAPORewardManager(RewardManagerBase):
                 **extra_reward_kwargs,
             )
         else:
+
             def compute_score():
                 return self.compute_score(
                     data_source=data_source,
