@@ -41,6 +41,32 @@ checks see `Readme_RL.md`; for queue/staleness/HPT budgets see
   tests after auto-fixes — import reorders and `from None` are behavior-neutral,
   but confirm rather than assume.
 
+## Static type-checking (mypy, pinned + scoped)
+
+`.pre-commit-config.yaml` pins mypy (mirrors-mypy `v1.17.0`); config is
+`pyproject.toml [tool.mypy]`. The default is a **blanket `ignore_errors = true`** —
+a module is only actually checked when listed in the `ignore_errors = false`
+override. The fork's HPT-core modules are opted in there; the orchestration files
+(`fully_async_trainer`, `fully_async_rollouter`, `separation.ray_trainer`) are
+not yet — they still carry `Optional`-attribute narrowing and Ray `.remote`
+`attr-defined` noise, and are enabled one module at a time as they are cleaned.
+
+- Run the pinned checker (isolated env, matches CI): `pre-commit run mypy
+  --files <changed files>`. If mypy 1.17.0 is in the RL env (`--dry-run` first,
+  see below), point it at a package: `python -m mypy
+  verl/experimental/fully_async_policy/`.
+- To measure a not-yet-enabled module before opting it in, run with a temp
+  config that drops the blanket silence (`[mypy]` with
+  `ignore_missing_imports=true`, `follow_imports=skip`) so you see its real error
+  count, fix them, then add the module to the override.
+- Prefer making a config-guaranteed non-None invariant explicit with
+  `assert x is not None` (documents the contract and fails fast at runtime too)
+  over `# type: ignore`. Reserve `# type: ignore[code]` for genuine tool gaps
+  (e.g. the Ray `@remote`-injected `.remote`).
+- mypy earns its keep on exactly the bug class this fork hits: opting the modules
+  in immediately surfaced a wrong return annotation (`dict[str, dict[...]]` where
+  the values are `list[str]`) and unguarded `str | None` paths.
+
 ## Installing dev tools into the RL env safely
 
 The RL env is a tightly-pinned ML stack; a careless install can silently
@@ -126,3 +152,29 @@ many times** the code runs. Always confirm magnitude with an independent method:
   assembly boundary and are regime-dependent (SFT vs RL). Whenever an assembly
   step is called inside a collection loop, check whether it re-processes a
   growing list.
+
+## Property-based testing at the collection boundary (hypothesis)
+
+The async-HPT bugs concentrate at the queue→learner-batch assembly boundary and
+are composition-dependent (SFT vs RL group sizes) — exactly where example-based
+tests miss the pathological case. The grow-to-align crash (`Improvement_RL`
+§5.8.4) was a *universal* claim — "for every group composition, collection
+terminates and aligns" — that a few hand-picked examples could not falsify.
+
+`tests/special_RL/test_row_alignment_properties_on_cpu.py` encodes the invariants
+of `_plan_row_alignment_deferral` as hypothesis properties over random
+`(row_counts, required_multiple, protected_prefix)`:
+
+- a returned deferral only touches eligible groups, its rows sum to exactly the
+  residue, and the retained batch is an exact multiple (crash-free alignment);
+- `None` is returned **iff** the residue is unreachable — checked against an
+  independent brute-force subset-sum oracle (two methods must agree, per "Confirm
+  the cause before acting");
+- aligned / trivial-multiple inputs defer nothing.
+
+Reach for hypothesis when the correctness statement is a `for all` over a
+combinatorial input (group compositions, budget arithmetic, staleness spans), and
+pair the implementation with a slow-but-obvious oracle so the property tests a
+second, independent computation rather than restating the code. hypothesis is in
+`requirements-test.txt`; the test `importorskip`s it so it skips cleanly if
+absent. It is a CPU-only `*_on_cpu.py` test.
