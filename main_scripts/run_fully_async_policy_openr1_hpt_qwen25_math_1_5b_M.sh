@@ -90,7 +90,9 @@ TRAIN_DUMP_DIR="${VERL_ROOT}/.cache/train_dump/openr1_async_hpt_qwen25_math_1_5b
 # 64 * 2도 prompt-batch parity는 맞지만, 32 * 4가 HPT learner-row divisibility와
 # async trainer scheduling에 더 덜 brittle해서 1.5B 첫 main run 기본값으로 둔다.
 REQUIRE_BATCHES=4
-MAX_COMPLETED_PROMPT_GROUPS=2048
+# 2048→384: 배치 유계화(원본 healthy M의 ~365그룹 재현, 최소 128의 3배). 큐 상한=배치 상한
+# → 스텝 30분→~8분·OOM 제거·데이터 신선. 감시: idle_ratio↑면 512로 완화 (Improvement_RL §5.8.4)
+MAX_COMPLETED_PROMPT_GROUPS=384
 
 # [각주 4] UPT와의 대응 관계:
 #   UPT SWITCH_GATE=0
@@ -243,14 +245,15 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     trainer.project_name=async-hpt-openr1 \
     trainer.experiment_name=qwen25_math_1_5b_openr1_async_hpt_M_decoupled_cispo \
     trainer.val_before_train=True \
-    trainer.save_freq=10 \
-    trainer.resume_mode=disable \
+    trainer.save_freq=5 \
+    trainer.resume_mode=resume_path \
+    trainer.resume_from_path="${VERL_ROOT}/checkpoints/async-hpt-openr1/qwen25_math_1_5b_openr1_async_hpt_M_decoupled_cispo/global_step_50" \
     trainer.nnodes=1 \
     trainer.n_gpus_per_node=2 \
     trainer.log_val_generations=10 \
     trainer.total_epochs=3 \
     trainer.total_training_steps=500 \
-    trainer.test_freq=10 \
+    trainer.test_freq=5 \
     rollout.nnodes=1 \
     rollout.n_gpus_per_node=6 \
     rollout.n=8 \
