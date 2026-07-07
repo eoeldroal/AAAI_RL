@@ -59,6 +59,7 @@ DUMP_TENSOR_KEYS: tuple[str, ...] = (
     "rollout_log_probs",
     "advantages",
     "hpt_is_sft",
+    "hpt_is_truncated_rl",
     "token_level_scores",
     "token_level_rewards",
 )

@@ -193,7 +193,9 @@ def test_p0_1_boundary_is_at_the_cap_not_the_tensor_width():
 
 
 def test_p0_1_max_resp_len_none_falls_back_to_tensor_width():
-    mgr = _make_reward_manager(zero_reward_if_truncated=True, max_resp_len=None, score_result={"score": 1.0, "acc": 1.0})
+    mgr = _make_reward_manager(
+        zero_reward_if_truncated=True, max_resp_len=None, score_result={"score": 1.0, "acc": 1.0}
+    )
     assert _run_single(mgr, _make_reward_item(prompt_len=2, resp_len=4, valid_resp=4))["reward_score"] == 0.0
     assert _run_single(mgr, _make_reward_item(prompt_len=2, resp_len=4, valid_resp=2))["reward_score"] == 1.0
 
@@ -266,6 +268,7 @@ def test_p0_2_zeros_truncated_rl_rows_only_and_reports_rl_denominator():
     assert torch.all(adv[3] == 0.0)  # RL truncated -> zeroed
     assert tr.metrics["hpt/truncated_rl_rows_zeroed"] == 2
     assert tr.metrics["hpt/truncated_rl_frac"] == pytest.approx(2 / 3)  # 2 of 3 RL rows (SFT excluded)
+    assert batch.batch["hpt_is_truncated_rl"].tolist() == [True, False, False, True]
 
 
 def test_p0_2_all_sft_batch_is_never_touched():
@@ -394,7 +397,9 @@ def _build_group(specs, *, zero_if_truncated=True):
 
 
 def _route(rm_scores):
-    success_count, total = count_successful_rollouts(_payload(rm_scores), score_key="reward_score", success_threshold=0.0)
+    success_count, total = count_successful_rollouts(
+        _payload(rm_scores), score_key="reward_score", success_threshold=0.0
+    )
     return success_count, total, (success_count / total) <= GAMMA
 
 
@@ -414,7 +419,11 @@ def _full_pipeline(specs):
         token_level_rewards=rm, response_mask=response_mask.bool(), index=index, norm_adv_by_std_in_grpo=False
     )
     batch = DataProto.from_dict(
-        tensors={"advantages": adv.clone(), "response_mask": response_mask, "hpt_is_sft": torch.zeros(len(specs), dtype=torch.bool)}
+        tensors={
+            "advantages": adv.clone(),
+            "response_mask": response_mask,
+            "hpt_is_sft": torch.zeros(len(specs), dtype=torch.bool),
+        }
     )
     tr = _make_trainer(
         {"reward": {"reward_kwargs": {"zero_truncated_rl_advantage": True}}, "data": {"max_response_length": MAX_RESP}}

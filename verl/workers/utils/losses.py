@@ -31,6 +31,7 @@ from verl.workers.config import ActorConfig, CriticConfig
 from verl.workers.utils.padding import no_padding_2_padding
 
 _HPT_LOSS_FIELD = "hpt_is_sft"
+_HPT_TRUNCATED_RL_FIELD = "hpt_is_truncated_rl"
 _OBSOLETE_HPT_LOSS_FIELDS = ("hpt_seq_weight", "hpt_length_divisor", "hpt_loss_denominator")
 
 
@@ -41,11 +42,17 @@ def _has_hpt_loss_fields(data) -> bool:
     return _HPT_LOSS_FIELD in data
 
 
-def _hpt_sft_mask(hpt_is_sft: torch.Tensor, response_mask: torch.Tensor, log_prob: torch.Tensor) -> torch.Tensor:
+def _hpt_row_mask(
+    hpt_row_field: torch.Tensor, response_mask: torch.Tensor, log_prob: torch.Tensor, *, field_name: str
+) -> torch.Tensor:
     batch_size = response_mask.shape[0]
-    if tuple(hpt_is_sft.shape) != (batch_size,):
-        raise ValueError(f"HPT field 'hpt_is_sft' must have shape ({batch_size},), got {tuple(hpt_is_sft.shape)}.")
-    return hpt_is_sft.to(device=log_prob.device, dtype=torch.bool).unsqueeze(-1)
+    if tuple(hpt_row_field.shape) != (batch_size,):
+        raise ValueError(f"HPT field {field_name!r} must have shape ({batch_size},), got {tuple(hpt_row_field.shape)}.")
+    return hpt_row_field.to(device=log_prob.device, dtype=torch.bool).unsqueeze(-1)
+
+
+def _hpt_sft_mask(hpt_is_sft: torch.Tensor, response_mask: torch.Tensor, log_prob: torch.Tensor) -> torch.Tensor:
+    return _hpt_row_mask(hpt_is_sft, response_mask, log_prob, field_name=_HPT_LOSS_FIELD)
 
 
 def sft_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None):
@@ -111,8 +118,11 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
 
     # select fields and convert to padded tensor
     fields = ["response_mask", "old_log_probs", "advantages"]
+    hpt_has_truncated_rl_field = hpt_policy_loss and _HPT_TRUNCATED_RL_FIELD in data
     if hpt_policy_loss:
         fields.append(_HPT_LOSS_FIELD)
+    if hpt_has_truncated_rl_field:
+        fields.append(_HPT_TRUNCATED_RL_FIELD)
     if "rollout_is_weights" in data:
         fields.append("rollout_is_weights")
     if "ref_log_prob" in data:
@@ -130,12 +140,23 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
     loss_mode = config.policy_loss.get("loss_mode", "vanilla")
 
     hpt_sft_token_mask = None
+    hpt_truncated_rl_token_mask = None
     if hpt_policy_loss:
         if loss_mode not in {"cispo", "vanilla"}:
             raise ValueError(
                 "HPT branch-blind policy loss supports only vanilla or cispo as the base policy loss mode."
             )
         hpt_sft_token_mask = _hpt_sft_mask(data["hpt_is_sft"], response_mask, log_prob) & response_mask
+        if hpt_has_truncated_rl_field:
+            hpt_truncated_rl_token_mask = (
+                _hpt_row_mask(
+                    data[_HPT_TRUNCATED_RL_FIELD],
+                    response_mask,
+                    log_prob,
+                    field_name=_HPT_TRUNCATED_RL_FIELD,
+                )
+                & response_mask
+            )
         old_log_prob = torch.where(hpt_sft_token_mask, log_prob.detach(), old_log_prob)
         if rollout_is_weights is not None:
             rollout_is_weights = torch.where(
@@ -176,6 +197,8 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
         entropy_mask = response_mask
         if hpt_sft_token_mask is not None and not hpt_sft_entropy_enabled:
             entropy_mask = response_mask & ~hpt_sft_token_mask
+        if hpt_truncated_rl_token_mask is not None:
+            entropy_mask = entropy_mask & ~hpt_truncated_rl_token_mask
         entropy_loss = agg_loss(
             loss_mat=entropy, loss_mask=entropy_mask, loss_agg_mode=loss_agg_mode, **config.global_batch_info
         )
@@ -196,6 +219,8 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
         rl_diag_mask = response_mask
         if hpt_sft_token_mask is not None:
             rl_diag_mask = response_mask & ~hpt_sft_token_mask
+        if hpt_truncated_rl_token_mask is not None:
+            rl_diag_mask = rl_diag_mask & ~hpt_truncated_rl_token_mask
         _clip_ratio = config.clip_ratio
         _clip_low = config.clip_ratio_low if config.clip_ratio_low is not None else _clip_ratio
         _clip_high = config.clip_ratio_high if config.clip_ratio_high is not None else _clip_ratio

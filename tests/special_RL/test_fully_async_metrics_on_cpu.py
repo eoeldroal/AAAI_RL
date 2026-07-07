@@ -311,6 +311,45 @@ def test_fully_async_metric_weight_sidecars_match_sequence_and_token_denominator
     assert trainer.metrics["_metric_weight/response/aborted_ratio"] == 3
 
 
+def test_fully_async_entropy_metric_weight_excludes_truncated_rl_dead_rows():
+    trainer_cls = FullyAsyncTrainer.__ray_metadata__.modified_class
+    trainer = object.__new__(trainer_cls)
+    trainer.use_critic = False
+    trainer.metrics = {
+        "actor/entropy": 0.0,
+        "actor/entropy_loss": 0.0,
+    }
+    batch = DataProto.from_dict(
+        tensors={
+            "prompts": torch.ones((3, 2), dtype=torch.long),
+            "responses": torch.ones((3, 4), dtype=torch.long),
+            "attention_mask": torch.tensor(
+                [
+                    [1, 1, 1, 1, 0, 0],
+                    [1, 1, 1, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1],
+                ],
+                dtype=torch.long,
+            ),
+            "response_mask": torch.tensor(
+                [
+                    [1, 1, 0, 0],  # clean RL: 2 entropy tokens
+                    [1, 1, 1, 1],  # truncated RL: dead for entropy aggregation
+                    [1, 1, 1, 1],  # SFT: excluded while hpt_sft_entropy_enabled=False
+                ],
+                dtype=torch.long,
+            ),
+            "hpt_is_sft": torch.tensor([False, False, True], dtype=torch.bool),
+            "hpt_is_truncated_rl": torch.tensor([False, True, False], dtype=torch.bool),
+        }
+    )
+
+    trainer._collect_metric_aggregation_weights(batch)
+
+    assert trainer.metrics["_metric_weight/actor/entropy"] == 2
+    assert trainer.metrics["_metric_weight/actor/entropy_loss"] == 2
+
+
 def test_fully_async_hpt_response_length_weights_use_generated_attempt_count():
     trainer_cls = FullyAsyncTrainer.__ray_metadata__.modified_class
     trainer = object.__new__(trainer_cls)

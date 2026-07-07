@@ -966,6 +966,7 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
         n_zeroed = int(rl_truncated.sum().item())
         if n_zeroed > 0:
             batch.batch["advantages"][rl_truncated] = 0.0
+        batch.batch["hpt_is_truncated_rl"] = rl_truncated
         self.metrics["hpt/truncated_rl_rows_zeroed"] = n_zeroed
         self.metrics["hpt/truncated_rl_frac"] = (n_zeroed / n_rl) if n_rl > 0 else 0.0
         return batch
@@ -993,8 +994,14 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
             hpt_is_sft = batch.batch["hpt_is_sft"].to(dtype=torch.bool)
             sft_row_count = int(hpt_is_sft.sum().item())
             sft_token_count = int((response_mask & hpt_is_sft.unsqueeze(-1)).sum().item())
+            if "hpt_is_truncated_rl" in batch.batch:
+                hpt_is_truncated_rl = batch.batch["hpt_is_truncated_rl"].to(dtype=torch.bool)
+                truncated_rl_token_count = int((response_mask & hpt_is_truncated_rl.unsqueeze(-1)).sum().item())
+            else:
+                truncated_rl_token_count = 0
+            entropy_token_count = response_token_count - truncated_rl_token_count
             if not bool(batch.meta_info.get("hpt_sft_entropy_enabled", False)):
-                entropy_token_count = response_token_count - sft_token_count
+                entropy_token_count -= sft_token_count
         # Unique prompt-groups: the correct cross-window weight for the group-weighted
         # on-policy success rate (so it is not re-biased by row counts during aggregation).
         if "hpt_group_uid" in batch.non_tensor_batch:

@@ -1118,6 +1118,68 @@ def test_hpt_sft_self_detach_keeps_ratio_one_and_masks_auxiliary_terms():
     assert metrics["kl_loss"].aggregate() == pytest.approx(0.36, abs=1e-6)
 
 
+def test_hpt_truncated_rl_rows_are_dead_for_entropy_terms():
+    from verl.utils import tensordict_utils as tu
+    from verl.workers.utils.losses import ppo_loss
+
+    config = _make_actor_config(entropy_coeff=0.5)
+    response_mask = torch.tensor(
+        [
+            [1, 1, 0, 0],  # clean RL row: entropy should survive
+            [1, 1, 1, 1],  # truncated RL row: dead for actor-update entropy
+            [1, 1, 1, 1],  # SFT row: excluded while hpt_sft_entropy_enabled=False
+        ],
+        dtype=torch.long,
+    )
+    data = TensorDict(
+        {
+            "prompts": torch.tensor([[1, 2], [1, 2], [1, 2]]),
+            "responses": torch.tensor([[3, 4, 0, 0], [5, 6, 7, 8], [9, 10, 11, 12]]),
+            "attention_mask": torch.tensor(
+                [
+                    [1, 1, 1, 1, 0, 0],
+                    [1, 1, 1, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1],
+                ]
+            ),
+            "response_mask": response_mask,
+            "old_log_probs": torch.zeros((3, 4)),
+            "advantages": torch.ones((3, 4)),
+            "hpt_is_sft": torch.tensor([False, False, True]),
+            "hpt_is_truncated_rl": torch.tensor([False, True, False]),
+        },
+        batch_size=[3],
+    )
+    tu.assign_non_tensor(data, dp_size=1, batch_num_tokens=int(response_mask.sum().item()), global_batch_size=3)
+    log_probs = torch.zeros(16, requires_grad=True)
+    entropy = torch.tensor(
+        [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,  # row 0: clean RL response tokens contribute
+            100.0,
+            100.0,
+            100.0,
+            100.0,
+            100.0,
+            100.0,  # row 1: truncated RL response tokens must be excluded
+            0.0,
+            0.0,
+            200.0,
+            200.0,  # row 2: SFT response tokens must stay excluded
+        ]
+    )
+
+    _, metrics = ppo_loss(config, {"log_probs": log_probs, "entropy": entropy}, data)
+
+    assert metrics["actor/entropy_loss"].aggregate() == pytest.approx(1 / 6, abs=1e-6)
+    assert metrics["actor/_entropy_rl_count"].aggregate() == pytest.approx(2.0, abs=1e-6)
+    assert metrics["actor/_entropy_rl_sum"].aggregate() == pytest.approx(2.0, abs=1e-6)
+
+
 def test_hpt_sft_auxiliary_terms_can_be_enabled_explicitly():
     from verl.utils import tensordict_utils as tu
     from verl.workers.utils.losses import ppo_loss
