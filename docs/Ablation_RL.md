@@ -401,6 +401,21 @@ D0 코너의 실행은 **`eoeldroal-sogang-university/async-hpt-openr1/gvqi3cgq`
 - **캐비엇**: 이 비교조차 D0·M은 버그 레짐에서 *훈련된* 체크포인트라 baseline이 오염(측정은 공정하나 학습 과정은 아님). 정밀 factorial이 필요하면 D0(+격자) post-fix 재실행이 유일 해법. **M′−M은 5-인자 묶음**(P0-1·P0-2·entropy0·beta1.0·+라우팅수정)이라 단일축 귀속 불가 = "개선 총합 앵커"로만 유효; P0 순효과 분리 시 `M+P0만`(beta·entropy 유지) arm 별도.
 - 진단 상세: `Improvement_RL.md §5.7`(라우팅버그) + 본 세션 덤프분석.
 
+#### Val 채점 정밀화 계획 (2026-07-06 방향 고정 — **하네스 실행은 학습 종료 후**)
+
+**검증된 사실(2026-07-06):** (1) 보고 지표 `val-core/*/acc/*`는 **ungated 원시 채점**이다 — P0-1은 `reward`만 게이트하고 `reward_extra_info["acc"]`는 불변(`dapo.py::run_single`), val 집계는 이 `acc`를 씀(`ray_trainer._validate`); 산수로도 확증(M′ step10 MATH-500 acc 55.6 > 1−절단 52.4 → truncated-correct가 카운트됨 = 게이팅 안 됨). 따라서 **P0-1이 eval을 누른다는 우려는 사실무근.** (2) 채점기(`math_verify_adapter`→`math_verify`)는 bare-expr 추출(boxed 불요)·후보중 최고 recall·과대채점 없음.
+
+**유일한 eval 채점 결함 = 타임아웃(FN).** `future.result(timeout=30)`이 큐대기+실행 합산이라 4-worker pool 포화 시 정답도 0 처리(`math_verify.py`). 이는 parity 무관·FP無인 **순수 correctness 버그**. no-box는 대부분 절단(정당한 0), 다중답·객관식(FN)은 eval 벤치에 드묾. 로직 완화(③④ 무조건 크레딧)는 FP 유발→parity 깸이라 **금지**; 개별 검증된 정답만 인정.
+
+**계획(학습 종료 후 실행):** 최적/최종 체크포인트에 대해 **val-only 하드닝 재평가**.
+- 체크포인트는 FSDP-sharded → `verl.model_merger`로 HF merge 필요.
+- **손수 vLLM 스크립트 금지, verl 자체 val 경로 재사용**(config parity 자동 보장: v2 system-prompt 주입·temp/top_p·8192·mean@8). `validation_data_dir` 켜서 전체 생성물 덤프 + 채점 timeout↑(예 120s)·부하 격리.
+- 덤프 위에서 **FN/FP 양방향 감사**로 "무오류 채점" 증명 → 논문 표는 이 숫자.
+- **신뢰 규율**: 최종 적용 전 기존 `Mprime_v2/global_step_10` 체크포인트로 하네스를 돌려 wandb val-core(step10) 재현 확인(±노이즈) → config parity 검증 후에만 신뢰.
+- 병행: 향후 런처에 `validation_data_dir`+하드닝 timeout 기본 배선(그러면 동일-출력 재채점으로 grader FN 순수 분리 측정도 가능).
+
+지금은 **미실행**(현재 M′ 진행 중, 급하지 않음). 도구 존재 확인: `verl/model_merger`, `verl/trainer/main_eval.py`.
+
 ## 유지보수
 
 이 문서는 실험 *설계·분석*의 단일 진실 출처다. arm이 추가/변경되면 §3·§4·§9와 함께 **분석 절차 §11·§12**도 갱신한다(지표·수식·판정 규칙이 arm과 어긋나면 안 됨). 수치 판정선(예: "오답 길이 +X%")이 정해지면 §3 각 arm에, `clipfrac_top20entropy/pg_clipfrac`의 "≫1" 임계 등 라우터 판정선이 정해지면 §12.4에 박는다. §12.5의 분석 스크립트가 이 절차의 실행 대응물이다. 결정의 *근거*는 여기서 재서술하지 말고 해당 DR을 인용한다(line 번호 회피, symbol 기준 — `Codemap_RL.md` 관례).
