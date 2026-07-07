@@ -1,6 +1,6 @@
 # Improvement_RL — M run 병리 분석과 개선 결정 (사례 기록 · Best Practice)
 
-Status: 분석 확정(2026-07-06) · 개선 결정 P0/P1 합의 · P0+관측성 구현(§5.6) · **★M′ 런 순수-SFT 붕괴 사후분석 완료(§5.7): 근본원인=라우팅 `rm_scores[-1]` 위치버그(P0-1이 노출), 수정 적용·테스트 통과★** · 라우팅 수정 후 재시작 완료 · **★2026-07-07: P0 런(Mprime2/3) 실측 = 정직·안정하나 val ~30% 천장 · 병리 M은 신기루로 33.76+ 지속 상승 → 성능-최우선 M 궤적 회귀(resume40) · 신규 async 배치 폭발 진단·유계화 처방 · §11 진단 DP-집계 버그 수정(§5.8)★**
+Status: 분석 확정(2026-07-06) · 개선 결정 P0/P1 합의 · P0+관측성 구현(§5.6) · **★M′ 런 순수-SFT 붕괴 사후분석 완료(§5.7): 근본원인=라우팅 `rm_scores[-1]` 위치버그(P0-1이 노출), 수정 적용·테스트 통과★** · 라우팅 수정 후 재시작 완료 · **★2026-07-07: P0 런(Mprime2/3) 실측 = 정직·안정하나 val ~30% 천장 · 병리 M은 신기루로 33.76+ 지속 상승 → 성능-최우선 M 궤적 회귀(resume40) · 신규 async 배치 폭발 진단·유계화 처방 · §11 진단 DP-집계 버그 수정 · **유계 leg 수집-정렬 크래시 근본수정(§5.8.6: 성장루프→trim+carryover, 낭비0·crash제거, 68 tests green)**(§5.8)★**
 범위: M run(`M_decoupled_cispo`)에서 관측된 응답길이·entropy 폭발 병리의 (1) 실험 기록, (2) 분석 방법과 결과, (3) 진단, (4) 개선 결정, (5) 재사용 가능한 분석 방법론(Best Practice). 설계 결정의 근거·이론은 DR-001~005 소관이며 여기서 재서술하지 않는다.
 관련 문서: `Ablation_RL.md`(격자 설계 — 이 문서의 개선이 공통 기반을 바꾸므로 §5.4 참조) · `DR-002`(entropy 결정 — 본 문서가 개정 사유 제공) · `DR-003`(§5 drift-pacing — 본 문서 §4.2가 사전 관문 측정치에 해당)
 관련 코드(symbol 기준): `losses.ppo_loss` · `core_algos.compute_policy_loss_cispo` · `core_algos.compute_grpo_outcome_advantage`(singleton 그룹 mean=0 처리) · `hpt_gate.count_successful_rollouts` · `hpt_assembler.materialize_sft_payload` / `_sft_terminal_reward` · reward_manager `dapo`(overlong_buffer/max_resp_len) · `ray_trainer`의 `calculate_entropy or entropy_coeff != 0` 게이트
@@ -350,9 +350,31 @@ resume40가 노출한 것은 reward/length 병리의 **운영 하류 효과**다
 
 **처방(= §5.2 P1-8 실현)**: `max_completed_prompt_groups` 2048→**384**(원본 healthy M의 ~365그룹 배치 재현; 학습 최소 128그룹의 3배 여유; 큐 상한 = 배치 상한이자 신선도 자동 개선). `staleness_threshold`는 불건드림(큐 상한이 노화를 자동 완화). `test_freq`/`save_freq` 10→5(수확). 감시: `fully_async/trainer/idle_ratio`≈0 유지(상승 시 512로 완화). 예상: 스텝 ~8분(**3–4× val 처리량**), OOM 제거, 데이터 신선. — 이어달리기 절차: step 50 저장 대기 → val6@50 확인 → kill → 위 config로 step_50 재개.
 
+**원본 run 전 구간 staleness 실측(2026-07-07, wandb uvbi7wq3 전수)** — "step_40이 불안정한 산 위인가"의 판정 데이터: step 1–19만 신선(rollout↔현재 KL 0.007–0.05, ESS 0.95–0.99)했고 **그 신선 구간에서 이미 entropy 0.007→2.2·길이 1,184→7,178·절단 0→0.74가 완성** = §4.1 만성 엔진은 staleness 무관(§4.3 재확증). step 20부터 큐 폭발(KL 0.56→최대 12, ESS 0.42–0.83)로 혼돈 레짐이었고 **val@30·val@40 자체가 혼돈 안의 점수**다. 같은 혼돈에서 원본 30→40은 +4.3pp, resume 40→50은 −2.9pp — **이 레짐의 val은 부호 예측 불가한 고분산 랜덤워크**. 유계화 leg의 현실적 기대: step_40 정책의 자체 드리프트(스텝당 ppo_kl ±0.4–0.5)가 1-버전 신선도에서도 **KL ~1 nat 바닥**을 만든다(실측: resume 첫 스텝, 큐 419그룹에서 rKL 1.12·ESS 0.87) — 유계 leg ≈ "step 41–42 조건의 동결"이지 step 1–19 회귀가 아님.
+
+**수확 leg 트립와이어(사전 등록, §5.2 P1-6의 재보정 — 기존 entropy_mean>2.5 기준은 정직-재시작용이라 이 leg에 부적용)**: ① ESS<0.6 중단 검토(P1-7) ② rKL>3 nats 3스텝 지속 → 중단 ③ entropy_mean(§11)>8.0 또는 +0.15/step×3 → leg 종료, leg 2(entropy_coeff=0 + `calculate_entropy=True` 동반 필수) 검토 ④ 절단율<0.6 ∧ score 하락 동반(48–49 시그니처) → 즉시 중단 ⑤ val 규칙: val@45≥33.5 계속 / 33.0–33.5 val@50까지만 / <33.0 종료(수확=argmax val) / 어느 시점이든 <32.5 즉시 종료 ⑥ AIME24 카나리아 병행. 기각 재확인: overlong penalty(§5.3 원장 — 방향 반대)·sync 4→2(표적 아님)·entropy_coeff 즉시 0(단일변수 A/B 훼손, 41–49 실패는 staleness로 설명돼 0.001 유죄 증거 없음).
+
+**결과(2026-07-07 실측) — stale-배치 학습은 운영 문제를 넘어 실제 능력 훼손이었다**: resume40의 step 41–49 전 구간이 폭발 배치 레짐(rollout↔현재 KL **1.1–4.5 nats**, 시퀀스 16–23% IS 하한 폐기, ESS 0.72–0.87, 스텝당 ppo_kl ±0.4–0.5)에서 학습됐고, step 48–49에서 분포 붕괴(resp_len 7,696→4,825 · 절단율 0.90→0.37 · train score 0.50→0.39 · onpolicy 성공 0.40→0.27 · SFT 주입 2배 78k→160k tok; grad_norm은 0.05–0.24로 내내 안정 = 수치 폭발 아님, **레짐 붕괴**). **val6@50 = 30.38 (vs @40 33.29, mean@8 −2.91pp · best@8 −2.93pp, 6벤치 중 4–5개 동방향 하락)**. step_50 정책은 더 짧게 생성(절단↓)하므로 능력이 유지됐다면 val이 올랐어야 하는데 하락 → 신기루 회계 붕괴만이 아니라 **실 능력 훼손의 실증**. 판정(사전 기준 val6@50<32.5): **step_50 폐기, 두 번 검증된 최고점 step_40(33.76/33.29 = 평가 노이즈 바닥 ±0.5 실측)에서 유계배치(384)로 41–50 재주행**. 부수 소득: `actor/entropy` 6.4→3.8 "폭락"은 seq-mean-token-sum-norm의 길이 비례 착시(길이비 0.63 ≈ 엔트로피비 0.60)였고 token-weighted `entropy_mean`(§11)은 7.65→6.58 완만 하락 — §11 지표의 첫 실전 기여.
+
 ### 5.8.5 관측성 후속 — §11 진단 DP-집계 버그 수정
 
 P0-3(§5.1)이 상시 요구한 `entropy_mean`·`entropy_top20_mean`·`pg_clipfrac_top20entropy`(Ablation §11)가 멀티-rank 학습에서 crash했다(`Metric.aggregate_dp: [3,5]`). 원인: `compute_entropy_clip_diagnostics`가 all-SFT 마이크로배치에서 `{}` 반환 → §11 키가 rank별로 다른 개수 → DP 정렬 불변식 위반. 수정: **token-weighted sum/count 컴포넌트로 재구성**(항상 5키 방출, `finalize_entropy_clip_diagnostics`가 환원 후 비율화 — 공유 집계 인자가 몫에서 상쇄돼 정확한 token-weighted mean). 테스트 20개(진단 13 + M-anchor 7; crash 재현 + 실 `reduce_metrics` 다중-iter 정합 + ppo_loss 방출 통합). 이로써 §11 지표가 resume40에서 정상 방출(entropy_mean 6.3→7.6 관측 = 병리 진행의 정직한 계측).
+
+### 5.8.6 유계배치 leg의 수집-정렬 크래시와 근본수정 (trim + carryover)
+
+**증상**: resume40b(유계 384) 재시작이 step_40 val 재현 후 ~57분·7 fit-step 만에 `ValueError: HPT learner-row-aware collection could not form a trainable batch ... learner_rows=3095 required_multiple=256 queue_samples=512 max_queue_samples=512`로 사망(`fully_async_trainer._get_samples_from_queue`). OOM·NCCL·신기루 붕괴 아님 = **순수 수집 로직 크래시**(뒤 수천 줄 `Dropped ... TaskCancelled`은 드라이버 종료의 뒤처리 폭포).
+
+**근본원인 (공유 학습기 계약)**: 학습기는 배치 행수가 `mini_batch×n`(=32×8=**256**)의 배수여야 한다 — `_update_actor`([ray_trainer.py](../verl/trainer/ppo/ray_trainer.py) `ppo_mini_batch_size *= rollout.n`)가 "모든 그룹=n행" 표준RL 가정을 박고, `make_iterator`가 `assert rows % mini == 0`으로 **하드 강제**. HPT의 SFT 그룹(1행)이 이 가정을 깬다: `learner_rows = 8·RL + 1·SFT`, 256=8×32이라 정렬엔 `#SFT ≡ 0 (mod 8)` 필요. 기존 수집은 **정렬될 때까지 큐를 성장**(도착순, RL/SFT 선택 불가)시켰는데 → (a) 정상 시 **2.81× 과수집**(실측 avg 2,158행 vs 의도 768) + 정렬대기 avg 40.8s/스텝, (b) 잔차 mod 8을 못 맞추면 **발산→raise**(8번째 수집에서 512그룹/3,095행까지 당겨도 미정렬).
+
+**비효율 = 크래시와 동일 뿌리**: "정렬까지 성장"이 조금 자라면 느리고(과수집), 무한히 자라면 터진다. 유계화(384)는 `max_queue_samples`를 512로 좁혀 정렬창을 조여 발산을 **노출**시켰을 뿐(원본 2048창은 "대개 운좋게" 정렬돼 안 터졌지만 배치 폭발).
+
+**근본수정 층위 판정**: 정렬은 공유 학습기의 load-bearing 계약이라 제거하려면 (L1) 공유 `make_iterator` 관용화 = 전 학습경로 폭발반경, 또는 (L2) `num_mini_batch`로 mini-batch 크기 적응 = **학습 동역학 변경**(AGENTS "do not change the learning problem to fix utilization" 위반). 채택 = **(L3) HPT 수집에서 재조정** — HPT가 불변식을 깨는 그 지점, 학습 계약(256행 mini-batch·그래디언트) 완전 보존 = 순수 plumbing.
+
+**수정 = 성장루프 삭제 → trim + carryover**(`_plan_row_alignment_deferral` 정확 subset-sum): required_samples 그룹 수집 → 1 mini-batch 미만이면만 성장 → 잔차 행을 **하위 배수로 trim**하되, 떼어낸 그룹을 **폐기 않고 다음 스텝으로 이월(carryover)**. 이월은 다음 스텝 우선소비(`protected_prefix`)로 1스텝 내 학습, 항상 `<256`행 유계. 효과: **crash 제거**(trim은 항상 정렬 도달), **과수집 제거**(768행 고정 → ~2.8× 빠름·정렬대기 0), **낭비 0**(discard 아님). 성장루프+crash raise는 삭제 = 순 복잡도 감소.
+
+**로깅(AGENTS "모든 단위 명시·drop 가시화·loss 분모 불변")**: 이월행은 이번 스텝 배치에 부재 → 손실·어드밴티지·분모에 0 기여(다음 스텝 전량). 단일 trimmed 배치가 하류 전체(값·가중치·버전메타·stale)를 관통 → 값↔가중치 자동 정합. 명시 메트릭 **add 4개**(`hpt_carryover_in_groups`·`_out_groups`·`_row_alignment_deferred_rows`·`_fresh_pulled_groups`) + 기존 `hpt_collected_queue_samples`(의미 불변, 값만 유계 반영). 항등식 `fresh_pulled = retained + out − in` 테스트 고정. 정직 부수효과: 이월 샘플은 학습 시 실제 1버전 staler → staleness 지표 소폭 상승(버그 아님).
+
+**테스트(RL conda env)**: `test_hpt_trainer_queue_contract.py`에 헬퍼 subset-sum 5(정렬됨/정확잔차/pure-RL/carryover보호/불능→None) + 통합 3(trim-유계·**크래시조성 재현→trim성공**·carryover 왕복·항등식). 기존 성장테스트(`...uses_completed_budget...`)는 오버슈트를 정답으로 박제했으므로 trim 동작으로 갱신. 전체 68 passed(회귀 0).
 
 ---
 
