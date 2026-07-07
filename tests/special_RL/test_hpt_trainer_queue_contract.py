@@ -877,16 +877,16 @@ async def test_async_hpt_trainer_returns_none_when_topup_terminates_before_train
 
 
 @pytest.mark.asyncio
-async def test_async_hpt_trainer_uses_completed_budget_for_row_aware_queue_window():
+async def test_async_hpt_trainer_trims_overshoot_to_aligned_batch_and_defers_residue():
     import ray
 
     from verl.experimental.fully_async_policy.fully_async_trainer import FullyAsyncTrainer
 
-    # 18 RL groups and 14 SFT groups produce 18 * 4 + 14 = 86 learner rows
-    # after 32 queue samples, which is not divisible by the required multiple
-    # 16. Ten more SFT groups bring the batch to 96 rows, so the trainer must
-    # use async_training.max_completed_prompt_groups instead of the old fixed
-    # 32-sample local window.
+    # 14 SFT then 1 RL: the batch grows only to the first multiple (14 SFT rows < 16, one RL
+    # group crosses to 18 >= 16), then TRIMS the 2-row residue back to 16 by DEFERRING two SFT
+    # groups to the next step (carryover). This is the regression guard for the old grow-to-align
+    # loop, which over-collected until the running row count happened to land on a multiple
+    # (here it would consume many more groups to reach 96 rows).
     route_kinds = ["sft"] * 14 + ["rl"] * 18 + ["sft"] * 10
     queue_samples = [
         _make_hpt_queue_sample(route_kind=route_kind, idx=idx, rollout_n=4)
@@ -907,11 +907,157 @@ async def test_async_hpt_trainer_uses_completed_budget_for_row_aware_queue_windo
 
     _, batch = await trainer._get_samples_from_queue()
 
-    assert trainer.message_queue_client.calls == 42
-    assert len(batch) == 96
+    # Bounded: grew to 18 rows (15 groups) then trimmed to 16, NOT grown to 96 rows (42 groups).
+    assert trainer.message_queue_client.calls == 15
+    assert len(batch) == 16
     assert len(batch) % 16 == 0
-    assert batch.meta_info["fully_async/hpt_collected_queue_samples"] == 42
     assert batch.meta_info["fully_async/hpt_required_training_multiple"] == 16
+    # Retained (trained) group count, and the residue deferred to the next step.
+    assert batch.meta_info["fully_async/hpt_collected_queue_samples"] == 13
+    assert batch.meta_info["fully_async/hpt_carryover_in_groups"] == 0
+    assert batch.meta_info["fully_async/hpt_carryover_out_groups"] == 2
+    assert batch.meta_info["fully_async/hpt_row_alignment_deferred_rows"] == 2
+    assert batch.meta_info["fully_async/hpt_fresh_pulled_groups"] == 15
+    # Explicit reconciliation identity (AGENTS.md: every collection unit stays accountable).
+    m = batch.meta_info
+    assert m["fully_async/hpt_fresh_pulled_groups"] == (
+        m["fully_async/hpt_collected_queue_samples"]
+        + m["fully_async/hpt_carryover_out_groups"]
+        - m["fully_async/hpt_carryover_in_groups"]
+    )
+    # The 2 deferred groups are held for the next step, not discarded.
+    assert len(trainer._hpt_carryover_samples) == 2
+
+
+def test_plan_row_alignment_deferral_is_empty_when_already_aligned():
+    from verl.experimental.fully_async_policy.fully_async_trainer import FullyAsyncTrainer
+
+    plan = FullyAsyncTrainer.__ray_metadata__.modified_class._plan_row_alignment_deferral
+    assert plan([8, 8, 8, 8], 16) == set()  # 32 % 16 == 0
+    assert plan([1, 1, 8], 1) == set()  # multiple of 1: nothing to remove
+
+
+def test_plan_row_alignment_deferral_removes_exact_residue_via_whole_groups():
+    from verl.experimental.fully_async_policy.fully_async_trainer import FullyAsyncTrainer
+
+    plan = FullyAsyncTrainer.__ray_metadata__.modified_class._plan_row_alignment_deferral
+    row_counts = [1] * 14 + [4]  # 18 rows, multiple 16 -> defer 2 rows
+    defer = plan(row_counts, 16)
+    assert defer is not None
+    retained_rows = sum(row_counts) - sum(row_counts[i] for i in defer)
+    assert retained_rows == 16 and retained_rows % 16 == 0
+    assert all(row_counts[i] == 1 for i in defer)  # residue 2 removed via two size-1 groups
+
+
+def test_plan_row_alignment_deferral_aligns_pure_rl_by_dropping_whole_groups():
+    from verl.experimental.fully_async_policy.fully_async_trainer import FullyAsyncTrainer
+
+    plan = FullyAsyncTrainer.__ray_metadata__.modified_class._plan_row_alignment_deferral
+    defer = plan([8, 8, 8, 8, 8], 16)  # 40 rows -> retained 32 -> defer one size-8 group
+    assert defer is not None and len(defer) == 1
+
+
+def test_plan_row_alignment_deferral_protects_carryover_prefix():
+    from verl.experimental.fully_async_policy.fully_async_trainer import FullyAsyncTrainer
+
+    plan = FullyAsyncTrainer.__ray_metadata__.modified_class._plan_row_alignment_deferral
+    # residue 2 is only reachable via the two leading size-1 (carried-over) groups; protecting
+    # them makes the residue unreachable, so a carried-over group is never re-deferred here.
+    assert plan([1, 1, 8], 8, protected_prefix=2) is None
+    assert plan([1, 1, 8], 8, protected_prefix=0) == {0, 1}
+
+
+def test_plan_row_alignment_deferral_returns_none_when_residue_unreachable():
+    from verl.experimental.fully_async_policy.fully_async_trainer import FullyAsyncTrainer
+
+    plan = FullyAsyncTrainer.__ray_metadata__.modified_class._plan_row_alignment_deferral
+    # size-8 groups only, residue 3 (mod 7): no subset of {8, 16, 24} sums to 3.
+    assert plan([8, 8, 8], 7) is None
+
+
+@pytest.mark.asyncio
+async def test_async_hpt_collection_trims_the_composition_that_crashed_the_grow_loop():
+    import ray
+
+    from verl.experimental.fully_async_policy.fully_async_trainer import FullyAsyncTrainer
+
+    # rollout_n=8, mini=1, dp=1 -> required_multiple 8. Two SFT (2 rows) then RL groups (8 rows):
+    # the residue mod 8 is 2, and RL groups (each +8) can NEVER move it to 0 -- the grow-to-align
+    # loop diverged and raised ValueError here (the crash that took the bounded run down at
+    # learner_rows=3095). Trimming defers the two SFT and returns an aligned 8-row batch.
+    route_kinds = ["sft", "sft"] + ["rl"] * 6
+    queue_samples = [
+        _make_hpt_queue_sample(route_kind=route_kind, idx=idx, rollout_n=8)
+        for idx, route_kind in enumerate(route_kinds)
+    ]
+
+    trainer_cls = FullyAsyncTrainer.__ray_metadata__.modified_class
+    trainer = object.__new__(trainer_cls)
+    trainer.required_samples = 2
+    trainer.message_queue_client = _QueueReader([ray.cloudpickle.dumps(sample) for sample in queue_samples])
+    trainer.config = _make_async_hpt_config(rollout_n=8)
+    trainer.config.trainer.balance_batch = True
+    trainer.config.actor_rollout_ref.actor.ppo_mini_batch_size = 1
+    trainer.config.async_training = {"max_completed_prompt_groups": 64}
+    trainer.actor_rollout_wg = _FakeActorRolloutWorkerGroup(dp_size=1)
+    trainer.use_critic = False
+    trainer.tokenizer = None
+    trainer.hpt_assembler = None
+
+    _, batch = await trainer._get_samples_from_queue()  # must not raise
+
+    assert batch.meta_info["fully_async/hpt_required_training_multiple"] == 8
+    assert len(batch) == 8 and len(batch) % 8 == 0
+    assert trainer.message_queue_client.calls == 3  # 2 initial + 1 grow, then trim (no more pulls)
+    assert batch.meta_info["fully_async/hpt_carryover_out_groups"] == 2
+    assert batch.meta_info["fully_async/hpt_row_alignment_deferred_rows"] == 2
+
+
+@pytest.mark.asyncio
+async def test_async_hpt_carryover_round_trips_and_is_consumed_within_one_step():
+    import ray
+
+    from verl.experimental.fully_async_policy.fully_async_trainer import FullyAsyncTrainer
+
+    # Step 1 overshoots (13 rows -> grow one RL -> 17) and defers the 1-row residue (an SFT group)
+    # to carryover. Step 2 seeds that carried SFT, protects it (protected_prefix), and lands on an
+    # aligned 16 rows so the carried group TRAINS this step and carryover empties. No data is lost.
+    route_kinds = ["rl", "rl", "rl", "sft", "rl", "sft", "sft", "sft", "rl", "rl", "rl"]
+    queue_samples = [
+        _make_hpt_queue_sample(route_kind=route_kind, idx=idx, rollout_n=4)
+        for idx, route_kind in enumerate(route_kinds)
+    ]
+
+    trainer_cls = FullyAsyncTrainer.__ray_metadata__.modified_class
+    trainer = object.__new__(trainer_cls)
+    trainer.required_samples = 4
+    trainer.message_queue_client = _QueueReader([ray.cloudpickle.dumps(sample) for sample in queue_samples])
+    trainer.config = _make_async_hpt_config(rollout_n=4)
+    trainer.config.trainer.balance_batch = True
+    trainer.config.async_training = {"max_completed_prompt_groups": 64}
+    trainer.actor_rollout_wg = _FakeActorRolloutWorkerGroup(dp_size=4)
+    trainer.use_critic = False
+    trainer.tokenizer = None
+    trainer.hpt_assembler = None
+
+    _, batch1 = await trainer._get_samples_from_queue()
+    assert len(batch1) == 16
+    assert batch1.meta_info["fully_async/hpt_carryover_in_groups"] == 0
+    assert batch1.meta_info["fully_async/hpt_carryover_out_groups"] == 1
+    assert len(trainer._hpt_carryover_samples) == 1  # deferred, held for next step
+
+    _, batch2 = await trainer._get_samples_from_queue()
+    assert len(batch2) == 16
+    assert batch2.meta_info["fully_async/hpt_carryover_in_groups"] == 1  # carried SFT seeded first
+    assert batch2.meta_info["fully_async/hpt_carryover_out_groups"] == 0  # landed aligned
+    assert len(trainer._hpt_carryover_samples) == 0  # carried group trained, carryover drained
+    # Reconciliation identity holds across the carry (fresh = retained + out - in).
+    m2 = batch2.meta_info
+    assert m2["fully_async/hpt_fresh_pulled_groups"] == (
+        m2["fully_async/hpt_collected_queue_samples"]
+        + m2["fully_async/hpt_carryover_out_groups"]
+        - m2["fully_async/hpt_carryover_in_groups"]
+    )
 
 
 @pytest.mark.asyncio

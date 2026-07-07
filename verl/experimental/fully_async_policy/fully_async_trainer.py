@@ -297,7 +297,15 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
         # Collect samples using a simple loop calling get_sample
         hpt_enabled = bool(self.config.get("async_hpt", {}).get("enabled", False))
         consumer_start = time.time()
-        serialized_queue_samples = []
+        # HPT row-alignment can leave a small residue of already-materialized groups that do not
+        # fit the trainable multiple. Carry them into the next batch (seeded here, consumed first,
+        # bounded one-step deferral) instead of discarding trained data or over-collecting to chase
+        # exact alignment. Non-HPT collection has no carryover. See _plan_row_alignment_deferral.
+        carryover = list(getattr(self, "_hpt_carryover_samples", [])) if hpt_enabled else []
+        if hpt_enabled:
+            self._hpt_carryover_samples = []
+        serialized_queue_samples = list(carryover)
+        num_carryover = len(carryover)
         queue_len = 0
         while len(serialized_queue_samples) < self.required_samples:
             # Get a single sample and wait until there is a sample or None is received
@@ -338,11 +346,15 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
                 materialized_batches.append(materialized_batch)
                 learner_rows += len(materialized_batch)
 
-            while required_multiple > 1 and learner_rows % required_multiple != 0:
+            # Grow ONLY until we have at least one trainable multiple; never grow past it to chase
+            # exact alignment. Growing-to-align over-collects 2-3x and can fail to converge when the
+            # residue mod rollout_n is unmovable by the arriving groups -- the crash that took the
+            # bounded run down. Beyond one multiple we TRIM (below), not grow.
+            while required_multiple > 1 and learner_rows < required_multiple:
                 if len(serialized_queue_samples) >= max_queue_samples:
                     raise ValueError(
-                        "HPT learner-row-aware collection could not form a trainable batch within the bounded "
-                        "queue window: "
+                        "HPT learner-row-aware collection could not reach one trainable multiple within the "
+                        "bounded queue window: "
                         f"learner_rows={learner_rows} required_multiple={required_multiple} "
                         f"queue_samples={len(serialized_queue_samples)} max_queue_samples={max_queue_samples}."
                     )
@@ -361,17 +373,51 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
                 materialized_batch = self.hpt_assembler.materialize_training_batch(queue_sample)
                 materialized_batches.append(materialized_batch)
                 learner_rows += len(materialized_batch)
+
+            # Trim DOWN to the largest aligned batch by DEFERRING a residue subset of groups to the
+            # next step (carryover). Prefer to defer freshly pulled groups (protected_prefix skips
+            # carried-over groups) so carryover always trains within one step. No trained data is
+            # discarded; the batch stays bounded near required_samples and cannot fail to align.
+            total_collected_groups = len(materialized_batches)
+            row_counts = [len(mb) for mb in materialized_batches]
+            defer_indices = self._plan_row_alignment_deferral(
+                row_counts, required_multiple, protected_prefix=num_carryover
+            )
+            if defer_indices is None:
+                # Fresh groups alone cannot absorb the residue; allow deferring carryover groups too.
+                defer_indices = self._plan_row_alignment_deferral(row_counts, required_multiple, protected_prefix=0)
+            if defer_indices is None:
+                raise ValueError(
+                    "HPT learner-row-aware collection could not trim to an aligned batch: "
+                    f"learner_rows={learner_rows} required_multiple={required_multiple} "
+                    f"total_rows={sum(row_counts)} (no subset of collected groups sums to the residue)."
+                )
+            deferred_rows = sum(row_counts[i] for i in defer_indices)
+            if defer_indices:
+                self._hpt_carryover_samples = [serialized_queue_samples[i] for i in sorted(defer_indices)]
+                keep = [i for i in range(total_collected_groups) if i not in defer_indices]
+                queue_samples = [queue_samples[i] for i in keep]
+                materialized_batches = [materialized_batches[i] for i in keep]
+                learner_rows -= deferred_rows
+
             batch = self.hpt_assembler.concat_training_batches(materialized_batches)
             consumer_end = time.time()
             total_wait_time = consumer_end - consumer_start
             print(
                 f"[FullyAsyncTrainer] Loop collection completed: {len(queue_samples)}/{self.required_samples} "
                 f"samples, learner_rows={learner_rows}, required_multiple={required_multiple}, "
+                f"carryover_in={num_carryover}, deferred={len(defer_indices)} groups/{deferred_rows} rows, "
                 f"total wait time: {total_wait_time:.2f} seconds. "
                 f"mq_len: {queue_len}"
             )
+            # Every collection unit stays explicit and reconcilable (AGENTS.md training contract):
+            #   fresh_pulled == collected_queue_samples(retained) + carryover_out - carryover_in
             batch.meta_info["fully_async/hpt_collected_queue_samples"] = len(queue_samples)
             batch.meta_info["fully_async/hpt_required_training_multiple"] = required_multiple
+            batch.meta_info["fully_async/hpt_carryover_in_groups"] = num_carryover
+            batch.meta_info["fully_async/hpt_carryover_out_groups"] = len(defer_indices)
+            batch.meta_info["fully_async/hpt_row_alignment_deferred_rows"] = deferred_rows
+            batch.meta_info["fully_async/hpt_fresh_pulled_groups"] = total_collected_groups - num_carryover
             if self.config.trainer.balance_batch:
                 self._balance_batch(batch, metrics={})
             self._add_hpt_async_sample_meta(batch)
@@ -470,6 +516,57 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
             if critic_mini_batch_size is not None:
                 required_multiple = math.lcm(required_multiple, int(critic_mini_batch_size) * int(rollout_n))
         return required_multiple
+
+    @staticmethod
+    def _plan_row_alignment_deferral(
+        row_counts: list[int], required_multiple: int, protected_prefix: int = 0
+    ) -> set[int] | None:
+        """Choose group indices to DEFER so the retained learner-row count is the largest
+        multiple of ``required_multiple`` not exceeding the total row count.
+
+        HPT groups contribute an uneven number of learner rows (RL groups ``rollout_n``,
+        SFT groups ``1``), so the running row count rarely lands exactly on a multiple.
+        Growing the batch until it does over-collects 2-3x and can fail to converge (the
+        residue mod ``rollout_n`` is only movable by SFT groups, which may not arrive) --
+        the failure that crashed the bounded run. Instead we keep the intended
+        ``required_samples`` groups and remove a residue subset, deferring those groups to
+        the next step (carryover) so no trained data is discarded and the batch stays
+        bounded and crash-free.
+
+        Only indices ``>= protected_prefix`` are eligible to defer, so groups already
+        carried over from a previous step are always trained (staleness stays within one
+        step). Group sizes are small positive ints, so an exact 0/1 subset-sum to the
+        residue is cheap.
+
+        Returns a (possibly empty) set of indices to defer, or ``None`` if no eligible
+        subset sums to the residue that must be removed.
+        """
+        total = sum(row_counts)
+        if required_multiple <= 1:
+            return set()
+        residue = total % required_multiple
+        if residue == 0:
+            return set()
+        reachable = [False] * (residue + 1)
+        predecessor: list[tuple[int, int]] = [(-1, -1)] * (residue + 1)
+        reachable[0] = True
+        for idx in range(protected_prefix, len(row_counts)):
+            size = row_counts[idx]
+            if size <= 0 or size > residue:
+                continue
+            for target in range(residue, size - 1, -1):
+                if reachable[target - size] and not reachable[target]:
+                    reachable[target] = True
+                    predecessor[target] = (target - size, idx)
+        if not reachable[residue]:
+            return None
+        defer: set[int] = set()
+        target = residue
+        while target > 0:
+            prev, idx = predecessor[target]
+            defer.add(idx)
+            target = prev
+        return defer
 
     def _create_actor_rollout_classes(self):
         # create actor — always use Role.Actor (not ActorRollout) even when
