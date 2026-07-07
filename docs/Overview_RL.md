@@ -1,7 +1,7 @@
 # Async-HPT: What This Fork Is
 
-Upstream `verl` (RL for LLMs) plus one research line: **HPT (Hybrid Policy
-Training)** as a first-class objective on the **fully-asynchronous** RL runtime
+Upstream `verl` (RL for LLMs) plus one research line: **HPT (Hybrid
+Post-Training)** as a first-class objective on the **fully-asynchronous** RL runtime
 — a prompt-level RL/SFT hybrid objective, decided per prompt group, running
 under overlapped rollout and training.
 
@@ -31,7 +31,9 @@ learner-visible HPT contract.
   run concurrently and can complete in any order.
 - Trainer-side deferred materialization — both routes converge to a `DataProto`
   row only at consumption time, not at generation time.
-- A prompt-equal mixed RL/SFT loss over the reconciled batch.
+- A branch-blind mixed RL/SFT loss over the reconciled batch — each row
+  counts once; RL-vs-SFT relative strength is set by the supervised
+  pseudo-reward `β_r`, not by row counts (`DR-001`).
 
 ## Correctness Guarantees
 
@@ -40,7 +42,7 @@ These are implementation guarantees enforced by the contract tests in
 
 - **G1.** No partial prompt-group learner sample is emitted.
 - **G2.** RL and SFT rows share one `DataProto` training contract.
-- **G3.** Old-logprob semantics stay rollout-anchored for RL rows.
+- **G3.** Old-logprob semantics stay rollout-anchored for RL rows by default (the entry-anchor decoupled path is a flag-off option; see `DR-004`).
 - **G4.** Partial rollout recovery preserves token/logprob alignment.
 - **G5.** SFT rows are excluded from rollout correction/rejection semantics.
 
