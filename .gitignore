@@ -138,3 +138,8 @@ docs/papers_RL/AsyncFlow- An Asynchronous Streaming RL Framework for Efficient L
 docs/papers_RL/Learning to Reason under Off-Policy Guidance(LUFFY).pdf
 docs/papers_RL/StreamRL- Scalable, Heterogeneous, and Elastic RL for LLMs with Disaggregated Stream Generation.pdf
 docs/papers_RL/Towards a Unified View of Large Language Model Post-Training.pdf
+docs/papers_RL/The Art of Scaling Reinforcement Learning Compute for LLMs.pdf
+docs/papers_RL/The Entropy Mechanism of Reinforcement Learning for Reasoning Language Models.pdf
+# generated slide decks (source generator make_asynchpt_slides.py is tracked)
+docs/papers_RL/AsyncHPT_Figure.pptx
+docs/papers_RL/AsyncHPT_Slides.pptx
