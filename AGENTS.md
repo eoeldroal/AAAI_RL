@@ -97,8 +97,10 @@ stacks.
 
 ## Environment And Launchers
 
-- Do not install, upgrade, or remove packages in a shared environment unless the
-  user explicitly asks for that change.
+- Treat the project's conda environments as read-only (never install, upgrade, or
+  remove packages unless the user explicitly asks) and run tests and training with
+  the designated training env, not a bare `python` or an alternate one. A missing
+  dependency signals the wrong env was selected, not a cue to install.
 - Before changing async RL + HPT launch profiles or main-run log checks,
   consult `docs/Readme_RL.md`. Before changing queue/staleness/HPT budget
   sizing, consult `docs/AsyncBudget_RL.md`.
