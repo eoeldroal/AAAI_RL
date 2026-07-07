@@ -178,7 +178,9 @@ bounded by `max_completed_prompt_groups`. This produces the log line:
   RL rows use the standard clipped vanilla PPO path unchanged. HPT does not
   replace the base RL advantage estimator — RL rows still use the existing GRPO
   advantage path; HPT only adds the route decision, SFT self-detach, and
-  auxiliary masking.
+  auxiliary masking. Truncated-RL rows flagged `hpt_is_truncated_rl`
+  (advantage zeroed) are likewise excluded from the entropy and §11
+  diagnostic masks.
 - **Off-policy correction** (`rollout_corr_helper.py`): IS/RS applied to RL rows
   only; `_compute_hpt_rollout_correction_and_add_to_batch` masks SFT tokens out
   (SFT rows are not drawn from the rollout policy).
@@ -198,6 +200,13 @@ bounded by `max_completed_prompt_groups`. This produces the log line:
 | `tau_dataset_path` / `tau_messages_key` | tau lookup parquet + column |
 | `fail_on_missing_tau` | SFT-routed prompt without tau -> raise vs fall back to RL |
 | `trajectory_scheduler.enabled` | per-attempt scheduling (needs async, `rollout.n>1`) |
+
+Truncation handling (`reward.reward_kwargs.*`, default off; see
+`Improvement_RL.md` §5.6): `zero_reward_if_truncated` scores budget-exhausted
+rollouts 0 (fixing the routing success count and the GRPO baseline);
+`zero_truncated_rl_advantage` zeros those RL rows' advantage after advantage
+computation. Zeroed rows are flagged `hpt_is_truncated_rl` and dropped from the
+entropy loss and §11 diagnostics, mirroring the SFT exclusion.
 
 Enable forces: `adv_estimator=grpo`, `norm_adv_by_std_in_grpo=False`,
 `actor.policy_loss.loss_mode=vanilla`, `rollout.calculate_log_probs=True`.
@@ -227,6 +236,7 @@ via `CheckpointEngineManager.update_weights`, then RPCs rollouter `reset_stalene
 | `libcudart.so.13: cannot open shared object` | SGLang subprocess without `conda activate RL`. See `Readme_RL.md` step 2, `scripts/install_vllm_sglang_mcore.sh`, `verl/utils/cuda_env.py`. |
 | Prompt groups missing / lower throughput than expected | Whole-group fail-closed drop on any attempt's `infra_abort` marker — `_has_infra_abort_marker` / `_drop_hpt_scheduler_group`. Check rollout-side exceptions before assuming a queue/staleness issue. |
 | Wrong SFT/RL route; `hpt/missing_tau_count>0` unexpectedly | `hpt_gate.route` (`gamma`/`success_threshold`/`success_score_key`); tau `HptTauStore`; data prep `tau_messages` column; `fail_on_missing_tau`. |
+| Routing success stuck at 0 (`hpt/onpolicy_success_rate`, `critic/score/mean`) → batch goes all-SFT | `hpt_gate.extract_score_values` must read the terminal reward via `sum(-1)`, not `rm_scores[-1]` (post-reward padding). See `Improvement_RL.md` §5.7. |
 | SFT rows learning with wrong probs / ratio != 1 | `losses.py::ppo_loss` HPT self-detach branch; `apply_hpt_rollout_logprob_anchor`. |
 | Learner-row count unexpected | SFT collapses group->1 row, RL expands->`rollout.n`; `HptBatchAssembler.assemble_rollout_samples` / `normalize_mixed_schema`. |
 | Rollout anchor missing / old_logprobs wrong | `should_use_hpt_rollout_logprob_anchor`; ensure `rollout.calculate_log_probs=True`. |
