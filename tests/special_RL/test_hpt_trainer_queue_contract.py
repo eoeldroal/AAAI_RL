@@ -926,11 +926,13 @@ async def test_async_hpt_trainer_trims_overshoot_to_aligned_batch_and_defers_res
     assert batch.meta_info["fully_async/hpt_carryover_out_groups"] == 2
     assert batch.meta_info["fully_async/hpt_row_alignment_deferred_rows"] == 2
     assert batch.meta_info["fully_async/hpt_fresh_pulled_groups"] == 15
+    assert batch.meta_info["fully_async/hpt_carryover_discarded_groups"] == 0
     # Explicit reconciliation identity (AGENTS.md: every collection unit stays accountable).
     m = batch.meta_info
     assert m["fully_async/hpt_fresh_pulled_groups"] == (
         m["fully_async/hpt_collected_queue_samples"]
         + m["fully_async/hpt_carryover_out_groups"]
+        + m["fully_async/hpt_carryover_discarded_groups"]
         - m["fully_async/hpt_carryover_in_groups"]
     )
     # The 2 deferred groups are held for the next step, not discarded.
@@ -1059,12 +1061,59 @@ async def test_async_hpt_carryover_round_trips_and_is_consumed_within_one_step()
     assert batch2.meta_info["fully_async/hpt_carryover_in_groups"] == 1  # carried SFT seeded first
     assert batch2.meta_info["fully_async/hpt_carryover_out_groups"] == 0  # landed aligned
     assert len(trainer._hpt_carryover_samples) == 0  # carried group trained, carryover drained
-    # Reconciliation identity holds across the carry (fresh = retained + out - in).
+    assert batch2.meta_info["fully_async/hpt_carryover_discarded_groups"] == 0  # nothing dropped
+    # Reconciliation identity holds across the carry (fresh = retained + out + discarded - in).
     m2 = batch2.meta_info
     assert m2["fully_async/hpt_fresh_pulled_groups"] == (
         m2["fully_async/hpt_collected_queue_samples"]
         + m2["fully_async/hpt_carryover_out_groups"]
+        + m2["fully_async/hpt_carryover_discarded_groups"]
         - m2["fully_async/hpt_carryover_in_groups"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_hpt_carryover_is_discarded_not_re_deferred_when_fresh_cannot_absorb_residue():
+    import ray
+
+    from verl.experimental.fully_async_policy.fully_async_trainer import FullyAsyncTrainer
+
+    # Safety valve: a carried-over group's staleness must never exceed one step. Here the carried
+    # groups are two SFT (2 rows) and every fresh group is RL (8 rows, rollout_n=8), so the residue
+    # (2 rows mod 8) can ONLY be absorbed by the carried SFT groups -- the protected plan fails and
+    # the fallback would re-defer them. Instead they are DISCARDED (dropped, not re-carried), so the
+    # batch aligns to 8 rows and carryover empties within one step.
+    carried = [_make_hpt_queue_sample(route_kind="sft", idx=100 + j, rollout_n=8) for j in range(2)]
+    fresh = [_make_hpt_queue_sample(route_kind="rl", idx=j, rollout_n=8) for j in range(3)]
+
+    trainer_cls = FullyAsyncTrainer.__ray_metadata__.modified_class
+    trainer = object.__new__(trainer_cls)
+    trainer.required_samples = 2
+    trainer._hpt_carryover_samples = [ray.cloudpickle.dumps(s) for s in carried]  # seeded from a prior step
+    trainer.message_queue_client = _QueueReader([ray.cloudpickle.dumps(s) for s in fresh])
+    trainer.config = _make_async_hpt_config(rollout_n=8)
+    trainer.config.trainer.balance_batch = True
+    trainer.config.actor_rollout_ref.actor.ppo_mini_batch_size = 1
+    trainer.config.async_training = {"max_completed_prompt_groups": 64}
+    trainer.actor_rollout_wg = _FakeActorRolloutWorkerGroup(dp_size=1)
+    trainer.use_critic = False
+    trainer.tokenizer = None
+    trainer.hpt_assembler = None
+
+    _, batch = await trainer._get_samples_from_queue()
+
+    assert batch.meta_info["fully_async/hpt_required_training_multiple"] == 8
+    assert len(batch) == 8 and len(batch) % 8 == 0
+    assert batch.meta_info["fully_async/hpt_carryover_in_groups"] == 2
+    assert batch.meta_info["fully_async/hpt_carryover_out_groups"] == 0  # nothing re-carried
+    assert batch.meta_info["fully_async/hpt_carryover_discarded_groups"] == 2  # the stale SFT dropped
+    assert len(trainer._hpt_carryover_samples) == 0  # staleness bounded to one step
+    m = batch.meta_info
+    assert m["fully_async/hpt_fresh_pulled_groups"] == (
+        m["fully_async/hpt_collected_queue_samples"]
+        + m["fully_async/hpt_carryover_out_groups"]
+        + m["fully_async/hpt_carryover_discarded_groups"]
+        - m["fully_async/hpt_carryover_in_groups"]
     )
 
 

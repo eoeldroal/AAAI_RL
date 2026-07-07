@@ -384,7 +384,8 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
                 row_counts, required_multiple, protected_prefix=num_carryover
             )
             if defer_indices is None:
-                # Fresh groups alone cannot absorb the residue; allow deferring carryover groups too.
+                # Fresh groups alone cannot absorb the residue (rare: fresh is nearly all RL, so no
+                # size-1 group can move the residue mod rollout_n). Fall back to deferring any group.
                 defer_indices = self._plan_row_alignment_deferral(row_counts, required_multiple, protected_prefix=0)
             if defer_indices is None:
                 raise ValueError(
@@ -393,8 +394,14 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
                     f"total_rows={sum(row_counts)} (no subset of collected groups sums to the residue)."
                 )
             deferred_rows = sum(row_counts[i] for i in defer_indices)
+            # Deferred FRESH groups carry to the next step; deferred CARRIED-OVER groups (only
+            # reachable via the fallback above) are DROPPED rather than re-carried, so a carried
+            # group's staleness never exceeds one step. Both the carried set and any drop are
+            # bounded by the residue (< one multiple) and surfaced as metrics.
+            carried_forward = sorted(i for i in defer_indices if i >= num_carryover)
+            discarded_carryover = len(defer_indices) - len(carried_forward)
+            self._hpt_carryover_samples = [serialized_queue_samples[i] for i in carried_forward]
             if defer_indices:
-                self._hpt_carryover_samples = [serialized_queue_samples[i] for i in sorted(defer_indices)]
                 keep = [i for i in range(total_collected_groups) if i not in defer_indices]
                 queue_samples = [queue_samples[i] for i in keep]
                 materialized_batches = [materialized_batches[i] for i in keep]
@@ -406,16 +413,18 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
             print(
                 f"[FullyAsyncTrainer] Loop collection completed: {len(queue_samples)}/{self.required_samples} "
                 f"samples, learner_rows={learner_rows}, required_multiple={required_multiple}, "
-                f"carryover_in={num_carryover}, deferred={len(defer_indices)} groups/{deferred_rows} rows, "
+                f"carryover_in={num_carryover}, carried_forward={len(carried_forward)}, "
+                f"discarded={discarded_carryover}, deferred_rows={deferred_rows}, "
                 f"total wait time: {total_wait_time:.2f} seconds. "
                 f"mq_len: {queue_len}"
             )
             # Every collection unit stays explicit and reconcilable (AGENTS.md training contract):
-            #   fresh_pulled == collected_queue_samples(retained) + carryover_out - carryover_in
+            #   fresh_pulled == retained + carryover_out + discarded - carryover_in
             batch.meta_info["fully_async/hpt_collected_queue_samples"] = len(queue_samples)
             batch.meta_info["fully_async/hpt_required_training_multiple"] = required_multiple
             batch.meta_info["fully_async/hpt_carryover_in_groups"] = num_carryover
-            batch.meta_info["fully_async/hpt_carryover_out_groups"] = len(defer_indices)
+            batch.meta_info["fully_async/hpt_carryover_out_groups"] = len(carried_forward)
+            batch.meta_info["fully_async/hpt_carryover_discarded_groups"] = discarded_carryover
             batch.meta_info["fully_async/hpt_row_alignment_deferred_rows"] = deferred_rows
             batch.meta_info["fully_async/hpt_fresh_pulled_groups"] = total_collected_groups - num_carryover
             if self.config.trainer.balance_batch:
