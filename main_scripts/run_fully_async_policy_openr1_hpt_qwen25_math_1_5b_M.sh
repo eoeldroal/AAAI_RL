@@ -244,10 +244,10 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     "trainer.logger=['console','wandb']" \
     trainer.project_name=async-hpt-openr1 \
     trainer.experiment_name=qwen25_math_1_5b_openr1_async_hpt_M_decoupled_cispo \
-    trainer.val_before_train=True \
+    trainer.val_before_train=False \
     trainer.save_freq=5 \
     trainer.resume_mode=resume_path \
-    trainer.resume_from_path="${VERL_ROOT}/checkpoints/async-hpt-openr1/qwen25_math_1_5b_openr1_async_hpt_M_decoupled_cispo/global_step_50" \
+    trainer.resume_from_path="${VERL_ROOT}/checkpoints/async-hpt-openr1/qwen25_math_1_5b_openr1_async_hpt_M_decoupled_cispo/global_step_40" \
     trainer.nnodes=1 \
     trainer.n_gpus_per_node=2 \
     trainer.log_val_generations=10 \
