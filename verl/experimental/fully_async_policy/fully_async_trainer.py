@@ -51,8 +51,6 @@ logger = logging.getLogger(__name__)
 class TrainingStopException(Exception):
     """Exception raised to signal training should stop"""
 
-    pass
-
 
 @ray.remote(num_cpus=10)
 class FullyAsyncTrainer(SeparateRayPPOTrainer):
@@ -657,7 +655,7 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
             await self._fit_validate()
         self._fit_save_checkpoint(force=True)
 
-    async def fit_step(self, batch_dict: dict = None):
+    async def fit_step(self, batch_dict: dict | None = None):
         """
         Single-step training template method. Handles all logic for one training step.
 
@@ -1035,7 +1033,7 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
                 }
             )
             for key, value in batch.meta_info.items():
-                if key.startswith("fully_async") or key.startswith("timing_s"):
+                if key.startswith(("fully_async", "timing_s")):
                     metrics[key] = value
 
     def _fit_filter_truncated_rl_advantage(self, batch: DataProto) -> DataProto:
@@ -1066,7 +1064,7 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
             n_rl = int((~is_sft).sum().item())
         else:
             rl_truncated = truncated
-            n_rl = int(len(batch))
+            n_rl = len(batch)
         n_zeroed = int(rl_truncated.sum().item())
         if n_zeroed > 0:
             batch.batch["advantages"][rl_truncated] = 0.0
@@ -1158,9 +1156,9 @@ class FullyAsyncTrainer(SeparateRayPPOTrainer):
             metric_weights["critic/values/mean"] = response_token_count
 
         if "__num_turns__" in batch.non_tensor_batch:
-            metric_weights["num_turns/mean"] = int(len(batch.non_tensor_batch["__num_turns__"]))
+            metric_weights["num_turns/mean"] = len(batch.non_tensor_batch["__num_turns__"])
         if "tool_call_counts" in batch.non_tensor_batch:
-            metric_weights["tool_call_counts/mean"] = int(len(batch.non_tensor_batch["tool_call_counts"]))
+            metric_weights["tool_call_counts/mean"] = len(batch.non_tensor_batch["tool_call_counts"])
 
         # Observability (Improvement_RL.md §5.2 #9): the true GRPO-centered advantage signal.
         # The stock critic/advantages/mean tracks raw reward (bit-alias of critic/score/mean), so it

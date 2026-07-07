@@ -72,7 +72,7 @@ def migrate_legacy_reward_impl(config):
             config.reward["reward_kwargs"] = config.reward_model["reward_kwargs"]
     # config.reward_model.rollout -> config.reward.reward_model.rollout
     legacy_rollout = config.reward_model.rollout
-    for key in legacy_rollout.keys():
+    for key in legacy_rollout:
         if legacy_rollout[key] is not None:
             config.reward.reward_model.rollout[key] = legacy_rollout[key]
 
@@ -106,7 +106,7 @@ class RewardLoopWorker:
         -> rm is genrm: raise error (user-costomized reward func must be provided)
     """
 
-    def __init__(self, config: DictConfig, reward_router_address: str = None):
+    def __init__(self, config: DictConfig, reward_router_address: str | None = None):
         """
         Args:
             config: DictConfig, the config for reward loop worker.

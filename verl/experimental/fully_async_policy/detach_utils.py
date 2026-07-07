@@ -58,8 +58,8 @@ def prepare_single_generation_data(batch_dict, config) -> DataProto:
     batch_keys_to_pop = []
     non_tensor_batch_keys_to_pop = []
 
-    existing_batch_keys = [k for k in batch_keys_to_pop if k in full_batch.batch.keys()]
-    existing_non_tensor_keys = [k for k in non_tensor_batch_keys_to_pop if k in full_batch.non_tensor_batch.keys()]
+    existing_batch_keys = [k for k in batch_keys_to_pop if k in full_batch.batch]
+    existing_non_tensor_keys = [k for k in non_tensor_batch_keys_to_pop if k in full_batch.non_tensor_batch]
 
     if existing_batch_keys or existing_non_tensor_keys:
         full_batch.pop(
@@ -123,7 +123,7 @@ def assemble_batch_from_rollout_samples(
     final_batch = DataProto.concat(rollout_samples_batch)
 
     # Calculate response_mask (if not present)
-    if "response_mask" not in final_batch.batch.keys():
+    if "response_mask" not in final_batch.batch:
         final_batch.batch["response_mask"] = compute_response_mask(final_batch)
 
     if balance_batch:
@@ -243,7 +243,7 @@ class MetricsAggregator:
             ],
         }
 
-    def add_step_metrics(self, metrics: dict[str, Any], sample_count: int, timestamp: float = None):
+    def add_step_metrics(self, metrics: dict[str, Any], sample_count: int, timestamp: float | None = None):
         """Adding a single-step metrics"""
         if timestamp is None:
             timestamp = time.time()
@@ -354,7 +354,7 @@ class MetricsAggregator:
         """calculate special metrics"""
 
         # global_seqlen/minmax_diff
-        if "global_seqlen/minmax_diff" in aggregated.keys():
+        if "global_seqlen/minmax_diff" in aggregated:
             aggregated["global_seqlen/minmax_diff"] = aggregated["global_seqlen/max"] - aggregated["global_seqlen/min"]
 
         # perf/throughput
@@ -365,7 +365,7 @@ class MetricsAggregator:
             )
 
         # trainer/idle_ratio
-        if "timing_s/gen" in aggregated.keys() and "timing_s/step" in aggregated.keys():
+        if "timing_s/gen" in aggregated and "timing_s/step" in aggregated:
             aggregated["fully_async/trainer/idle_ratio"] = aggregated["timing_s/gen"] / aggregated["timing_s/step"]
 
         if "hpt/num_sft" in aggregated and "hpt/num_rl_groups" in aggregated:
@@ -406,7 +406,7 @@ def task_exception_handler(task: asyncio.Task):
         raise e
 
 
-def safe_create_task(coro, name: str, task_set: set = None):
+def safe_create_task(coro, name: str, task_set: set | None = None):
     """Safely create a task with exception handling
 
     Args:

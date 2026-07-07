@@ -80,7 +80,7 @@ class AsyncTokenBucket:
         5. Retry after sleep (loop back to step 1)
     """
 
-    def __init__(self, rate_limit: float, max_tokens: float = None):
+    def __init__(self, rate_limit: float, max_tokens: float | None = None):
         self.rate_limit = rate_limit
         self.max_tokens = max_tokens or rate_limit
         self.tokens = self.max_tokens
@@ -490,7 +490,7 @@ class RateLimitedRewardManager(RewardManagerBase):
         import torch
 
         # If there are pre-computed rm_scores, return them directly
-        if "rm_scores" in data.batch.keys():
+        if "rm_scores" in data.batch:
             if return_dict:
                 reward_extra_keys = data.meta_info.get("reward_extra_keys", [])
                 reward_extra_info = {key: data.non_tensor_batch[key] for key in reward_extra_keys}

@@ -449,7 +449,7 @@ class SeparateRayPPOTrainer(RayPPOTrainer):
             # REMAX only needs one scalar baseline reward per original prompt.
             # Agent-loop rollout outputs contain sample-specific non-tensor fields
             # such as turns, tool rewards and extras; keep the baseline path isolated.
-            if self.use_rm and "rm_scores" not in gen_baseline_output.batch.keys():
+            if self.use_rm and "rm_scores" not in gen_baseline_output.batch:
                 baseline_reward = self._compute_reward_colocate(gen_baseline_output)
                 gen_baseline_output = gen_baseline_output.union(baseline_reward)
 
@@ -462,7 +462,7 @@ class SeparateRayPPOTrainer(RayPPOTrainer):
         batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
         batch = batch.union(gen_batch_output)
 
-        if "response_mask" not in batch.batch.keys():
+        if "response_mask" not in batch.batch:
             batch.batch["response_mask"] = compute_response_mask(batch)
         # Balance the number of valid tokens across DP ranks.
         # NOTE: This usually changes the order of data in the `batch`,
@@ -476,7 +476,7 @@ class SeparateRayPPOTrainer(RayPPOTrainer):
         # get images_seqlens
         images_seqlens_all = []
         for multi_modal_input in batch.non_tensor_batch["multi_modal_inputs"]:
-            if "image_grid_thw" not in multi_modal_input.keys():
+            if "image_grid_thw" not in multi_modal_input:
                 continue
             images_seqlens_all.extend(multi_modal_input["images_seqlens"].tolist())
         batch.meta_info["images_seqlens"] = images_seqlens_all
@@ -486,7 +486,7 @@ class SeparateRayPPOTrainer(RayPPOTrainer):
         timing_raw = self.timing_raw
         with marked_timer("reward", timing_raw, color="yellow"):
             # compute reward model score
-            if self.use_rm and "rm_scores" not in batch.batch.keys():
+            if self.use_rm and "rm_scores" not in batch.batch:
                 batch_reward = self._compute_reward_colocate(batch)
                 batch = batch.union(batch_reward)
 
@@ -545,7 +545,7 @@ class SeparateRayPPOTrainer(RayPPOTrainer):
                     else:
                         old_log_prob.batch.pop("routed_experts")
                 batch = batch.union(old_log_prob)
-                if "rollout_log_probs" in batch.batch.keys():
+                if "rollout_log_probs" in batch.batch:
                     # TODO: we may want to add diff of probs too.
                     from verl.utils.debug.metrics import calculate_debug_metrics
 

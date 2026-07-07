@@ -187,7 +187,7 @@ class TrainingTensorDumper:
 
         tensors: dict[str, torch.Tensor] = {}
         for key in DUMP_TENSOR_KEYS:
-            if key not in batch.batch.keys():
+            if key not in batch.batch:
                 continue
             tensor = batch.batch[key][:n].detach().to("cpu")
             if key in _FLOAT_CAST_KEYS and tensor.is_floating_point():

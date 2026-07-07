@@ -78,9 +78,7 @@ class MessageQueue:
 
             if self.total_produced % 100 == 0:
                 print(f"MessageQueue stats: produced={self.total_produced}, queue_size={len(self.queue)}")
-            if is_drop:
-                return False
-            return True
+            return not is_drop
 
     async def get_sample(self) -> Any | None:
         """
@@ -144,7 +142,7 @@ class MessageQueue:
 
             if sample_count > 0:
                 # Estimate size of a single sample (simplified estimation)
-                sample = list(self.queue)[0]
+                sample = next(iter(self.queue))
                 try:
                     sample_size = sys.getsizeof(sample)
                     # Since we now store RolloutSample directly, estimate based on its components
