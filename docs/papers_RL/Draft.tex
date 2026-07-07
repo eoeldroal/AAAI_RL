@@ -98,11 +98,11 @@ A.4 Optimization Objective
 
 출발점은 post-training을 하나의 unified policy-gradient estimator로 보는 관점이다. 이 관점에서 SFT와 RL은 별개의 목적이 아니라 advantage estimate와 reference policy denominator의 선택이 다른 같은 estimator이다. Async-HPT는 이 관점을 그대로 실행한다. supervised branch를 위한 새 loss를 정의하지 않고, RL이 사용하는 advantage 경로와 reference 경로를 그대로 쓰되 두 지점에서만 branch에 따라 갈라지게 한다. 따라서 이 절의 내용은 두 재사용으로 요약된다. advantage 경로의 재사용과 reference 경로의 재사용이다.
 
-Advantage. verified trajectory는 별도의 optimizer step으로 처리되지 않고, RL이 사용하는 group-relative advantage 경로를 그대로 통과한다. RL branch에서 같은 prompt의 rollout들이 한 group을 이루듯, supervised branch에서는 verified trajectory가 혼자 하나의 group을 이룬다. 이 singleton group에 token reward 합이 $\beta$가 되도록 pseudo reward를 부여하면, group standard deviation으로 정규화하지 않는 advantage 계산에서 singleton group의 advantage는 그 reward가 supervised token mask 위에 그대로 퍼진 형태가 된다.
+Advantage. verified trajectory는 별도의 optimizer step으로 처리되지 않고, RL이 사용하는 group-relative advantage 경로를 그대로 통과한다. RL branch에서 같은 prompt의 rollout들이 한 group을 이루듯, supervised branch에서는 verified trajectory가 혼자 하나의 group을 이룬다. 이 singleton group에 token reward 합이 $\beta_r$가 되도록 pseudo reward를 부여하면, group standard deviation으로 정규화하지 않는 advantage 계산에서 singleton group의 advantage는 그 reward가 supervised token mask 위에 그대로 퍼진 형태가 된다.
 
-$$A^{\mathrm{SFT}}{r,t} = \beta, m{r,t}$$
+$$A^{\mathrm{SFT}}_{r,t} = \beta_r\, m_{r,t}$$
 
-여기서 $m_{r,t}$는 row $r$의 token $t$에 대한 response mask이다. 새로운 advantage estimator는 추가되지 않는다. singleton group과 $\beta$ pseudo reward라는 입력만으로 기존 group-relative 경로가 supervised positive signal을 생성한다.
+여기서 $m_{r,t}$는 row $r$의 token $t$에 대한 response mask이고, $\beta_r$는 supervised row $r$의 학습 예산이며 그 배분 방식(상수 대 길이-정규화)은 Reduction 소절에서 논한다. 새로운 advantage estimator는 추가되지 않는다. singleton group과 $\beta_r$ pseudo reward라는 입력만으로 기존 group-relative 경로가 supervised positive signal을 생성한다.
 
 Reference. RL row와 supervised row는 reference로 삼는 old-policy가 다르다. 현재 policy의 token log-probability를 $\ell_{\theta,r,t} = \log \pi_\theta(a_{r,t} \mid h_{r,t})$로 쓰자. 여기서 $a_{r,t}$는 row $r$의 $t$번째 token이고 $h_{r,t}$는 그 history이다. RL row는 rollout policy가 생성한 sample이므로 생성 시점의 log-probability $\ell^{\mathrm{rollout}}_{r,t}$가 reference가 된다. supervised row는 rollout policy의 sample이 아니므로 그러한 reference가 없고, 대신 현재 policy의 log-probability를 detach하여 reference로 삼는다. branch indicator $z_r \in {0,1}$을 supervised일 때 1로 두면, effective old log-probability는 두 경우를 하나로 표현한다.
 
@@ -128,17 +128,17 @@ $$\mathcal{L}^{\mathrm{tok}}{r,t} = \phi{\mathrm{PPO}}\big(\rho_{r,t},, A_{r,t}\
 
 supervised row에서는 $\rho_{r,t} = 1$이므로 clipping이 활성화되지 않는다. 같은 objective를 쓰되 supervised branch에서는 clip이 항등적으로 비활성인 채로 통과한다.
 
-Reduction. branch별 차이는 token objective가 아니라 이후의 reduction에서 나타난다. token loss를 sequence로 모으고 sequence를 batch로 모을 때, 각 branch는 서로 다른 length divisor $d_r$, sequence weight $w_r$, 그리고 batch가 공유하는 denominator $B_{\mathrm{eff}}$를 적용받는다.
+Reduction. token objective가 정해지면 두 branch는 동일한 reduction을 통과한다. token loss를 sequence로, sequence를 batch로 모으는 이 단계는 branch를 구분하지 않으며, 표준 policy-gradient aggregation을 그대로 쓴다.
 
-$$\mathcal{L}^{\mathrm{seq}}r = \frac{\sum_t m{r,t},\mathcal{L}^{\mathrm{tok}}{r,t}}{d_r}, \qquad \mathcal{L}{\mathrm{Async\text{-}HPT}} = \frac{1}{B_{\mathrm{eff}}}\sum_r w_r, \mathcal{L}^{\mathrm{seq}}_r$$
+$$\mathcal{L}^{\mathrm{seq}}_{r} = \frac{\sum_{t} m_{r,t}\,\mathcal{L}^{\mathrm{tok}}_{r,t}}{L_{\max}}, \qquad \mathcal{L}_{\mathrm{Async\text{-}HPT}} = \frac{1}{\lvert B \rvert} \sum_{r \in B} \mathcal{L}^{\mathrm{seq}}_{r}.$$
 
-$$w_r = \begin{cases} \alpha/n & z_r = 0 \ 1 & z_r = 1 \end{cases} \qquad d_r = \begin{cases} T^{\mathrm{rollout}}r & z_r = 0 \ \sum_t m{r,t} & z_r = 1 \end{cases} \qquad B_{\mathrm{eff}} = \sum_r w_r$$
+여기서 $L_{\max}$는 branch와 무관한 상수 divisor이고, $B$는 한 update가 소비하는 sequence 집합, $\lvert B \rvert$는 그 크기다. 모든 row가 같은 상수 $L_{\max}$로 나뉘므로 토큰당 가중이 응답 자신의 길이에 의존하지 않는다(길이-중립 인센티브). 이 상수 divisor 선택은 RL branch의 요구에서 나온다. rollout 길이는 정책이 생성하므로 자기-길이 divisor를 쓰면 정책이 길이를 조작해 loss를 회피할 수 있다. supervised branch에는 이 위험이 없으나($\tau^\star$는 고정), 두 branch가 하나의 estimator를 공유하는 이상 reduction도 하나여야 하므로 같은 상수 divisor를 따른다.
 
-RL row의 divisor $T^{\mathrm{rollout}}_r$는 그 row가 materialize될 때의 response width이고, supervised row의 divisor는 supervised token 수이다. sequence weight는 RL branch에서 $\alpha/n$으로, 하나의 prompt가 $n$개 row로 펼쳐지더라도 그 prompt의 총 기여가 한 단위가 되게 한다. supervised branch는 prompt당 row가 하나이므로 weight가 1이다. 두 weight가 함께 작동하여, 하나의 prompt는 RL이든 SFT든 row 수와 무관하게 batch에 동등하게 기여한다.
+batch는 sequence 수 $\lvert B \rvert$로 평균되므로 각 row가 한 단위로 계상된다. 한 RL prompt는 $n$개 rollout row로 $n$ 단위를, 한 SFT prompt는 하나의 verified row로 $1$ 단위를 차지한다. RL의 $n$은 모든 prompt에서 동일하므로 이 row-count 가중은 RL prompt 사이에 불균형을 만들지 않으며, unbiased policy gradient가 결정 수에 비례해 처방하는 신호일 뿐이다. reduction이 branch를 구분하지 않으므로, 남는 유일한 축인 RL 대 SFT의 상대 강도는 reduction이 아니라 supervised advantage의 크기 $\beta_r$가 조절한다.
 
-여기서 $\alpha$와 $\beta$가 서로 다른 위치에 등장하는 것은 원 HPT의 계수가 Async-HPT에서 다르게 작동하기 때문이다. 원 HPT는 performance feedback으로 $\alpha L_{\mathrm{RL}} + \beta L_{\mathrm{SFT}}$의 두 계수를 정해 하나의 loss를 섞는다. Async-HPT에서는 이 선택이 loss mixing이 아니라 route 단위 branch 선택으로 내려온다. gate가 prompt마다 RL 또는 SFT branch를 고르고 나면, 선택된 branch 안에서 두 계수는 서로 다른 위치의 scale로 작동한다. RL로 route된 prompt에서는 $\alpha$가 $n$개 rollout row에 $\alpha/n$으로 나뉘어 prompt-level RL 기여를 조절하고, SFT로 route된 prompt에서는 $\beta$가 pseudo reward scale로 들어가 supervised advantage의 크기를 조절한다.
+$\beta_r$는 supervised trajectory의 학습 예산을 정하는 손잡이다. $A^{\mathrm{SFT}}_{r,t} = \beta_r\, m_{r,t}$이므로 한 supervised row의 batch 기여는 $\beta_r\,\lvert o_r \rvert / L_{\max}$이고, $\beta_r$를 상수로 두면 토큰당 정액 배분이, $\beta_r = \beta\, L_{\max} / \lvert o_r \rvert$로 두면 trajectory당 예산이 길이와 무관하게 $\beta$로 고정되는 배분이 된다. 어느 배분이든 reduction이 아니라 reward 채널이 표현하므로 aggregation은 supervised 배분에 대해 중립이다.
 
-이로써 두 branch는 advantage 경로와 reference 경로를 공유한 채 하나의 objective로 합산된다. branch에 따라 달라지는 것은 advantage가 group에서 오는지 pseudo reward에서 오는지, 그리고 reference가 rollout policy인지 self-detached current policy인지뿐이다. 남은 한 가지 차이는 이 reference 위에 비동기 보정을 어떻게 적용하는가이며, 이는 다음 절이 다룬다.
+이로써 두 branch는 advantage 경로와 reference 경로를 공유한 채 하나의 objective로 합산되고, reduction은 branch를 모른 채 통과한다. branch에 따라 달라지는 것은 advantage가 group에서 오는지 pseudo reward에서 오는지, 그리고 reference가 rollout policy인지 self-detached current policy인지 두 지점뿐이다. 남은 한 가지 차이는 이 reference 위에 비동기 보정을 어떻게 적용하는가이며, 이는 다음 절이 다룬다.
 
 
 
@@ -147,13 +147,13 @@ A.5 Asynchrony Validity
 
 이 절은 셋째 불변식의 시간축을 다룬다. A.4는 두 branch가 하나의 ratio 기반 objective 안에서 어떻게 서로 다른 reference를 갖는지 정의했다. 이 절은 그 reference 위에 비동기 RL의 validity 기제가 어떻게 놓이는지를 다룬다. 핵심은 provenance이다.
 
-비동기 stream에서 sample은 생성 시점의 policy에서 나오지만 학습은 그보다 뒤의 policy에서 이루어진다. 비동기 RL은 이 시간적 간극을 두 가지 기제로 관리한다. 하나는 rollout policy와 current policy의 mismatch를 보정하는 correction이고, 다른 하나는 지나치게 오래된 sample을 거르는 version 기반 staleness이다. 두 기제는 모두 sample이 특정 rollout policy version에서 생성되었다는 provenance에 의존한다. RL row는 rollout policy가 환경과 상호작용하여 만든 sample이므로 rollout log-probability와 generation version을 갖는다. supervised row는 prompt에 주어진 verified target이므로, batch schema를 맞추기 위한 같은 모양의 field가 있더라도 rollout provenance를 갖지 않는다.
+두 branch의 이 시간적 비대칭은 하나의 관찰로 압축된다. 비동기 RL이 관리하는 두 항목, 곧 생성 정책과 current policy 간 mismatch를 교정하는 correction과 지나치게 오래된 sample을 거르는 version staleness는 둘 다 sample이 특정 rollout policy version에서 생성되었다는 provenance를 전제로 한다. RL row는 이 provenance를 가지므로 두 기제의 대상이 되지만, supervised row는 rollout이 아니라 고정 target이므로 두 기제 어느 쪽의 전제도 성립하지 않는다. SFT 행의 두 칸이 모두 비어 있는 것이다.\footnote{같은 provenance 논리가 actor loss의 auxiliary 정칙화 항에도 적용된다. entropy 보너스와 anchor-KL은 각각 탐색과 초기 정책 앵커링을 위한 항으로 그 의미가 rollout policy를 기준으로 정의된다. 따라서 이들도 rollout provenance를 가진 RL row에만 의미를 가지며, supervised row에는 적용되지 않는다. 이는 correction과 staleness의 부재와 같은 원리의 연장이다.}
 
-이 차이가 correction에서 먼저 드러난다. correction은 A.4의 ratio를 다시 정의하는 것이 아니라 그 위에 놓이는 validity overlay이며, rollout policy와 current policy 사이의 mismatch를 다루는 장치이다. 따라서 correction은 rollout provenance를 가진 RL row에만 의미를 갖는다. supervised row의 reference는 A.4에서 self-detached current policy로 이미 정의되었으므로, 여기에 rollout correction을 다시 적용하면 supervised target이 자신과 무관한 placeholder 값에 의해 mask되거나 reweight될 수 있다. 그러므로 supervised row는 이 overlay를 identity로 통과한다.
+correction부터 보면, 이것은 생성 정책과 current policy의 빈도 mismatch를 곱셈으로 교정하는 장치이고 그 기준은 생성 정책이다. supervised target은 우리 정책의 rollout이 아니라 주어진 trajectory이므로, 교정할 생성 정책이 존재하지 않는다. correction이 SFT에서 identity가 되는 것은 RL 기제를 예외적으로 꺼서가 아니라 교정 대상 자체가 부재하기 때문이다. 실제로 supervised row의 rollout log-probability 자리에 놓인 값은 batch schema를 맞추기 위한 placeholder일 뿐 reference도 mismatch의 근거도 아니며, correction을 억지로 적용하면 supervised target이 이 무관한 값에 의해 reweight되므로, 부재를 부재로 두는 것이 옳다.
 
-version 기반 staleness도 같은 원리를 따른다. RL row는 특정 rollout version에서 생성되므로 learner version과의 거리를 정의할 수 있고, 그 거리를 기준으로 유효성을 제한할 수 있다. supervised row는 fixed verified trajectory이므로 generation version gap이 validity의 기준이 되지 않는다. 따라서 supervised row는 version 기반 filtering의 대상이 아니다.
+version staleness도 같은 부재의 다른 얼굴이다. RL row는 특정 rollout version에서 생성되므로 learner version과의 거리로 유효성을 제한할 수 있으나, supervised row는 fixed verified trajectory라 generation version 자체가 없다. 거리를 잴 원점이 없으므로 staleness는 성립할 수 없고, 따라서 supervised row는 version filtering의 대상이 아니다.
 
-두 기제의 바탕에는 rollout log-probability의 의미 차이가 있다. RL row에서 rollout log-probability는 A.4의 reference anchor이면서 correction이 살펴보는 policy mismatch의 근거이다. supervised row에서 같은 모양의 tensor는 batch schema를 맞추기 위한 값일 뿐, reference도 correction의 근거도 아니다. supervised reference는 loss 시점에 self-detached current log-probability로 정의되고, validity 기제는 placeholder 값을 supervised target의 증거로 해석하지 않는다.
+정리하면 supervised branch의 off-policy 성격은 RL의 그것과 종류가 다르다. $\tau^\star$는 version lag이 $0$인데 정책 분포와의 거리는 클 수 있다. off-policy이되 stale하지 않다. 그러나 분포 거리가 크다는 것이 통계적 제동을 요구하지는 않는다. correction도 staleness도 부재하는 이 이중 비대칭 위에서, supervised reference는 A.4의 self-detached current policy로 충분하며 그 위에 별도의 비동기 보정 층을 더할 필요가 없다.
 
 이 절은 도입부에서 제기한 경계 문제를 닫는다. asynchrony는 generation과 training을 stream으로 겹쳐 실행 효율을 얻지만 그 대가로 sample의 시간적 유효성을 관리해야 하고, hybrid estimator는 실패 영역에 verified trajectory를 넣어 학습 신호를 보강하지만 그 trajectory는 rollout sample이 아니다. RL row는 비동기 rollout data이므로 correction과 version validity의 대상이 될 수 있고, supervised row는 fixed target이므로 그 기제를 identity로 통과한다. learner는 하나의 mixed batch를 받지만, 각 branch의 시간적 전제는 그대로 보존된다.
 
