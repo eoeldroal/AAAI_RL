@@ -1051,6 +1051,61 @@ async def test_async_hpt_batch_reaches_reward_advantage_and_actor_loss_contract(
     assert "hpt/rl_loss_component" not in loss_metrics
 
 
+@pytest.mark.asyncio
+async def test_async_hpt_entry_anchor_still_emits_routing_composition_metrics(monkeypatch):
+    # Regression: the HPT routing-composition metrics (offline_data_ratio, num_sft,
+    # num_rl_groups, missing_tau_count, p_success_zero_ratio) describe the assembled
+    # batch, not the old-logprob anchor, so they must be emitted in BOTH anchor modes.
+    # A version that collected them only inside the rollout-anchor branch dropped every
+    # one of these for entry-anchor (decoupled) mode -- i.e. for all M-family runs.
+    from omegaconf import open_dict
+
+    from verl.protocol import DataProto
+
+    trainer = _make_row_aware_hpt_trainer(_make_mixed_hpt_queue_samples())
+    with open_dict(trainer.config):
+        trainer.config.async_hpt.rl_old_logprob_source = "entry"
+        trainer.config.async_hpt.entry_proximal = "recent"
+        # entry anchor requires the decoupling w-slot contract (token TIS, no rejection).
+        trainer.config.algorithm.rollout_correction = {
+            "rollout_is": "token",
+            "rollout_is_threshold": 2.0,
+            "rollout_rs": None,
+            "bypass_mode": False,
+        }
+        trainer.config.actor_rollout_ref.actor.loss_agg_mode = "seq-mean-token-sum-norm"
+        trainer.config.actor_rollout_ref.actor.loss_scale_factor = 8192
+
+    # Entry mode recomputes old_log_probs via the actor forward (option B, current
+    # weights). Stub that expensive boundary with a zero proximal so this stays a
+    # CPU-only contract test focused on metric emission, not the forward itself.
+    def _fake_recompute_old_log_prob(batch):
+        response_mask = batch.batch["response_mask"]
+        return (
+            DataProto.from_dict(
+                tensors={
+                    "old_log_probs": torch.zeros_like(response_mask, dtype=torch.float32),
+                    "entropys": torch.zeros_like(response_mask, dtype=torch.float32),
+                }
+            ),
+            0.0,
+        )
+
+    monkeypatch.setattr(trainer, "_compute_old_log_prob", _fake_recompute_old_log_prob)
+
+    _, batch = await trainer._get_samples_from_queue()
+    trainer._fit_compute_log_prob(batch)
+
+    # Entry anchor skips the rollout-anchor branch, so its rollout-only flag must be absent...
+    assert "hpt/old_logprob_from_rollout" not in trainer.metrics
+    # ...but the routing-composition contract must hold identically to the rollout-anchor path.
+    assert trainer.metrics["hpt/num_sft"] == 4.0
+    assert trainer.metrics["hpt/num_rl_groups"] == 3.0
+    assert trainer.metrics["hpt/offline_data_ratio"] == pytest.approx(4.0 / 7.0)
+    assert "hpt/missing_tau_count" in trainer.metrics
+    assert "hpt/p_success_zero_ratio" in trainer.metrics
+
+
 def test_hpt_all_rl_policy_loss_matches_vanilla_policy_loss():
     from verl.utils import tensordict_utils as tu
     from verl.workers.utils.losses import ppo_loss

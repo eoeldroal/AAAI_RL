@@ -505,9 +505,13 @@ class SeparateRayPPOTrainer(RayPPOTrainer):
         #   Note: π_old computed once per data batch, serves as stable reference during mini-batch updates
         rollout_corr_config = self.config.algorithm.get("rollout_correction", None)
         bypass_recomputing_logprobs = rollout_corr_config and rollout_corr_config.get("bypass_mode", False)
+        # HPT routing-composition metrics describe the assembled batch (SFT/RL split, missing-tau),
+        # not the old-logprob anchor, so they must be emitted for every HPT batch — including
+        # entry-anchor (decoupled) mode, which falls through to the recompute branch below and
+        # would otherwise never report them. No-op (returns {}) on non-HPT batches.
+        metrics.update(collect_hpt_batch_monitoring_metrics(batch))
         if should_use_hpt_rollout_logprob_anchor(self.config, batch):
             metrics.update(apply_hpt_rollout_logprob_anchor(batch))
-            metrics.update(collect_hpt_batch_monitoring_metrics(batch))
         elif bypass_recomputing_logprobs:  # Use `rollout_log_probs`
             from verl.trainer.ppo.rollout_corr_helper import apply_bypass_mode
 
