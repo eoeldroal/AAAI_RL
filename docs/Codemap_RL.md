@@ -10,6 +10,10 @@ Companion docs (single source of truth, do not duplicate them here):
 - `Overview_RL.md` — what this fork is and why (identity, guarantees).
 - `Readme_RL.md` — environment setup, launching, and log triage.
 - `AsyncBudget_RL.md` — queue/staleness/HPT-routing budget sizing.
+- `Debug_RL.md` — lint/format, live profiling, and perf triangulation.
+- `Ablation_RL.md` — ablation study design and analysis procedure.
+- `Improvement_RL.md` — run pathology case studies and improvement decisions.
+- Design records `DR-001` to `DR-005` — the decisions' rationale and theory.
 - This file — where things live and where they break.
 
 Line numbers rot; this map anchors on **file + symbol name**. `grep`/`rg` the

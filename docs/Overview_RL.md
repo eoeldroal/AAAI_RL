@@ -62,3 +62,9 @@ queue put, completed-budget pressure, trainer-visible sample throughput.
 - Rules for working in this repo: `../AGENTS.md`.
 - Code layout, control flow, and where a run breaks: `Codemap_RL.md`.
 - How to launch and size a run: `Readme_RL.md`.
+- Queue/staleness/HPT budget sizing: `AsyncBudget_RL.md`.
+- Lint, profiling, and perf triage: `Debug_RL.md`.
+- Ablation design and analysis procedure: `Ablation_RL.md`.
+- Run pathology case studies and improvements: `Improvement_RL.md`.
+- Decisions' rationale and theory: design records `DR-001` to `DR-005`.
+- Paper draft and slide generator: `papers_RL/Draft.tex`, `papers_RL/make_asynchpt_slides.py`.
