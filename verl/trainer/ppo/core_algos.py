@@ -2263,8 +2263,14 @@ def compute_policy_loss_cispo_klcov(
 
     clip_ratio_low = config.clip_ratio_low if config.clip_ratio_low is not None else config.clip_ratio
     clip_ratio_high = config.clip_ratio_high if config.clip_ratio_high is not None else config.clip_ratio
-    kl_cov_ratio = config.policy_loss.kl_cov_ratio if config.policy_loss.kl_cov_ratio is not None else 0.0002
-    ppo_kl_coef = config.policy_loss.ppo_kl_coef if config.policy_loss.ppo_kl_coef is not None else 0.1
+    # dict-style .get so this works whether policy_loss is a PolicyLossConfig, a DictConfig, or a
+    # plain dict (matches how losses.py reads config.policy_loss.get("loss_mode", ...)).
+    kl_cov_ratio = config.policy_loss.get("kl_cov_ratio", 0.0002)
+    if kl_cov_ratio is None:
+        kl_cov_ratio = 0.0002
+    ppo_kl_coef = config.policy_loss.get("ppo_kl_coef", 0.1)
+    if ppo_kl_coef is None:
+        ppo_kl_coef = 0.1
 
     negative_approx_kl = log_prob - old_log_prob
     negative_approx_kl = torch.clamp(negative_approx_kl, min=-20.0, max=20.0)

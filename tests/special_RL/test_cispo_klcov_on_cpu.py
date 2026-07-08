@@ -25,12 +25,15 @@ gradient. These tests pin the invariants that make it a SAFE, OFF-by-default ove
 
 import pytest
 import torch
+from tensordict import TensorDict
 
 from verl.trainer.ppo.core_algos import (
     compute_policy_loss_cispo,
     compute_policy_loss_cispo_klcov,
 )
+from verl.utils import tensordict_utils as tu
 from verl.workers.config.actor import ActorConfig, PolicyLossConfig
+from verl.workers.utils.losses import ppo_loss
 
 
 def _cfg(kl_cov_ratio: float, ppo_kl_coef: float = 0.1) -> ActorConfig:
@@ -140,6 +143,61 @@ def test_sft_tokens_excluded_from_selection_universe():
     top = valid_idx[torch.topk(cov, k, largest=True).indices]
     rows = top // adv.shape[1]
     assert rows.max().item() < 4  # all selected tokens are on RL rows (0..3), never SFT (4,5)
+
+
+def _make_hpt_batch() -> TensorDict:
+    # row0 = SFT (teacher, self-detach), row1 = RL; 2 response tokens each. Mirrors the
+    # M-anchor cispo harness so this exercises the exact M7 activation path.
+    rm = torch.ones(2, 2, dtype=torch.bool)
+    ids = torch.arange(8).reshape(2, 4)
+    batch = TensorDict(
+        {
+            "input_ids": ids,
+            "prompts": ids[:, :2],
+            "attention_mask": torch.ones(2, 4, dtype=torch.bool),
+            "position_ids": torch.arange(4).repeat(2, 1),
+            "responses": ids[:, -2:],
+            "response_mask": rm,
+            "old_log_probs": torch.zeros(2, 2),
+            "advantages": torch.tensor([[1.0, 1.0], [0.5, -0.5]]),
+            "loss_mask": rm.clone(),
+            "loss_scale": torch.ones(2, 2),
+            "rollout_is_weights": torch.tensor([[99.0, 99.0], [2.0, 2.0]]),
+            "hpt_is_sft": torch.tensor([True, False]),
+        },
+        batch_size=[2],
+    )
+    tu.assign_non_tensor(batch, dp_size=1, batch_num_tokens=int(rm.sum().item()), global_batch_size=2)
+    return batch
+
+
+def test_cispo_klcov_runs_through_ppo_loss_under_hpt():
+    # The M7 activation path: loss_mode=cispo_klcov must (a) pass the HPT policy-loss whitelist
+    # in ppo_loss, (b) receive the SFT-token mask (threaded only for this mode), and (c) produce
+    # a finite loss + gradient on an HPT-shaped batch. This is the integration point the
+    # loss-fn-only tests above do not cover. Also guards config.policy_loss.get(...) access
+    # working whether policy_loss is a PolicyLossConfig, DictConfig, or plain dict.
+    config = ActorConfig(
+        strategy="fsdp",
+        rollout_n=8,
+        ppo_mini_batch_size=1,
+        ppo_micro_batch_size=1,
+        clip_ratio=0.2,
+        clip_ratio_low=10.0,
+        clip_ratio_high=0.28,
+        clip_ratio_c=10.0,
+        loss_agg_mode="token-mean",
+        use_kl_loss=False,
+        entropy_coeff=0.0,
+        global_batch_info={"dp_size": 1},
+        policy_loss={"loss_mode": "cispo_klcov", "kl_cov_ratio": 0.25, "ppo_kl_coef": 0.1},
+    )
+    model_output = {"log_probs": torch.full((8,), -0.25, requires_grad=True)}
+    loss, metrics = ppo_loss(config=config, model_output=model_output, data=_make_hpt_batch())
+    assert torch.isfinite(loss)
+    assert "actor/klcov_selected_tokens" in metrics
+    loss.backward()
+    assert torch.isfinite(model_output["log_probs"].grad).all()
 
 
 if __name__ == "__main__":
