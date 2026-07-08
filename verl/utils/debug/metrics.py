@@ -60,7 +60,28 @@ def calculate_log_prob_diff(log_probs1: torch.Tensor, log_probs2: torch.Tensor, 
     return torch.masked_select(full_diff, mask)
 
 
-def calculate_debug_metrics(data: DataProto) -> dict:
+def _rollout_diff_stats(
+    actor_probs: torch.Tensor, rollout_probs: torch.Tensor, mask_bool: torch.Tensor
+) -> tuple[int, float, float, float, float]:
+    """Return (valid, max, mean, std, pearson) of |actor_prob - rollout_prob| over mask_bool.
+
+    valid=0 (and NaN stats) when the mask selects no token — the caller records this rather
+    than crashing on an empty reduction.
+    """
+    if not mask_bool.any():
+        return 0, float("nan"), float("nan"), float("nan"), float("nan")
+    pearson = pearson_correlation_coefficient(actor_probs, rollout_probs, mask_bool)
+    diff = calculate_log_prob_diff(actor_probs, rollout_probs, mask_bool)
+    return (
+        1,
+        torch.max(diff).detach().item(),
+        torch.mean(diff).detach().item(),
+        torch.std(diff).detach().item(),
+        pearson,
+    )
+
+
+def calculate_debug_metrics(data: DataProto, exclude_rows: torch.Tensor | None = None) -> dict:
     """
     calculate rollout vs actor logprobs diff, for debugging purpose
 
@@ -71,13 +92,25 @@ def calculate_debug_metrics(data: DataProto) -> dict:
             old_log_probs(actor log probs): log_probs record when actor forward tokens
             loss_mask or attention_mask: to mask unrelated token
             responses: the response tokens, for calculating size
+        exclude_rows: optional bool tensor of shape (batch,). Rows marked True are dropped
+            from an ADDITIONAL "_rl" set of metrics. This exists for HPT: SFT rows carry a
+            placeholder rollout_log_probs (zeros) — they never went through the rollout engine —
+            so including them makes the diff |actor_prob - exp(0)| meaningless. Pass the SFT-row
+            mask (async_hpt hpt_is_sft) to get a clean rollout-vs-actor precision gauge over the
+            RL rows only. The original (all-row) keys are still emitted unchanged for back-compat
+            and cross-run comparability.
     Returns:
-        dict: metrics
+        dict: metrics. The base keys are over ALL response tokens (unchanged behavior):
             "training/rollout_probs_diff_valid": 1->input is valid, 0->input is invalid
             "training/rollout_probs_diff_max": max value of logprob diff of rollout vs. actor
             "training/rollout_probs_diff_mean": mean value of logprob diff of rollout vs. actor
             "training/rollout_probs_diff_std": std value of logprob diff of rollout vs. actor
             "training/rollout_actor_probs_pearson_corr": logprob's pearson corrcoef of rollout vs. actor, reference to https://arxiv.org/pdf/2506.13585
+        When exclude_rows is given, the same five statistics are ALSO emitted over the kept
+        (RL) rows under "_rl"-suffixed keys, plus the excluded-row count:
+            "training/rollout_probs_diff_rl_{valid,max,mean,std}",
+            "training/rollout_actor_probs_pearson_corr_rl",
+            "training/rollout_probs_diff_sft_rows_excluded"
     """
 
     rollout_old_log_probs = data.batch["rollout_log_probs"]
@@ -110,12 +143,34 @@ def calculate_debug_metrics(data: DataProto) -> dict:
             "training/rollout_actor_probs_pearson_corr": float("nan"),
         }
 
-    pearson_corrcoef = pearson_correlation_coefficient(actor_probs, rollout_probs, response_mask_bool)
-    rollout_probs_diff = calculate_log_prob_diff(actor_probs, rollout_probs, response_mask_bool)
-    return {
-        "training/rollout_probs_diff_valid": 1,
-        "training/rollout_probs_diff_max": torch.max(rollout_probs_diff).detach().item(),
-        "training/rollout_probs_diff_mean": torch.mean(rollout_probs_diff).detach().item(),
-        "training/rollout_probs_diff_std": torch.std(rollout_probs_diff).detach().item(),
+    valid, diff_max, diff_mean, diff_std, pearson_corrcoef = _rollout_diff_stats(
+        actor_probs, rollout_probs, response_mask_bool
+    )
+    metrics = {
+        "training/rollout_probs_diff_valid": valid,
+        "training/rollout_probs_diff_max": diff_max,
+        "training/rollout_probs_diff_mean": diff_mean,
+        "training/rollout_probs_diff_std": diff_std,
         "training/rollout_actor_probs_pearson_corr": pearson_corrcoef,
     }
+
+    if exclude_rows is not None:
+        # Drop excluded rows (e.g. HPT SFT rows with placeholder rollout logprobs) to isolate
+        # the genuine rollout-engine-vs-trainer precision mismatch on RL rows only.
+        keep_rows = (~exclude_rows.bool()).to(device=response_mask_bool.device).view(-1, 1)
+        rl_mask_bool = response_mask_bool & keep_rows
+        rl_valid, rl_max, rl_mean, rl_std, rl_pearson = _rollout_diff_stats(
+            actor_probs, rollout_probs, rl_mask_bool
+        )
+        metrics.update(
+            {
+                "training/rollout_probs_diff_rl_valid": rl_valid,
+                "training/rollout_probs_diff_rl_max": rl_max,
+                "training/rollout_probs_diff_rl_mean": rl_mean,
+                "training/rollout_probs_diff_rl_std": rl_std,
+                "training/rollout_actor_probs_pearson_corr_rl": rl_pearson,
+                "training/rollout_probs_diff_sft_rows_excluded": int(exclude_rows.bool().sum().item()),
+            }
+        )
+
+    return metrics

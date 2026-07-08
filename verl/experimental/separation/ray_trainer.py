@@ -549,7 +549,10 @@ class SeparateRayPPOTrainer(RayPPOTrainer):
                     # TODO: we may want to add diff of probs too.
                     from verl.utils.debug.metrics import calculate_debug_metrics
 
-                    metrics.update(calculate_debug_metrics(batch))
+                    # HPT SFT rows carry placeholder rollout_log_probs (zeros); exclude them so the
+                    # extra "_rl" precision keys reflect the true rollout-engine mismatch on RL rows.
+                    exclude_rows = batch.batch["hpt_is_sft"] if "hpt_is_sft" in batch.batch else None
+                    metrics.update(calculate_debug_metrics(batch, exclude_rows=exclude_rows))
 
         assert "old_log_probs" in batch.batch, f'"old_log_prob" not in {batch.batch.keys()=}'
         return batch
