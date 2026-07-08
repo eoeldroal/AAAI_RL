@@ -126,11 +126,18 @@ def validate_async_hpt_config(config: DictConfig) -> AsyncHptConfig:
             f"async_hpt.enabled=true currently requires algorithm.adv_estimator=grpo; got {adv_estimator!r}"
         )
 
-    norm_adv_by_std = OmegaConf.select(config, "algorithm.norm_adv_by_std_in_grpo", default=True)
-    if norm_adv_by_std is not False:
+    # Both advantage-normalization modes are HPT-safe: SFT rows are singleton groups, and
+    # compute_grpo_outcome_advantage special-cases len==1 groups to mean=0/std=1, so the SFT
+    # terminal pseudo-reward beta_r passes through as the row advantage unchanged under either
+    # mode. The historical False-only pin was the Dr.GRPO phase-1 contract (DR-001); revised
+    # 2026-07-08 to admit reference-parity GRPO std normalization (Improvement_RL.md §5.10 / M4).
+    # We still demand an EXPLICIT boolean so launchers must state which estimator contract
+    # they run under instead of inheriting a silent default.
+    norm_adv_by_std = OmegaConf.select(config, "algorithm.norm_adv_by_std_in_grpo", default=None)
+    if not isinstance(norm_adv_by_std, bool):
         raise ValueError(
-            "async_hpt.enabled=true currently requires algorithm.norm_adv_by_std_in_grpo=False "
-            "for the Dr.GRPO-style phase-1 contract"
+            "async_hpt.enabled=true requires algorithm.norm_adv_by_std_in_grpo to be set explicitly "
+            f"(True = GRPO std-normalized, False = Dr.GRPO unnormalized); got {norm_adv_by_std!r}"
         )
 
     loss_mode = OmegaConf.select(config, "actor_rollout_ref.actor.policy_loss.loss_mode", default="vanilla")
