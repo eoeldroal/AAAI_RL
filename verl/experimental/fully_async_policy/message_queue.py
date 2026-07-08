@@ -94,19 +94,25 @@ class MessageQueue:
                 overflow eviction occurred on this put (False) — unchanged semantics.
         """
         async with self._lock:
-            # If queue is full, evict one entry to make room. Prefer a producer-marked
-            # zero-information entry (B1'); otherwise remove the oldest (original behavior).
+            # If queue is full, make room. Victim priority (B1'): the INCOMING sample itself
+            # when it is producer-marked zero-information (enqueueing it would displace an
+            # informative entry only for it to be first pick on the next overflow anyway),
+            # then a marked entry already in the queue, then the oldest (original behavior).
             is_drop = False
             if len(self.queue) >= self.max_queue_size:
+                self.dropped_samples += 1
+                is_drop = True
+                logger.warning("Queue full, dropped sample")
+                if evict_hint:
+                    self.evicted_hinted += 1
+                    self.total_produced += 1
+                    return not is_drop
                 idx = self._select_evict_index() if self._saw_evict_hint else None
                 if idx is not None:
                     del self.queue[idx]
                     self.evicted_hinted += 1
                 else:
                     self.queue.popleft()
-                self.dropped_samples += 1
-                is_drop = True
-                logger.warning("Queue full, dropped sample")
             if evict_hint:
                 self._saw_evict_hint = True
             self.queue.append((int(evict_hint), sample))

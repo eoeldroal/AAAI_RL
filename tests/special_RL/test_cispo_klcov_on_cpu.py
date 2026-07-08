@@ -171,6 +171,43 @@ def _make_hpt_batch() -> TensorDict:
     return batch
 
 
+def _ppo_loss_grad(loss_mode: str, kl_cov_ratio: float) -> torch.Tensor:
+    config = ActorConfig(
+        strategy="fsdp",
+        rollout_n=8,
+        ppo_mini_batch_size=1,
+        ppo_micro_batch_size=1,
+        clip_ratio=0.2,
+        clip_ratio_low=10.0,
+        clip_ratio_high=0.28,
+        clip_ratio_c=10.0,
+        loss_agg_mode="token-mean",
+        use_kl_loss=False,
+        entropy_coeff=0.0,
+        global_batch_info={"dp_size": 1},
+        policy_loss={"loss_mode": loss_mode, "kl_cov_ratio": kl_cov_ratio, "ppo_kl_coef": 0.5},
+    )
+    # Deterministic non-trivial logprobs so |logp - old_logp| > 0 on RL tokens (penalty active).
+    log_probs = torch.linspace(-0.9, -0.1, 8).clone().requires_grad_(True)
+    loss, _ = ppo_loss(config=config, model_output={"log_probs": log_probs}, data=_make_hpt_batch())
+    loss.backward()
+    return log_probs.grad.detach().clone()
+
+
+def test_klcov_overlay_leaves_sft_row_gradient_bit_identical_to_cispo():
+    # Lemma-3-style contract (DR-005 / Improvement_RL.md §5.12.7): the KL-Cov overlay is an
+    # RL-exploration lever and must not touch the teacher branch. With kl_cov_ratio=1.0 every
+    # eligible token is selected, so any leak of SFT tokens into the selection universe would
+    # perturb their gradient. Layout: rmpad row-major, batch 2x4 with 2 response tokens/row ->
+    # flat positions 2,3 = SFT (row0) response tokens, 6,7 = RL (row1) response tokens.
+    grad_cispo = _ppo_loss_grad("cispo", kl_cov_ratio=0.0)
+    grad_klcov = _ppo_loss_grad("cispo_klcov", kl_cov_ratio=1.0)
+    # SFT response tokens: beta-CE gradient preserved exactly (self-detach + selection exclusion).
+    assert torch.equal(grad_cispo[2:4], grad_klcov[2:4])
+    # RL response tokens: the KL penalty must actually change the gradient (overlay is real).
+    assert not torch.allclose(grad_cispo[6:8], grad_klcov[6:8])
+
+
 def test_cispo_klcov_runs_through_ppo_loss_under_hpt():
     # The M7 activation path: loss_mode=cispo_klcov must (a) pass the HPT policy-loss whitelist
     # in ppo_loss, (b) receive the SFT-token mask (threaded only for this mode), and (c) produce
