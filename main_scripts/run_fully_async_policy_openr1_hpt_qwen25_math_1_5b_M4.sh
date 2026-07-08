@@ -20,9 +20,12 @@ cd "${VERL_ROOT}"
 #      큐 깊이를 분리했으므로(§5.8.6) 큐 상한은 이제 순수 staleness(~1.5 param-version) 손잡이다.
 #      드롭률은 생산-소비 차로 결정되어 큐 크기와 무관(≈38% 유지); 이 드롭은 낭비가 아니라
 #      C1(decoupled+TIS)이 유의미하게 일하는 레짐을 유지하는 가격이다(논문 분석용).
-#   ⑦ 순수 속도: ppo_max_token_len_per_gpu 32768→65536(+log_prob 동일) — 마이크로배치 상각,
-#      학습 수학 불변. 실측 allocated 53.6GB@32k의 선형 외삽 ~95GB@64k(용량 183GB의 52%).
-#      OOM 폴백 사다리(사전 등록): 65536 → 49152 → 32768.
+#   ⑦ 순수 속도: ppo_max_token_len_per_gpu 32768→49152(1.5×, +log_prob 동일) — 마이크로배치
+#      상각, 학습 수학 불변. 1차 발사의 크래시는 packing이 아니라 expandable_segments가
+#      SGLang TorchMemorySaver(async 가중치 동기화)와 비호환이었던 것 → expandable_segments는
+#      영구 제거. 49152는 allocated ~74GB(183GB의 40%)로 defrag 없이도 여유가 크다(reserved는
+#      캐시 고수위라 allocated만 안 넘으면 OOM 아님; 65536=52%은 다음 여유분 카드).
+#      OOM 폴백(사전 등록): 49152 → 32768. OOM은 롤아웃 init 직후 첫 몇 스텝에서만 발생해 발견이 쌈.
 # 유지: C1 decoupling + C2 CISPO(기여 축 — ⑥이 이들의 작동 레짐을 복원), G4 인프라
 # (trim+carryover), val JSONL 덤프(관대/정직 이중 곡선의 offline 산출 = 부패 조기경보).
 # 실행 규율: §5.8.3 수확 원칙 — 관대 val 2연속 하락 시 즉시 종료하고 최고점 checkpoint 수확.
@@ -47,11 +50,6 @@ cd "${VERL_ROOT}"
 # RL conda env는 CUDA 13 runtime/cuDNN/NCCL wheel stack을 activation hook으로
 # 노출한다. nohup/non-interactive 실행에서도 SGLang subprocess가 같은 loader
 # path를 보도록 hook을 직접 source한다.
-# [각주 ⑦-보강] 64k 토큰 마이크로배치는 가변 길이 패킹의 단편화에 민감하다.
-# expandable_segments로 allocator 단편화를 완화한다(reserved 172GB@32k 실측의 주범).
-# Ray worker는 driver 환경을 상속하므로 여기서 export하면 트레이너까지 전파된다.
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-
 export CONDA_PREFIX="${HOME}/miniconda3/envs/RL"
 export PATH="${CONDA_PREFIX}/bin:${PATH}"
 source "${CONDA_PREFIX}/etc/conda/activate.d/verl_cuda_stack.sh"
@@ -222,7 +220,7 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     actor_rollout_ref.actor.ppo_mini_batch_size=32 \
     actor_rollout_ref.actor.ppo_micro_batch_size=32 \
     actor_rollout_ref.actor.ppo_epochs=1 \
-    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=65536 \
+    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=49152 \
     actor_rollout_ref.actor.clip_ratio_low=10.0 \
     actor_rollout_ref.actor.clip_ratio_high=0.28 \
     actor_rollout_ref.actor.clip_ratio_c=10.0 \
@@ -244,7 +242,7 @@ python3 -m verl.experimental.fully_async_policy.fully_async_main \
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
     actor_rollout_ref.rollout.disable_log_stats=False \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
-    actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=65536 \
+    actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=49152 \
     actor_rollout_ref.rollout.max_model_len=9728 \
     +actor_rollout_ref.rollout.engine_kwargs.sglang.context_length=9728 \
     "+actor_rollout_ref.rollout.engine_kwargs.sglang.json_model_override_args='{\"max_position_embeddings\":16384,\"rope_theta\":40000}'" \

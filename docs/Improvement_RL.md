@@ -474,12 +474,14 @@ M2(scratch·mirage·leninv β1.0·G4 인프라)가 val 26.1@50 정점 후 하락
 | ④ | β 1.0→0.3, leninv→const | 両34-달성 공통값; M2 제1용의자 제거 |
 | ⑤ | norm_adv_by_std=True | 희소 성공 ~3× 증폭(하드벤치 직격) + 참조 parity. **SFT 안전성 검증**: singleton 그룹은 mean=0/std=1 특례(core_algos)라 β_r 보존 — 계약 테스트로 고정. 되돌림 기준: entropy_mean>3.5 또는 관대 val 2연속 하락 시 이 축만 False |
 | ⑥ | 큐 384→768 | staleness ~1.5버전 = C1 작동 레짐 복원(논문 분석). 차단기: ESS<0.6 / rKL>3 지속 / 초반 3-val ESS<0.85 지속 시 384 재시작 |
-| ⑦ | 토큰 packing 65536 (+log_prob 동일, +expandable_segments) | §5.10.3 |
+| ⑦ | 토큰 packing 32768→**49152**(1.5×), expandable_segments 없이 | §5.10.3 — 아래 실행 사고 참조 |
 | 유지 | **CISPO+decoupled(기여 축)**, G4 trim+carryover, val JSONL, ent 0.001, mini 32, sum-norm 집계 | §5.10.2; token-mean(A1)은 기제 근거 약화(Adam 스케일 흡수)로 보류 |
 
 **실행 규율**: M3는 §5.9.4 완주 서약대로 끝까지(관대 31.2 상승 중 — 그 자체가 34 도전 1차 시도). 종료 후 M4를 **사용자가 직접 발사**. M4는 §5.8.3 수확 원칙(관대 val 2연속 하락 = 즉시 정점 수확)으로 운영하며, val JSONL로 관대/정직 이중 곡선을 병산해 정직 곡선을 부패 조기경보로 쓴다.
 
 **구현 기록(2026-07-08)**: hpt_config의 norm_adv 하드게이트를 "명시적 bool 요구"로 완화(+why 주석), 신규 계약 테스트 `test_hpt_norm_adv_std_contract_on_cpu.py`(양 모드 허용/미설정 거부/singleton β_r 보존/std 증폭률) 추가, `run_fully_async_policy_openr1_hpt_qwen25_math_1_5b_M4.sh` 작성(전 델타 헤더 문서화). 계약 테스트 42 passed.
+
+**실행 사고와 ⑦ 철회(2026-07-08, 1차 발사)**: M4 1차 발사가 롤아웃 init에서 즉사 — `RuntimeError: TorchMemorySaver is disabled ... expandable_segments is not supported yet`. 원인은 ⑦의 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`가 **SGLang의 TorchMemorySaver(async 가중치 동기화 checkpoint_engine 경로)와 비호환**이라는 것. 학습 로직(P0 제거·β0.3·adv-std·큐768·게이트 완화)은 전부 무죄 — SGLang 스케줄러 예외가 rollouter 액터를 죽여 전체 run 종료. **조치: expandable_segments만 영구 제거하고 packing은 1.5×(49152)로 되살림.** 크래시 원인은 packing 값이 아니라 expandable_segments 한 줄이었으므로 65536을 32768로 되돌린 건 과잉조치였다(65536은 실행 기회조차 없었음 = 미검증 추측). reserved 172GB는 캐시 고수위일 뿐 allocated(53.6GB@32k)만 안 넘으면 OOM이 아니며, 49152의 allocated ~74GB(40%)는 defrag 없이도 여유가 크다(65536=52%은 다음 카드). OOM 폴백(사전 등록): 49152→32768, 발생 시 롤아웃 init 직후라 발견이 쌈. 교훈: **allocator env는 트레이너·롤아웃 워커가 Ray 상속으로 공유하므로 SGLang 제약(TorchMemorySaver)을 함께 만족해야 한다.** M4 델타(①④⑤⑥⑦)는 이 형태로 재발사 준비 완료.
 
 ---
 
