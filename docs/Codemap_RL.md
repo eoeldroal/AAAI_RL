@@ -206,6 +206,7 @@ aligned batch and defers the residue (< one multiple) to the next step via
 | `tau_dataset_path` / `tau_messages_key` | tau lookup parquet + column |
 | `fail_on_missing_tau` | SFT-routed prompt without tau -> raise vs fall back to RL |
 | `trajectory_scheduler.enabled` | per-attempt scheduling (needs async, `rollout.n>1`) |
+| `queue_evict_zero_variance` | B1' (default false): on queue overflow, evict zero-information all-correct (k==n) RL groups first (they carry zero GRPO advantage), then oldest-first. Producer sets the hint via `hpt_gate.zero_variance_evict_hint`; the queue reads only the int (`message_queue.first_hinted_index`). SFT groups are never evicted, so the RL/SFT mix is preserved. Pure transport scheduling — training math unchanged. See `Improvement_RL.md` §5.12. |
 
 Truncation handling (`reward.reward_kwargs.*`, default off; see
 `Improvement_RL.md` §5.6): `zero_reward_if_truncated` scores budget-exhausted
@@ -214,8 +215,19 @@ rollouts 0 (fixing the routing success count and the GRPO baseline);
 computation. Zeroed rows are flagged `hpt_is_truncated_rl` and dropped from the
 entropy loss and §11 diagnostics, mirroring the SFT exclusion.
 
-Enable forces: `adv_estimator=grpo`, `norm_adv_by_std_in_grpo=False`,
-`actor.policy_loss.loss_mode=vanilla`, `rollout.calculate_log_probs=True`.
+Enable forces: `adv_estimator=grpo`; `norm_adv_by_std_in_grpo` set to an explicit
+bool (True = GRPO std-normalized / False = Dr.GRPO; the False-only pin was relaxed
+2026-07-08, `Improvement_RL.md` §5.10); `actor.policy_loss.loss_mode` in
+{`vanilla`, `cispo`, `cispo_klcov`}; `rollout.calculate_log_probs=True`. CISPO-family
+modes (`cispo`, `cispo_klcov`) additionally require `clip_ratio_low>=1.0` (upper-only).
+
+Policy-loss modes for HPT (`core_algos.py`, `losses.py`): `vanilla` (branch-blind
+PPO/GRPO), `cispo` (upper-only clipped IS, detached — every token keeps a gradient),
+`cispo_klcov` (CISPO base + KL-Cov overlay: KL(π_old‖π) penalty on the top
+`policy_loss.kl_cov_ratio` RL tokens ranked by Cov(logp, A), the pivotal minority
+driving entropy collapse; SFT tokens excluded via `hpt_sft_token_mask`). `cispo_klcov`
+reduces exactly to `cispo` when `kl_cov_ratio` selects no tokens, so `loss_mode` is the
+single on/off switch. See `Improvement_RL.md` §5.12.
 
 ## Async Budget (from `AsyncBudget_RL.md`, enforced in the rollouter)
 
@@ -270,6 +282,8 @@ conda activate RL && cd <repo> && pytest tests/special_RL/ -v
 | `test_hpt_trainer_queue_contract.py` | learner-row divisibility, fail-closed on unformable batch, row-aware window = `max_completed_prompt_groups`, param-version metadata preserved, rollout-logprob anchor, branch-blind HPT loss, SFT self-detach, auxiliary masks, obsolete B_eff fields rejected |
 | `test_hpt_trajectory_scheduler_contract.py` | all `n` attempts share one group uid, distinct ordered `hpt_rollout_index`, `prompt_uid` propagated |
 | `test_openr1_hpt_smoke_contract.py` | data-prep schema (`prompt_uid`+`tau_messages`), main-launcher Hydra-validity contract |
+| `test_queue_semantic_eviction_on_cpu.py` | B1' queue eviction: producer hint policy (only k==n RL groups; SFT never), transport selection (oldest hinted first; none -> oldest-first fallback) |
+| `test_cispo_klcov_on_cpu.py` | B2 `cispo_klcov`: exact reduction to CISPO at `kl_cov_ratio=0`, overlay perturbs loss with finite gradient, SFT tokens excluded from covariance selection |
 
 ## Run
 

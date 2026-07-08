@@ -19,7 +19,9 @@ from typing import Any, Literal
 from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-SUPPORTED_HPT_BASE_POLICY_LOSS_MODES = frozenset({"cispo", "vanilla"})
+SUPPORTED_HPT_BASE_POLICY_LOSS_MODES = frozenset({"cispo", "cispo_klcov", "vanilla"})
+# CISPO-family modes that require the upper-only clip contract (clip_ratio_low >= 1.0).
+CISPO_FAMILY_POLICY_LOSS_MODES = frozenset({"cispo", "cispo_klcov"})
 
 
 class AsyncHptTrajectorySchedulerConfig(BaseModel):
@@ -51,6 +53,11 @@ class AsyncHptConfig(BaseModel):
     success_threshold: float = 0.0
     k_max: int | None = Field(default=None, ge=0)
     fail_on_missing_tau: bool = False
+    # B1': semantic-aware queue eviction. When the completed-groups queue overflows, prefer
+    # dropping zero-information all-correct (k=n) RL groups — which carry zero GRPO advantage
+    # and are dead weight in the training batch — before falling back to plain oldest-first.
+    # Off by default; a pure transport-scheduling policy that leaves training math unchanged.
+    queue_evict_zero_variance: bool = False
     trajectory_scheduler: AsyncHptTrajectorySchedulerConfig = Field(default_factory=AsyncHptTrajectorySchedulerConfig)
 
     @field_validator("tau_dataset_path")
@@ -147,14 +154,15 @@ def validate_async_hpt_config(config: DictConfig) -> AsyncHptConfig:
             "async_hpt.enabled=true currently supports "
             f"actor_rollout_ref.actor.policy_loss.loss_mode in {{{supported}}}; got {loss_mode!r}"
         )
-    if loss_mode == "cispo":
+    if loss_mode in CISPO_FAMILY_POLICY_LOSS_MODES:
         # CISPO is upper-only (MiniMax-M1 disables the lower IS-weight bound). Enforce it by
         # requiring clip_ratio_low >= 1.0 so the lower clamp bound (1 - clip_ratio_low) <= 0
         # never binds. The upper cap is 1 + clip_ratio_high (the movement-scale g-slot cap).
+        # cispo_klcov shares the identical base clip, so the same contract applies.
         clip_ratio_low = OmegaConf.select(config, "actor_rollout_ref.actor.clip_ratio_low", default=None)
         if isinstance(clip_ratio_low, bool) or not isinstance(clip_ratio_low, int | float) or clip_ratio_low < 1.0:
             raise ValueError(
-                "async_hpt.enabled=true with actor_rollout_ref.actor.policy_loss.loss_mode=cispo "
+                f"async_hpt.enabled=true with actor_rollout_ref.actor.policy_loss.loss_mode={loss_mode} "
                 "requires actor_rollout_ref.actor.clip_ratio_low >= 1.0 (CISPO upper-only: the lower "
                 f"IS-weight bound must be disabled, e.g. set clip_ratio_low=10.0); got {clip_ratio_low!r}"
             )

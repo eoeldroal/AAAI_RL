@@ -34,6 +34,7 @@ from verl.experimental.fully_async_policy.hpt_gate import (
     assign_training_group_uid,
     build_hpt_rollout_gate,
     extract_prompt_uid_from_generation_batch,
+    zero_variance_evict_hint,
 )
 from verl.experimental.fully_async_policy.hpt_rollout_accumulator import (
     HptPromptGroupAccumulator,
@@ -1039,8 +1040,16 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
             assign_training_group_uid(rollout_sample.full_batch, group_uid)
 
         rollout_sample.rollout_status = await self.get_statistics()
+        # B1': tag zero-information all-correct RL groups so the queue drops them first on
+        # overflow (see zero_variance_evict_hint). Enabled only when the gate is present and
+        # async_hpt.queue_evict_zero_variance=True; hint is 0 (original age-only policy) otherwise.
+        evict_enabled = self.hpt_rollout_gate is not None and getattr(
+            self.hpt_rollout_gate.config, "queue_evict_zero_variance", False
+        )
+        evict_hint = zero_variance_evict_hint(getattr(rollout_sample, "hpt_route", None), enabled=evict_enabled)
         success = await self.message_queue_client.put_sample(
             sample=ray.cloudpickle.dumps(rollout_sample),
+            evict_hint=evict_hint,
         )
         if success:
             self.total_generated_samples += 1
@@ -1278,6 +1287,11 @@ class FullyAsyncRollouter(SeparateRayPPOTrainer):
             "count/total_generated_samples": self.total_generated_samples,
             "count/staleness_samples": self._outstanding_sample_count(queue_stats["queue_size"]),
             "count/dropped_stale_samples": self.dropped_stale_samples,
+            # B1': cumulative queue drops, and the subset evicted as zero-information (k==n)
+            # groups rather than by oldest-first age. evicted_hinted rising while informative
+            # groups are retained is the direct signal the semantic-eviction policy is active.
+            "count/mq_dropped_samples": queue_stats.get("dropped_samples", 0),
+            "count/mq_evicted_zero_variance": queue_stats.get("evicted_hinted", 0),
             # static stats
             "static/max_required_samples": self.max_required_samples,
             "static/required_samples": self.required_samples,

@@ -213,6 +213,24 @@ def extract_group_uid(payload: DataProto, *, default: str) -> str:
     return _extract_single_string(payload, "uid")
 
 
+def zero_variance_evict_hint(metadata: HptRouteMetadata | None, *, enabled: bool) -> int:
+    """Transport-layer eviction priority for a completed rollout group (B1').
+
+    Returns 1 when the group is a zero-information all-correct (k==n) RL group — its GRPO
+    advantage is identically zero, so it is dead weight in the training batch and the safest
+    victim on queue overflow — and 0 otherwise (kept under the queue's normal oldest-first
+    eviction). SFT (teacher-routed) groups are never hinted, so the RL/SFT consumption mix is
+    unchanged. The message queue reads only this int and stays agnostic to HPT semantics.
+    """
+    if not enabled or metadata is None:
+        return 0
+    if metadata.is_sft:
+        return 0
+    if metadata.total_count > 0 and metadata.success_count >= metadata.total_count:
+        return 1
+    return 0
+
+
 def count_successful_rollouts(
     payload: DataProto,
     *,

@@ -93,9 +93,12 @@ class _CountingIncrementalHptAssembler:
 class _CollectingQueue:
     def __init__(self):
         self.payloads = []
+        self.evict_hints = []
 
-    async def put_sample(self, *, sample):
+    async def put_sample(self, *, sample, evict_hint=0):
+        # Mirror MessageQueueClient.put_sample: accept the B1' transport eviction hint.
         self.payloads.append(sample)
+        self.evict_hints.append(evict_hint)
         return True
 
 

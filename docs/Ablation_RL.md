@@ -76,6 +76,8 @@ D0 = "확정된 DR 결정 전부(공통 기반) + 두 축(C1/C2)은 off". 아래
 | `actor.clip_ratio_low` / `high` | `0.2` / `0.28` | 상방 여유(entropy 붕괴 완화, DAPO) |
 | `actor.clip_ratio_c` (dual-clip) | `10.0` | A<0·r 폭주 유계화 |
 
+> **격자 밖 개선 레버 (Improvement_RL.md §5.12, M6):** g-슬롯에 `cispo_klcov`(CISPO 본체 + KL-Cov 오버레이 — 고공분산 RL 토큰에만 KL 감쇠)가 구현·등록됨. 이 2×2 격자(C1/C2 귀인)의 arm이 아니라 M-앵커 위 탐색축 개선이며, 현재 **off(loss_mode=cispo)**로 장전만. 전송층 개선 B1'(큐 zero-variance 축출)·B3(`max_completed_prompt_groups` 384→256)도 격자 밖. 상세·게이트·근거는 `Improvement_RL.md` §5.12.
+
 ### (g) 라우팅 / 스케일 — 문맥 (이번 ablation에서 고정)
 `async_hpt.gamma=0.0`(0/8 전멸 prompt만 SFT, UPT SWITCH_GATE=0 대응) · `rollout.n=8` · `ppo_epochs=1` · `ppo_mini_batch_size=32`×`require_batches=4`=128 prompt group · `partial_rollout=True` · `trigger_parameter_sync_step=4` · `staleness_threshold=2.0`.
 

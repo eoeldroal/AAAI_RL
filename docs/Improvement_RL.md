@@ -464,7 +464,7 @@ M2(scratch·mirage·leninv β1.0·G4 인프라)가 val 26.1@50 정점 후 하락
 - **큐 확대는 드롭을 못 줄인다**: 정상상태 드롭률 = (생산−소비)/생산 ≈ 38%, 큐 크기와 무관(대기줄 수학). 큐 상한의 실제 의미는 — trim+carryover(§5.8.6)가 배치 크기를 128그룹으로 분리 고정했으므로 — **순수 staleness 다이얼**이다(384=0.75, 768=1.5, 2048=4 param-version).
 - **staleness↔처리량 배타성**: 드롭 제거의 유일한 레버는 GPU 재배분(5/3이 +33%로 최적, scratch라 world_size 제약 없음)이나, 생산<소비가 되는 순간 큐가 비어 staleness가 소멸 → C1(decoupled+TIS)이 무의미해짐. **드롭 38%는 낭비가 아니라 C1 분석 레짐의 유지 비용.** 5/3은 "분석 없이 속도만 필요할 때"의 카드로 등록.
 - **미니배치 병합(32→64) 기각**: use_dynamic_bsz 하에서 GPU 포화는 마이크로배치(토큰 packing)가 결정, 미니배치는 옵티마이저 단위일 뿐. 이득 ~1–5%에 학습 동역학 변경 + 전 run(mini=32)과의 비교성 파괴 — AGENTS 원칙 위반 거래.
-- **토큰 packing 32768→65536 채택(⑦)**: 학습 수학 불변의 순수 속도(+5–10%). 메모리: allocated 53.6GB@32k 실측의 선형 외삽(토큰당 ~1.27MB, 어휘 152k logits가 지배) → ~95GB@64k = 용량 52%. 수확체감상 2×가 스윗스팟(3×는 +1–2%에 위험만 증가). `expandable_segments` 동반, OOM 폴백 사다리(65536→49152→32768) 사전 등록.
+- **토큰 packing 32768→65536 채택(⑦)**: 학습 수학 불변의 순수 속도(+5–10%). 메모리: allocated 53.6GB@32k 실측의 선형 외삽(토큰당 ~1.27MB, 어휘 152k logits가 지배) → ~95GB@64k = 용량 52%. 수확체감상 2×가 스윗스팟(3×는 +1–2%에 위험만 증가). ~~`expandable_segments` 동반~~, OOM 폴백 사다리(65536→49152→32768) 사전 등록. **[개정 2026-07-08]** 실행 사고(§5.10.4)로 정정: `expandable_segments`가 SGLang TorchMemorySaver와 비호환이라 **영구 제거**, packing은 **49152(1.5×) 확정**(65536은 미검증 추측이라 되돌림). 최종값은 §5.10.4 ⑦.
 
 ### 5.10.4 M4 설계 (= 34-달성 공통 인자 + 신규 1 + 다이얼 1 + 속도 1)
 
@@ -482,6 +482,152 @@ M2(scratch·mirage·leninv β1.0·G4 인프라)가 val 26.1@50 정점 후 하락
 **구현 기록(2026-07-08)**: hpt_config의 norm_adv 하드게이트를 "명시적 bool 요구"로 완화(+why 주석), 신규 계약 테스트 `test_hpt_norm_adv_std_contract_on_cpu.py`(양 모드 허용/미설정 거부/singleton β_r 보존/std 증폭률) 추가, `run_fully_async_policy_openr1_hpt_qwen25_math_1_5b_M4.sh` 작성(전 델타 헤더 문서화). 계약 테스트 42 passed.
 
 **실행 사고와 ⑦ 철회(2026-07-08, 1차 발사)**: M4 1차 발사가 롤아웃 init에서 즉사 — `RuntimeError: TorchMemorySaver is disabled ... expandable_segments is not supported yet`. 원인은 ⑦의 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`가 **SGLang의 TorchMemorySaver(async 가중치 동기화 checkpoint_engine 경로)와 비호환**이라는 것. 학습 로직(P0 제거·β0.3·adv-std·큐768·게이트 완화)은 전부 무죄 — SGLang 스케줄러 예외가 rollouter 액터를 죽여 전체 run 종료. **조치: expandable_segments만 영구 제거하고 packing은 1.5×(49152)로 되살림.** 크래시 원인은 packing 값이 아니라 expandable_segments 한 줄이었으므로 65536을 32768로 되돌린 건 과잉조치였다(65536은 실행 기회조차 없었음 = 미검증 추측). reserved 172GB는 캐시 고수위일 뿐 allocated(53.6GB@32k)만 안 넘으면 OOM이 아니며, 49152의 allocated ~74GB(40%)는 defrag 없이도 여유가 크다(65536=52%은 다음 카드). OOM 폴백(사전 등록): 49152→32768, 발생 시 롤아웃 init 직후라 발견이 쌈. 교훈: **allocator env는 트레이너·롤아웃 워커가 Ray 상속으로 공유하므로 SGLang 제약(TorchMemorySaver)을 함께 만족해야 한다.** M4 델타(①④⑤⑥⑦)는 이 형태로 재발사 준비 완료.
+
+---
+
+## 5.11 M4 실측 종합과 M5(clean-async) 설계 (2026-07-08)
+
+M4를 재발사해 완주 관측했다. 결과·논문 대조·사용자 반박 3건·관측성 버그·M5 도출을 기록한다.
+
+### 5.11.1 M4 실측 — 정직 34 돌파, 그리고 자가치유
+
+- **val6(관대=정직, gap 0 전 구간)**: 17.56(base) → 27.73(5) → 33.34(15) → **정점 36.27(step70)** → 이후 34–36 진동(5차 사이클). D0/M의 34.04/33.76은 **mirage**였고, M4의 36.27은 **정직(절단 없음)** — 프로젝트 최초의 정직 34+이자 최고치. 자산 2점 보존: `checkpoints/harvest/M4_global_step_{30_val35.16,70_val36.27}`.
+- **자가치유(신규 발견)**: 길이 폭발→cap-hit→mirage 붕괴 후 스스로 간결-정답으로 회복. 기제 = **HPT SFT 바닥재** — 위기 시 게이트가 offline_data_ratio를 ~82%로 올려 능력을 살려두고, 능력이 오르니 RL이 실신호를 되찾아 길이 런어웨이가 자멸. HPT 구조의 자가안정성.
+- **parity 확정**: UPT 순정 클론 전수 대조 결과 M4는 학습-핵심 노브(advstd=grpo_use_std=True, β0.3 const, gamma0=SWITCH_GATE0, cap8192, lr5e-6, entropy0.001, CISPO)에서 논문과 일치. **남은 델타는 async(staleness 큐)·CISPO(vs PPO-clip)·250스텝(vs 500)뿐.** 4세대의 "승리 조치"는 사실상 우리 비표준 개입을 걷어내고 논문으로 복귀한 것이었다.
+
+### 5.11.2 천장 정체(~35)의 3층 진단 — 전부 async 특유
+
+Sonnet 덤프분석(val 1546문항×9시점, train rollout .dp) + 곡선적합으로 확정:
+
+1. **k=0 벽(주 병목, 75–80%)**: val k=0(8샘플 전패) 비율 **36%(AIME 77%)가 step15 이후 미동**. GRPO는 전패 그룹서 advantage 항등 0 → gradient 0. 오류 질적분류: 접근오류/지식결손 59%·근접실수 26%·자기모순 give-up 15%(k=0 전용). **비종결 0%·채점손실 0%**(생산 채점기로 오답 500행 재채점 → **0건 반전**, grader-false-negative는 eval서 무시가능).
+2. **길이 붕괴(HPT 대비)**: HPT는 SFT-long-form 견인으로 4–6.5k로 성장·유지(UPT Fig.7 "does not regress"), M4는 폭발→붕괴→**1.2k**. **레시피가 동일하므로 원인은 async 사이클.** 단 "너무 짧다"는 오해 — val 정답 길이는 난이도별로 조절됨(AIME정답 2685ch > MATH 1494ch)이고 오답이 정답보다 김(rambling-실패). 문제는 양이 아니라 **생산적 긴-추론 모드의 부재**(§3.4 exposure-bias: `</think>` 53% 미종결과 동일근원).
+3. **한계순환(불안정)**: rollout_KL 0.04↔16, ESS 0.98↔0.15, entropy 0.2↔8.6, 주기 9–11. 지연(staleness)×이득(advstd)×연료(절단-관대 보상)의 지연-피드백 진동자. §3.5 재확인 — **구속조건은 sync주기가 아니라 sync당 이동속도**.
+- **곡선적합**: post-transient(step≥15) 3함수형 A≈34.8–35.1. 단 **val@70=36.27이 적합을 이미 초과** → 슬로우 그라인드 실재, A추정은 하한으로만. 41.9는 같은 레시피 스텝 연장으로 도달 불가(ScaleRL 어법: A 문제이지 B 문제 아님) — 새 A-레버 필요.
+
+### 5.11.3 논문 대조 레버 원장 (ScaleRL/Entropy/LUFFY/async, 로컬 PDF 정독)
+
+- **UPT Table3(1.5B) per-bench**: AIME24 16.6·AIME25 17.8·AMC 51.0·MATH500 81.0·Minerva 37.5·Olympiad 47.3 = **41.9**. eval: AIME류 avg@32/temp0.6, 그 외 avg@1.
+- **ScaleRL A-레버(천장, ±0.02 마진 밖만)**: **fp32 lm_head A 0.52→0.61(+0.09, 최대 단일)**; CISPO 0.595(**보유**); batch512→2048 0.605→0.645(예산 보류); length 14k→32k 0.61→0.645(원장 기각); zero-var drop 0.52→0.54; staleness k=8 최적·k=12 열화. **B-레버(마진 내, 천장 무관)**: loss-aggregation(prompt/token-avg 0.535 — 우리 현 seq-sum-norm이 이미 token-avg 계열)·advantage-norm(batch 0.530). Clip-Cov는 gradient 영점화라 **거부권 위반 기각**; KL-Cov(7B +2.0/32B +6.4)는 P2.
+- **LUFFY**: 1.5B서 34.7(<HPT 41.9)이라 SFT 전면교체는 숫자상 부지지. 지지되는 것은 **게이트-행 한정 하이브리드**(τ 그룹합류로 전패 그룹에 음의 advantage + shaped ratio f=x/(x+γ), γ=0.1) — dead-zone·긴-추론 전이 실패의 문헌적 정답.
+
+### 5.11.4 사용자 반박 3건 — 전부 코드로 재검증
+
+1. **L1(fp32) 정정**: `use_fused_kernels=True` 단독은 backend 기본 None이라 **step1 크래시**(engine은 fused 분기, monkey-patch는 스킵). 게다가 현 커널은 bf16 matmul **후** fp32 업캐스트라 정밀도 이득 0. → **진짜 해법은 rollout-side `engine_kwargs.sglang.enable_fp32_lm_head=True`**(logits_processor.py:898 fp32 matmul, replica.py:365가 이 async 어댑터 로드, 로컬 SGLang 0.5.12 필드 실재, smoke 통과). 이게 IS 앵커(rollout logprob)를 직접 정확화 = Draft A.5 유효성 계층의 토대.
+2. **L5(zero-var) whiten 우려 기각**: 인용된 masked_whiten(core_algos:466)은 `grpo_vectorized` 경로. 우리 런처는 `adv_estimator=grpo`(compute_grpo_outcome_advantage) → **whiten 없음**. 실증: `critic/advantages/max=2.4748` 매 스텝 상수 = 1/8그룹 해석해. 단 L5는 config 아닌 취약 trim+carryover 수집기 코드 → 이번 묶음서 제외.
+3. **L2(staleness) 정정**: 768은 max_completed_prompt_groups(큐 depth)이지 staleness_threshold(=2.0)가 아님. "검증 밖 2–3자릿수"는 그룹수↔staleness 혼동 오류. 재계산 유효 lag ~2–3 param-version(k≈13–20, ScaleRL 열화경계 k=12 근처). 768→384는 lag를 ~절반으로 낮추는 **부분해**(사이클 주범 advstd 이동속도는 엔진이라 불변).
+
+### 5.11.5 관측성 버그 — `rollout_probs_diff` placeholder 오염과 RL-only 수정
+
+- **버그**: `calculate_debug_metrics`(debug/metrics.py)가 response 토큰만 마스킹, SFT행 제외 안 함. HPT SFT행의 rollout_log_probs는 placeholder 0(hpt_assembler.py:240) → `|actor_prob − exp(0)=1|`을 평균에 포함. M4 명목 probs_diff 0.05–0.16은 **이 오염 수치**(pearson 0.84도 이 탓). FAQ의 0.005/0.01 기준으로 이 원본을 읽으면 오독.
+- **진짜 엔진 불일치**: SFT-제외 지표(rollout_corr/*) step1(동일가중치) KL **0.003nat**, ESS 0.996 — 실재하되 온건. bf16 수준.
+- **수정(구현 완료)**: `calculate_debug_metrics(data, exclude_rows=)` 추가 — 기존 전-행 키는 불변(back-compat), `exclude_rows`(=hpt_is_sft) 주면 `_rl` 키 5종 + `sft_rows_excluded` 추가 방출. 호출부(separation/ray_trainer.py:552, entry-mode라 이 super()가 실행됨) 수정. 계약테스트 `test_rollout_probs_diff_rl_only_on_cpu.py` 4개(전-행 오염 재현·RL-only 격리·all-SFT valid=0·비HPT 무변경), special_RL 139 passed.
+
+### 5.11.6 M5 = clean-async (L1+L2), 그리고 정직한 무게중심
+
+- **M5-P0(단일 축 귀인)**: M4 전 레시피 동결 + 델타 2개 — **L1** `enable_fp32_lm_head=True`(config), **L2** 큐 768→384(config). 런처 `run_..._M5.sh` 작성(diff 확인: 델타 정확히 2줄 + 이름). 로깅 축(5.11.5)은 L1의 유일 게이지라 M5 발사 전 필수 — 완료.
+- **조기 게이지(첫 20–30 fit-step)**: L1 = RL-only rollout_probs_diff↓; 사이클 = rollout_corr/kl 피크<2–3 & ESS바닥>0.7(아니면 P2); 길이(근본) = 훈련 길이가 1.2k→HPT식 3–5k 성장 시 길이-붕괴 근본해결 입증.
+- **정직한 한계**: clean-async는 **위생 + 사이클/길이붕괴 부분해**이지 41.9 돌파 카드가 아니다. ScaleRL 어법상 L1만 A축(단 우리 mismatch 온건 → 이득 불확실), L2는 부분해. ~~41.9의 무게중심은 P1(LUFFY-hybrid)~~ **[정정 §5.11.9: P1은 scope 밖 — 무게중심은 완주 + sync-HPT parity 도달]**. 사이클 완치가 필요하면 **P2(KL-Cov 이동감쇠)** — rollout_KL/ESS 게이지로 판정.
+- **기각/보류 원장(반박·검증 반영)**: L3(β조정 — 우리 SFT가 이미 논문 per-token 2×라 근거소멸) 기각 · L4(batch-norm — B축·advstd 엔진도 끔) P2강등 · L6(prompt-agg — 현 모드가 이미 token-avg 최적 + SFT 8× 증폭 부작용) 철회 · L5(zero-var — 취약코드·마진A) 다음 arm 대기 · 마스킹/trim/overlong penalty 거부권 유지.
+- **운영 리스크**: 디스크 볼륨 99% — M5 발사 전 구런 rollout_dump·사멸런 ckpt 정리 필요(all_steps=True 유지 시). ~~M4는 M5 준비까지 control로 유지 후 회수.~~ **[갱신 2026-07-08]** 디스크 정리 완료(587G 확보), M4 회수(GPU 8장 해제)·M5 발사됨 — 실측은 §5.11.8.
+
+### 5.11.7 SFT 정규화 함수형 — 논문 intensive vs 우리 extensive (L3/L6 정밀, 특이점)
+
+dead-zone(k=0) 정체의 원인이 "SFT가 약해서"인지 코드로 검증한 결과 — **가설 기각, 단 구조적 차이는 실재하며 발현 시점만 다르다.**
+
+- **손실 수식 대조**(양쪽 코드 직독): 논문(mix_actor) = `RL: Σ(-A·ρ)/8192`(token-sum, **extensive** — train.sh가 `loss_remove_token_mean=True`로 yaml 덮어씀) `+ 0.3·mean(SFT NLL)`(token-**mean**, **intensive**). 우리(seq-mean-token-sum-norm) = RL·SFT 모두 extensive/8192, SFT는 A=0.3.
+- **per-token 실효 가중(SFT:평균RL)**: 우리 = `0.3/|Ā|` = **구성 무관 상수 ≈0.40**(|Ā|≈0.75). 논문 = `0.075/(s_tok·|Ā|)` = **s_tok(마이크로 내 SFT 토큰 비중)에 반비례**. 현재 s_tok≈0.54 → 논문 0.185. **즉 지금은 우리 SFT가 논문보다 per-token ~2.2× 강하다 → β 상향 근거 소멸(L3 기각).**
+- **엔드게임 크로스오버**: s_tok 0.54(현재) 논문0.185<우리0.40 / 0.25 ≈동등 / 0.10 논문0.75>우리0.40(1.9×) / 0.05 논문1.50(3.8×). 논문 mean-norm은 **내장 커리큘럼** — 미해결 문제가 줄수록 각 교사 시범에 gradient를 자동 집중; 우리 extensive는 반대로 희석. **차이는 지금이 아니라 dead-zone 축소 국면(후반)에 발현.**
+- **P2 카드 "intensive-SFT 모드"**: β_r ∝ 1/s_tok(작은 코드)로 논문식 고정예산 복원 — 장기 런 엔드게임 대비. 단일변수 원칙상 즉시 투입 안 함. Draft.tex A.4 Reduction 절 보강 재료.
+- **L6(loss_agg) 동반 판정**: `seq-mean-token-sum-norm`은 ScaleRL 분류상 이미 token-avg 최적(A 0.535). prompt-avg로 바꾸면 "프롬프트당 1표"가 RL 8행 vs SFT singleton 1행의 비대칭을 깨 **SFT 가중 ~8× 증폭**(HPT 고유 부작용) → 철회. **loss_agg는 건드리지 않는다.**
+
+### 5.11.8 M5(clean-async) 라이브 실측 (2026-07-08, 진행 중)
+
+- **발사 정상**: L1 `enable_fp32_lm_head: True` 크래시 없이 SGLang init 반영(fork 배선검증 라이브 확인), GPU 8장 가동.
+- **관측성 버그 라이브 확증**: `rollout_probs_diff_mean`(전-행) **0.136** vs `_rl_mean`(RL-only) **0.005** = **~25× 차** — M4의 "정밀도 병리 0.05–0.16"이 ~96% **SFT placeholder 오염**이었음이 실증됨(pearson_rl 0.998, sft_rows_excluded 48–56). 로깅 수정이 의도대로 작동.
+- **M5가 M4를 앞섬(val, gap 0)**: 16.46(0)·28.29(5)·**33.66(10)** vs M4 17.56·27.73·**27.68**. M5 val@10이 M4 val@15(33.34) 수준 = **5스텝 앞섬**. M4는 5–10 평탄 후 점프, M5는 매끄러운 상승.
+- **시그니처: 덜 움직이며 더 학습**(step10 M5 vs M4): ppo_kl **0.0005 vs 0.0010**·rollout_KL **0.010 vs 0.016**(둘 다 M5 낮음)인데 reward **0.425 vs 0.392**·onS 0.285 vs 0.253(M5 높음). L2(신선샘플)+L1(깨끗한 앵커/샘플)의 "적은 이동 대비 큰 학습" 시그니처.
+- **fp32 이중 경로(뉘앙스)**: 진짜 RL mismatch는 0.004–0.011로 온건(§5.11 예측대로 → A 이득 불확실) — 그러나 fp32는 IS 앵커뿐 아니라 **샘플링 분포 자체를 충실화**하므로, 빠른 val엔 이 rollout-품질 경로가 기여했을 수 있다(이전 과소평가 지점).
+- **결정적 시험 통과 — 사이클 진정 확증(step 11–15)**: M4가 폭발한 바로 그 구간을 M5는 **폭발 없이** 통과. 위험구간 peak 대조 — rollout_KL M4 **9.21** vs M5 **0.124**(step14 미세 blip, 즉시 감쇠) = **~74× 낮음**; ESS M4 0.20 붕괴 vs M5 **0.95–0.99 유지**; entropy M4 8.15 vs M5 **max 1.14**; 길이 M4 6197 폭주 vs M5 **1.2–2.1k 유지**(step11–13엔 오히려 하강). reward M4 step15 **0.199 붕괴** vs M5 **0.529 상승**. val@15 M5 **34.62**(gap 0) vs M4 33.34. → **L2(+L1)가 지연-피드백 진동을 "부분해" 예측을 넘어 거의 제거.** 단 step14 blip(rollKL 0.124·ppo_kl 0.028·entropy 1.14)이 잔존 진동성 = advstd 이득 존재(예측대로), 그러나 M4 대비 ~74× 작고 자가감쇠.
+- **귀인 유보 + 다음 관문**: L1+L2 2델타 동시 → 개별분리 불가(사이클 진정은 L2 유력, val 가속은 L1의 샘플품질 경로 기여 가능); n=1 seed. **다음 결정 지점 = dead-zone(AIME) 전환율** — clean-async는 사이클/길이붕괴를 잡았으나 k=0 벽엔 무효 예상. AIME 정체 시 대응은 §5.11.9(P1 scope-out·엔트로피·intensive-norm) 참조.
+
+### 5.11.9 LUFFY 대조 정정·교사 강도·β 원장 철회·scope 재정의 (2026-07-08, 세션 정련)
+
+M5 진행 중 사용자 반박으로 이전 판정 3건을 정정하고 목표·scope를 재확정한다.
+
+- **LUFFY 기준점 정정 (산수)**: 붙여넣은 비교표의 LUFFY-Zero "Avg 42.1"은 **6개 벤치 단순평균이 아니다**(단순=37.2, 크기가중=50.6, 둘 다 아님). Base·Instruct는 표기AVG=6개평균 일치하나 학습 3행(SFT/RL/LUFFY)만 +4.4~4.9 초과 → **표가 두 출처 병합**(per-bench 열 ≠ Avg 열). **유일한 공정 기준 = 로컬 재현 mean@8(우리와 동일 harness) = 39.58.** (붙인 표 per-bench도 mean@8 아님 — AMC 46.8인데 실제 56.56.) M5 val@20 34.41 vs 39.58 = **−5.17, 6개 전부 뒤짐**(이전 "AMC/Minerva 앞섬"은 잘못된 표 탓 → 철회). 단 M5는 step20 이른 값·M4를 매 스텝 앞섬(val@10 +6·@20 +1.8) → 정점 ~37–38 예상, 잔여는 dead-zone(AIME/AMC/Olympiad 격차 최대). **목표 위계: LUFFY mean@8 39.58 = 프로토콜 일치 실전목표; 논문 41.9 = avg@32/avg@1이라 우리 mean@8과 직접비교 불가 → HPT 로컬 mean@8 재현으로 진짜 목표 확정 권고.**
+- **교사 trajectory 강도: LUFFY vs 우리 (코드 확정)**: LUFFY `n_prefix=1`(train_luffy.sh) — **전 프롬프트** 8개 중 1개를 교사로, 같은 advantage 그룹에서 **RL-대조**(교사 +adv / 실패롤아웃 −adv) + shaped ratio로 off-policy 보정. 우리 게이트(hpt_gate.py) — **k=0만** `on_remove=8/off_add=1`(실패 8 버리고 교사 1을 SFT β0.3). **LUFFY가 넓고(전프롬프트 vs k=0만) 강함(RL-대조 vs SFT-모방).** 그러나 **논문 HPT도 우리와 동일**(mix_trainer `on_remove=8/off_add=1`, gamma0, β0.3 SFT)**인데 LUFFY를 이김**(41.9 > LUFFY) → **선택적·약한 교사가 넓은·강한 교사를 이긴다 = 교사 강도는 우리 격차의 원인이 아니다.** 격차는 async-HPT가 sync-HPT 천장 미도달일 뿐. → 교사 강화(LUFFY화)는 불필요 + scope 밖.
+- **β 원장 철회 (커밋 정밀)**: M2/M3(`033e96a2`)와 M5(HEAD `ca560fcd`)는 **런타임 학습 코드 동일**(`5ebd614b` 이후 `df720458`=gate 검증만·로깅 수정=관측만). 그러나 config가 다축: **advstd False→True**(결정타)·β 1.0leninv→0.3const·큐. 따라서 "β1.0 실패(M2 26사망·M3 31정체)"는 **{advstd-off × leninv × β1.0} 합작이라 β를 격리 못 함 → §5.11.7의 실패원장 논거 철회.** advstd-on 레짐에서 β>0.3은 **미검증**(테스트된 적 없음). β 상수 인상 반대의 **유일 생존 논거는 parity**(우리가 이미 논문 per-token 2.2×, §5.11.7) — "올리면 실패한다"는 단정은 과했으므로 함께 철회.
+- **P1 scope-out 확정**: Draft.tex의 주장 = async-HPT **아키텍처**(transport/semantics 분리). P1(LUFFY shaped-ratio off-policy loss, ~400줄 신규 estimator)은 **다른 방법**("HPT+LUFFY")이라 기여를 흐리고 취약코드 대규모 → **철회.** LUFFY는 이겨야 할 **기준점**이지 채택할 방법 아님. scope 안 레버 = ① 완주(500스텝) ② clean-async(완료) ③ **P2 intensive-norm**(신규 방법 아닌 **논문 HPT 집계(mean/intensive)와의 parity 수정**, §5.11.7).
+- **엔트로피 급락 등록 (신규 관측)**: M5 entropy_mean 정점 1.10(step5) → **step20–25 0.14–0.31 급락.** dead-zone 연결 — 탐색 붕괴 → k=0 성공 stumble 불가 → 벽 자기강화. 값 0.001은 parity(논문 HPT도 0.001로 41.9)이나 **우리 async/CISPO/advstd가 sync/PPO보다 sharpening이 강해 같은 0.001에 더 급락.** Entropy-Mechanism 논문: 엔트로피 보너스는 무딘 도구(KL-Cov 선호). **판정: M5 진행 중 불변(단일축 오염 금지). M5 완주 후 별도 단일-델타 arm(entropy_coeff 0.001→0.003) 후보로 등록 — 기대 중간(무딘 도구), 근본은 생성 다양성 회복.**
+
+---
+
+## 5.12 M6 설계 — 신호밀도(B0/B1'/B3) + 탐색축 장전(B2) (2026-07-08)
+
+M5가 예상(정점 ~37–38)을 넘어 계속 상승했고(§5.12.1), 이를 근거로 **M6 = M5 최고 체크포인트에서 resume + 검증계층 높은 3델타(B0/B1'/B3)**를 설계한다. 탐색축 B2(KL-Cov)는 **코드로 완성하되 config로 꺼서** 준비만 한다(단일축 귀인). 7축 증거스윕 + 3축 구현감사 + 4장 스켑틱 패널 + SAPO/cispo_klcov 냉정검토를 근거로 한다.
+
+### 5.12.1 M5 완주 궤적 실측과 전망 (정체→반등, 점근 ~40)
+
+- **val6 mean@8 궤적**: 16.46(0)·28.29(5)·33.66(10)·34.62(15)·34.41(20)·**32.45(25)·31.04(30)**[3연속 하락, 10–12×SEM 실질]·**35.99(35)**[반등]·37.05(40)·37.81(45)·**38.47(50)**[신기록·4연속 상승]. M4 동스텝 대비 계속 앞섬. **진동 구조 확정**: val은 ±2.5 진폭·주기 10–25스텝으로 느린 상승 평균 둘레를 진동 — **단일 판독 금지, 3-val MA로 판정.** advstd-off(M2/M3)도 진동(M3 val@15 −4.1) → 진동은 추정기 고유, advstd는 진폭 ~2배 증폭·수준 +7pt.
+- **갭 해부 (vs LUFFY-local 39.58, val@45)**: AIME24 −2.92·AIME25 **0(닫힘)**·AMC −3.44·MATH-500 −1.88·Minerva −0.19(정점은 추월)·Olympiad −2.19. **닫힌 것/추월한 것(MATH·Minerva·AIME25) 외 잔여는 어려운 문제 질량(AIME24·AMC·Olympiad).** AIME24가 5스텝 만에 −6.25→−2.92로 전환 시작 = dead-zone이 늦게(1.5B 특성, UPT Fig.6) 열리는 신호.
+- **전망(정직)**: 감쇠비 ~0.72 외삽 점근 ≈ **39.8**(대역 38.9–42). **39.58은 점근 한복판 = 자력 도달 가능권**(중심 스텝 ~80). **41.9-등가(우리 mean@8)는 점근 상단 꼬리 = 시간 내 어렵다**(사용자 판단 동의). 단 41.9는 avg@32/@1 프로토콜이라 애초 직접 바 아님 — 공정 바 = 동일 harness LUFFY-local 39.58.
+
+### 5.12.2 정체 진단 — 신호-기아(signal starvation), 고착 아님
+
+- **train score 정체(확인된 성분)**: 5-스텝 평균 0.216→0.344→0.481→0.518→0.544 후 **~step25부터 0.53–0.62 평탄**(가속 소멸). 성공률 ~0.6에서 **k=8 전정답 그룹이 늘며 배치 gradient 밀도 희석**(k=8은 GRPO advantage 0 = dead mass).
+- **고착 아님 판정**: 저점이 얕아짐(36.59 vs 이전 31.04), offline_ratio 신저점(0.176 — dead-zone 여전히 느리게 전환), KL/길이/엔트로피 붕괴 없음. 정책이 굳은 게 아니라 신호 밀도 문제 → **B1'의 표적.** 진짜 "고착"이면 B2(탐색)가 답이고, 이는 게이트로 분기(§5.12.8).
+
+### 5.12.3 M6 번들 — 검증계층으로 분리
+
+| 레버 | 내용 | 상태 | 구현 지점 | 근거 |
+|---|---|---|---|---|
+| B0 | clip_grad 80→1.0 | core | 런처 1줄 | UPT parity; 실측 무해(§5.12.5) |
+| B1' | 큐 의미론-인지 축출(k=8 우선) | core | message_queue/hpt_gate/rollouter/hpt_config | ScaleRL 천장 A+0.02; 폐기 롤아웃 재활용(§5.12.4) |
+| B3 | max_completed_prompt_groups 384→256 | core | 런처 1줄 | ScaleRL k≤12 경계 |
+| B2 | cispo_klcov(KL-Cov 오버레이) | **OFF(장전)** | core_algos/losses/actor config | Cui +2.0@7B, AIME 최대이득(§5.12.7) |
+
+**번들이 단일-델타 규율을 안 깨는 이유**: (i) 네 레버 각자 독립 flag+전용 게이지로 개별 롤백/귀인 가능, (ii) 메커니즘 직교(최적화/전송·배치구성/staleness/토큰손실), (iii) B0/B1'/B3는 **가중치-의미론 불변축**(전송·최적화 안전장치)이라 resume 전후 비교가 준-통제. B2만 학습 수학을 바꾸므로 분리 대기.
+
+### 5.12.4 B1' — 사용자 제안의 재해석: "staleness로 버리는 샘플을 쓰자"
+
+사용자 통찰: 비동기에서 버리는 것은 강제(생산 ~293 vs 소비 128 → 165그룹/스텝 폐기, M5 실측 ~7940 drop)이나 **"무엇을 버릴지"는 자유**. 원안(트레이너-측 k=8 필터+리필, ~180 LOC)을 **큐-네이티브 축출**로 재설계:
+
+- **의미론-인지 축출**: overflow 시 우선순위 [① k=8 zero-variance RL 그룹 → ② 나이순]. k=8은 GRPO advantage 항등 0 = 가장 안전한 victim. 정보 0인 것을 버리고 유익(다소 stale)한 것을 살림 = 사용자 의도 정확 구현. 소비 배치가 **오히려 더 젊어짐**(B3와 순방향).
+- **★구현감사 정정 (cloudpickle-bytes)**: 큐 엔트리는 RolloutSample 객체가 아니라 `ray.cloudpickle.dumps(...)` **불투명 bytes**(rollouter:1043). 따라서 힌트를 객체 필드에 못 넣음 → **side-channel int로 분리**(put_sample(sample, evict_hint)). 이게 전송/의미론 분리를 **더 깨끗하게** 만듦: 큐는 int만 읽고 HPT 의미론 무지. deque는 `(hint, payload)` 튜플 저장, get_sample이 hint를 벗겨 payload만 반환 → 소비자 계약 완전 보존.
+- **fail-open 내장**: 힌트 없으면 `first_hinted_index→None`→ popleft(기존 동작 비트단위 동일) → 2026-07-07류 fail-closed 크래시 경로 원천 부재. 비-HPT/flag-off 런은 `_saw_evict_hint=False`로 스캔조차 건너뜀(O(1)).
+- **기각한 확장**: "SFT를 축출 보호"·"stale RL을 IS로 더 소비"는 소비 혼합비 왜곡(offline 57%, UPT Table6 교사-과잉 악화 레짐) 및 ScaleRL k≤12 위반이라 **기각.** 축출 대상은 오직 정보 0(k=8), SFT는 절대 미대상(RL/SFT 혼합비 보존).
+- **정직 공시**: k=8 제거로 소비 배치 `offline_data_ratio` ~0.21→0.23–0.25 기계적 상승(조성 변화지 교사 라우팅 증가 아님). 게이지 `count/mq_evicted_zero_variance`로 활성 확인.
+
+### 5.12.5 B0 해설 — norm clipping은 "삭제"가 아니다
+
+사용자 우려("너무 많이 클리핑해 없애나?") 해소: `clip_grad`는 per-token/성분 삭제(PPO/CISPO clip)와 **다른 층위** — 1.5B 전체 gradient의 **단일 L2 노름 하나**를 보고, 노름>max_norm일 때만 **방향 보존 스케일다운**. 실측: M5 작동점 grad_norm 0.011–0.028(상한 1.0의 35–90배 아래), M4 95스텝(치명폭풍 포함) 1.0 초과 **단 1회(1.198@20, ×0.83)**. 즉 평시 발동 0. **넣는 이유 = (a) parity 위생**(80은 최초 async 런처에서 복사된 유래불명 보일러플레이트; UPT=1.0), **(b) Adam EMA가 못 잡는 단발 프릭 배치 보험**(advstd 2.83× × 길이 플레어 겹칠 때). **성능 효과 ≈0이라 개선 아니라 "정정"으로 분류.** 극단적 최소 델타를 원하면 빼도 무방(단 "왜 80?"이 재현성 검토에 남음).
+
+### 5.12.6 SAPO 대체 검토 — 기각(백업 유지)
+
+DR-005가 이미 심사한 축. CISPO와 SAPO는 **같은 g-슬롯 대체재**(결합 아님). 오늘 3근거로 기존 "backup" 판정 **강화 유지**: (1) **clipfrac 실측 ~0** — M5 pg_clipfrac 평균 0.032%·최대 0.34% = CISPO 캡이 잠들어 있어 gate 모양차의 효과 상한이 ~0(SAPO가 고치는 ratio-폭주 레짐 부재; ESS 0.95+·KL 0.002); (2) **CISPO와 head-to-head 부재** — SAPO 논문은 GSPO·GRPO-R2만 이김, Qwen3-30B **MoE** 검증(1.5B dense 근거 0); (3) **집계 하드코딩 함정** — `compute_policy_loss_sapo`가 `loss_agg_mode="seq-mean-token-mean"` 강제 → 우리 계약(sum-norm/8192) 조용히 깸 = 길이 병리 재초대 위험. **발동 조건 사전등록**: pg_clipfrac 유의 상승(캡 빈발) 또는 adv-양수 ratio 폭주 시그니처 → 계약-호환 포크+τ 스윕한 g-슬롯 단독 arm.
+
+### 5.12.7 cispo_klcov — "믿을 만한 알고리즘"이 아니라 근거 있는 가설 (정직)
+
+**기성 알고리즘 아님 — 이번 세션 설계 조합.** 신뢰도 계층 분해:
+- **계층1 CISPO 본체: 강함**(ScaleRL 실증 A=0.595 + M4/M5 라이브).
+- **계층2 KL-Cov 단독: 중간·생각보다 약함**. 이론(공분산 dH≈−Cov)은 독립 재확인(2511.05993/2509.26114), 코드는 저자가 verl 본가 병합(PR #1830). **그러나** 방법 이득의 강한 독립 재현 부재 + 후속 논문들이 KL-Cov 대신 각자 다른 해법 제시 = **미합의 경합지대**; 이득이 스케일 순방향(7B+2.0→32B+6.4)이라 **1.5B에서 축소·소멸 가능**(실증 0).
+- **계층3 cispo_klcov 조합: 가설**. CISPO 위 KL-Cov 실증 어디에도 없음. DR-005 슬롯 틀로 구조 건전성 논증 가능(추가 페널티항=슬롯 비점유, g(1)=1, SFT 마스킹)이나 **구조 합법 ≠ 경험 유효**.
+- **우리 데이터의 결정적 힌트**: 엔트로피 플로어는 상승을 **안 막았다**(M4 좋은구간·M5 4연속상승 모두 플로어 0.10–0.15). 즉 KL-Cov 표적은 "확인된 현재 병리"가 아니라 "미래 정체 가설".
+- **maintain vs restore 비대칭 (핵심)**: 논문 이득은 전부 **붕괴 전 시작** 조건. 우리는 이미 플로어에 앉은 체크포인트에서 켬. (a) KL-Cov는 올리는 힘이 아니라 내리는 힘 제거 → 최선도 "유지"; (b) 붕괴는 부분 비가역(대안 continuation logit이 덮어써짐 = 사용자의 "고착"); (c) 복원된 다양성이 유용하단 보장 없음. **단 복원 경로 실존 증거**: M5 플레어(엔트로피 0.02→1.0 스파이크)는 자연 엔트로피 유입원(SFT 주입·음수-adv gradient·긴 응답) 존재를 보임 — KL-Cov의 현실적 복원 = 이 유입을 1–3스텝 재붕괴로부터 지켜 누적. **미검증이라 gated arm, 실패 시 fresh+B2(논문 검증 조건).**
+
+### 5.12.8 시작점 — resume 우세, fresh는 게이트 뒤로
+
+- **resume 근거**: (1) 재등반 ~2h+ 면제(감사: 코드 0줄, 가중치+옵티마이저+스케줄러+rng+데이터로더 위치 복원, in-flight 수백 프롬프트만 유실=무시); (2) B1'가 작동하는 고성공 레짐 직행; (3) 초반 분기(M4 step12 폭발) 재주사위 회피; (4) 가중치-의미론 불변 델타라 귀인 깨끗; (5) 하방 0(체크포인트 계보 보존). **`resume_mode=resume_path` + 명시 경로**(auto 금지 — 최신 스텝 잡음). 실행 전 `RESUME_FROM_STEP`을 실제 best-val 스텝으로.
+- **fresh 기각**: M6-core에 탐색(엔트로피) 축이 없어 fresh는 같은 플로어 종착지로 ~2.3h 늦게 재수렴할 뿐. 고착 해독제(B2)는 resume에서도 작동.
+- **의사결정 나무(사전등록)**: M6-core resume → **게이트1**(3 eval=15스텝 내 3-val MA 갱신?): 예→계속 / 아니오→**게이트2**(그 시점 최고 ckpt에서 loss_mode=cispo_klcov 단일델타 resume): 갱신→계속 / 실패→**게이트3**(fresh+B2, maintain 조건 = "고착" 최종 검증). 안전게이트(KL>1 2연속·truncation>10%·ESS<0.25) 상시.
+- **디스크**: 소모 ~5.9GB/스텝(ckpt 3.8 + rollout dump 2.1) → 여유 378G에서 **~스텝110 소진.** 39.58 중심창(스텝80)은 안쪽, +3h창(스텝115)은 바깥 → **이전 런 rollout_dump 정리로 활주로 연장**(스텝100 전 필요). ckpt 정점 보존 필수(현재 step_50=38.47).
+
+### 5.12.9 구현·테스트 요약 (2026-07-08 구현 완료)
+
+- **B1'**: `message_queue.py`(deque `(hint,payload)` 튜플·`first_hinted_index` 순수함수·`_select_evict_index`·`evicted_hinted` 통계·client `put_sample(evict_hint)`), `hpt_gate.py`(`zero_variance_evict_hint` 순수 헬퍼), `fully_async_rollouter.py`(힌트 계산+전달+monitor 게이지), `hpt_config.py`(`queue_evict_zero_variance` 필드).
+- **B2**: `core_algos.py`(`compute_policy_loss_cispo_klcov` 등록 — CISPO 본체 + RL-토큰만 Cov topk KL 오버레이), `losses.py`(화이트리스트+`hpt_sft_token_mask` 조건부 스레딩), `hpt_config.py`(화이트리스트+`CISPO_FAMILY` 클립검사), `actor.py`(docstring). **off = loss_mode=cispo**(kl_cov_ratio/ppo_kl_coef는 inert 대기); **on = loss_mode=cispo_klcov 한 줄.**
+- **테스트**: `test_queue_semantic_eviction_on_cpu.py`(7: 힌트정책+선택+end-to-end), `test_cispo_klcov_on_cpu.py`(3: ratio0→CISPO동일·오버레이+grad유한·SFT제외). special_RL 전체 **150 통과**(스텁 `_CollectingQueue`에 evict_hint 미러링).
+- **런처**: `run_..._M6.sh` = M5 상속 + B0(clip_grad1.0)·B1'(queue_evict_zero_variance=True)·B3(256)·resume·B2 kл params 장전(loss_mode=cispo). bash -n·override diff 검증.
 
 ---
 

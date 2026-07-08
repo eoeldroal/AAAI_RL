@@ -2224,6 +2224,100 @@ def compute_policy_loss_cispo(
     return pg_loss, pg_metrics
 
 
+@register_policy_loss("cispo_klcov")
+def compute_policy_loss_cispo_klcov(
+    old_log_prob: torch.Tensor,
+    log_prob: torch.Tensor,
+    advantages: torch.Tensor,
+    response_mask: torch.Tensor,
+    loss_agg_mode: str = "token-mean",
+    config: Optional[DictConfig | ActorConfig] = None,
+    rollout_is_weights: torch.Tensor | None = None,
+    hpt_sft_token_mask: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, dict[str, Any]]:
+    """CISPO base objective with a KL-Cov entropy-control overlay.
+
+    Base = compute_policy_loss_cispo (upper-only clipped IS coefficient, detached, so the
+    gradient flows only through log_prob and every token keeps a gradient). Overlay = the
+    KL-Cov mechanism of Cui et al. (arXiv:2505.22617; verl compute_policy_loss_kl_cov):
+    rank response tokens by the covariance Cov(logp, A) that drives entropy collapse
+    (ΔH ≈ -η·Cov), then ADD a KL(π_old‖π) penalty (coef ``ppo_kl_coef``) to the top
+    ``kl_cov_ratio`` fraction so the pivotal minority's entropy-reducing pressure is damped
+    while all other tokens keep the full CISPO gradient. This adapts KL-Cov (defined on a
+    vanilla PG surrogate) onto our CISPO surrogate; it does NOT replace CISPO.
+
+    The covariance selection universe is RL tokens only. HPT SFT (teacher-forced) tokens are
+    excluded via ``hpt_sft_token_mask`` because (a) their advantage is the constant β
+    pseudo-reward — not an exploration signal — so they can spuriously rank into the top-k,
+    and (b) entropy control is an RL-exploration lever, whereas SFT tokens are imitation
+    targets whose likelihood we intend to increase, not damp. When ``hpt_sft_token_mask`` is
+    None (non-HPT runs) every response token is eligible.
+
+    Reduces to compute_policy_loss_cispo when ``kl_cov_ratio`` selects no tokens. Covariance
+    statistics are computed per forward micro-batch — the same scope as upstream
+    compute_policy_loss_kl_cov; with our ppo_micro==ppo_mini grain there is no within-step
+    gradient-accumulation split, so the selection fraction does not drift across sub-steps.
+    """
+    assert config is not None
+    assert isinstance(config, ActorConfig)
+
+    clip_ratio_low = config.clip_ratio_low if config.clip_ratio_low is not None else config.clip_ratio
+    clip_ratio_high = config.clip_ratio_high if config.clip_ratio_high is not None else config.clip_ratio
+    kl_cov_ratio = config.policy_loss.kl_cov_ratio if config.policy_loss.kl_cov_ratio is not None else 0.0002
+    ppo_kl_coef = config.policy_loss.ppo_kl_coef if config.policy_loss.ppo_kl_coef is not None else 0.1
+
+    negative_approx_kl = log_prob - old_log_prob
+    negative_approx_kl = torch.clamp(negative_approx_kl, min=-20.0, max=20.0)
+    ratio = torch.exp(negative_approx_kl)
+    ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+
+    # --- CISPO base (identical to compute_policy_loss_cispo) ---
+    clipped_ratio = torch.clamp(ratio, 1 - clip_ratio_low, 1 + clip_ratio_high)
+    clipped_lower = ratio < 1 - clip_ratio_low
+    clipped_ratio_sg = clipped_ratio.detach()
+    pg_losses = -clipped_ratio_sg * advantages * log_prob
+    pg_clipfrac = verl_F.masked_mean((ratio != clipped_ratio).float(), response_mask)
+
+    # --- KL-Cov overlay on the RL selection universe ---
+    sel_mask = response_mask.bool()
+    if hpt_sft_token_mask is not None:
+        sel_mask = sel_mask & ~hpt_sft_token_mask.bool()
+    num_selected = 0
+    num_rl_tokens = int(sel_mask.sum().item())
+    if kl_cov_ratio > 0 and num_rl_tokens > 0:
+        valid_idx = torch.nonzero(sel_mask.reshape(-1), as_tuple=True)[0]
+        valid_adv = advantages.reshape(-1)[valid_idx].detach()
+        valid_logp = log_prob.reshape(-1)[valid_idx].detach()
+        cov = (valid_adv - valid_adv.mean()) * (valid_logp - valid_logp.mean())
+        k = min(max(1, int(num_rl_tokens * kl_cov_ratio)), cov.numel())
+        top_local = torch.topk(cov, k, largest=True).indices
+        flat_sel = valid_idx[top_local]
+        rows = flat_sel // advantages.shape[1]
+        cols = flat_sel % advantages.shape[1]
+        abs_kl = negative_approx_kl.abs()
+        pg_losses[rows, cols] = pg_losses[rows, cols] + ppo_kl_coef * abs_kl[rows, cols]
+        num_selected = int(top_local.numel())
+
+    # Apply rollout importance sampling weights if provided
+    if rollout_is_weights is not None:
+        pg_losses = pg_losses * rollout_is_weights
+
+    pg_loss = agg_loss(
+        loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode=loss_agg_mode, **config.global_batch_info
+    )
+
+    pg_clipfrac_lower = verl_F.masked_mean(clipped_lower.float(), response_mask)
+
+    pg_metrics = {
+        "actor/pg_clipfrac": pg_clipfrac.detach().item(),
+        "actor/ppo_kl": ppo_kl.detach().item(),
+        "actor/pg_clipfrac_lower": pg_clipfrac_lower.detach().item(),
+        "actor/klcov_selected_tokens": float(num_selected),
+        "actor/klcov_selected_frac": float(num_selected) / max(1, num_rl_tokens),
+    }
+    return pg_loss, pg_metrics
+
+
 def compute_entropy_loss(logits, response_mask, loss_agg_mode: str = "token-mean"):
     """Compute categorical entropy loss (For backward compatibility)
 

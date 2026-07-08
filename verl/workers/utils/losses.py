@@ -142,9 +142,10 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
     hpt_sft_token_mask = None
     hpt_truncated_rl_token_mask = None
     if hpt_policy_loss:
-        if loss_mode not in {"cispo", "vanilla"}:
+        if loss_mode not in {"cispo", "cispo_klcov", "vanilla"}:
             raise ValueError(
-                "HPT branch-blind policy loss supports only vanilla or cispo as the base policy loss mode."
+                "HPT branch-blind policy loss supports only vanilla, cispo, or cispo_klcov "
+                "as the base policy loss mode."
             )
         hpt_sft_token_mask = _hpt_sft_mask(data["hpt_is_sft"], response_mask, log_prob) & response_mask
         if hpt_has_truncated_rl_field:
@@ -164,7 +165,7 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
             )
 
     policy_loss_fn = get_policy_loss_fn(loss_mode)
-    pg_loss, pg_metrics = policy_loss_fn(
+    policy_loss_kwargs = dict(
         old_log_prob=old_log_prob,
         log_prob=log_prob,
         advantages=advantages,
@@ -173,6 +174,12 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
         config=config,
         rollout_is_weights=rollout_is_weights,
     )
+    # cispo_klcov confines its covariance ranking to RL tokens; hand it the SFT-token mask
+    # (None on non-HPT runs -> all response tokens eligible) so teacher-forced tokens are
+    # never damped. Passed only for this mode so other PolicyLossFn signatures are untouched.
+    if loss_mode == "cispo_klcov":
+        policy_loss_kwargs["hpt_sft_token_mask"] = hpt_sft_token_mask
+    pg_loss, pg_metrics = policy_loss_fn(**policy_loss_kwargs)
 
     # AggregationType.MEAN for pg metrics: assumes policy_loss_fn normalizes by local_bsz/local_tokens
     # Ex: in compute_policy_loss_vanilla, pg_metrics are pg_clipfrac, ppo_kl, pg_clipfrac_lower

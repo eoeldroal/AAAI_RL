@@ -59,6 +59,11 @@ async_hpt:
   # Optional RL-only staleness extension. Null disables this policy.
   k_max: null
 
+  # B1': on completed-groups queue overflow, evict zero-information all-correct (k==n) RL
+  # groups first (zero GRPO advantage), then oldest-first. Pure transport scheduling; leaves
+  # training math unchanged. SFT groups are never evicted. See Improvement_RL.md §5.12.
+  queue_evict_zero_variance: False
+
   trajectory_scheduler:
     enabled: False
 
