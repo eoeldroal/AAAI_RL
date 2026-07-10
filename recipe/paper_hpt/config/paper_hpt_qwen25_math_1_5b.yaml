@@ -1,0 +1,57 @@
+# Paper-faithful synchronous HPT — Qwen2.5-Math-1.5B config overrides.
+#
+# These are the algorithm/loss/data knobs that reproduce the original UPT/HPT
+# CODE (arXiv:2509.04419, Table 3 1.5B = 41.9). They are consumed as hydra
+# overrides by run_paper_hpt_qwen25_math_1_5b.sh. Values map 1:1 to mix_src /
+# exp_scripts/train.sh — see README.md §"3-way mapping".
+#
+# NOTE: keys under `algorithm.paper_hpt.*` are new and read by
+# recipe/paper_hpt/paper_hpt_trainer.py::PaperHptConfig. Pass them with `+` in
+# the launcher so hydra accepts the additions.
+
+algorithm:
+  adv_estimator: grpo
+  norm_adv_by_std_in_grpo: false        # Dr.GRPO (paper: grpo_use_std=False)
+  use_kl_in_reward: false               # MUST stay off: else SFT rows get KL-penalized
+  paper_hpt:
+    enable: true
+    gamma: 0.0                          # eq.10 gate; 0.0 for Qwen (SFT iff 0/n)
+    beta: 0.3                           # SFT coefficient (paper 1.5B; 7B=1.0); read by dual-loss
+    success_value: 1.0
+
+actor_rollout_ref:
+  actor:
+    # EXPLICIT paper dual-loss injected via the engine_workers custom-loss hook.
+    # It computes RL sum/L (no-clip) + beta*masked_mean(-logpi) SFT + entropy(all rows)
+    # directly, so loss_mode / clip_ratio / loss_agg_mode are unused by it.
+    custom_loss_fn: recipe.paper_hpt.paper_hpt_loss.paper_hpt_dual_loss
+    loss_scale_factor: 8192             # L = max_response_length (RL sum divisor)
+    entropy_coeff: 0.001
+    use_kl_loss: false
+    ppo_epochs: 1
+    optim:
+      lr: 5.0e-6                        # constant, AdamW (paper scale; see loss docstring)
+    clip_grad: 80.0
+  rollout:
+    n: 8
+    temperature: 1.0
+    val_temperature: 0.6
+    val_top_p: 0.95
+  ref:
+    use_ref: false
+
+data:
+  # STRIP dataset (paper-faithful; reproduces the system-prompt strip error).
+  # See README §Data. Not v2.
+  train_files: datas/openr1_hpt_main/train.parquet
+  max_prompt_length: 1024
+  max_response_length: 8192
+
+reward_model:
+  reward_manager: null                  # SMOKE: wire entropy_math / upt_v6_adapter (reward_impl_version=6)
+
+trainer:
+  total_training_steps: 500
+  test_freq: 10
+  save_freq: 50
+  val_before_train: true
