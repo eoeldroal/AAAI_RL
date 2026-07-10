@@ -1,0 +1,189 @@
+Appendix B. 실행 효율의 실측: 동기 실행의 세금과 그 제거의 공정
+
+% ------------------------------------------------------------------
+% 별도 부록 문서. Draft.tex(Appendix A)의 설계 주장을 측정으로 확정한다.
+% 모든 수치는 wandb project async-hpt-openr1의 실측이며, run ID를 각주로 명시.
+% 비교 아암: 동기 HPT = v96fvd0p (paper-faithful sync, colocated 8 GPU),
+%            Async-HPT = f5ugxklh (M5, trainer 2 + rollouter 6 GPU).
+% 동일 하드웨어: 8x B200 단일 노드. 측정일 2026-07-09.
+% ------------------------------------------------------------------
+
+B.0 측정 방법론
+
+비교는 동일한 8-GPU 예산 위의 두 실행 모델이다: 논문 충실 동기 HPT(8-GPU colocated,
+생성$\to$학습 위상 교대)와 Async-HPT(trainer 2 + rollouter 6, stream 연결). 두 시스템
+모두 한 학습 단위가 정확히 128 prompt group을 소비하도록 설계되어 있어(x축 동등성;
+Async-HPT의 fit-step은 이를 위해 의도적으로 128 group으로 고정되었다), 비교 축은
+벽시계 시간당 소비 prompt group 수로 정의한다.
+
+로그 스텝의 의미론은 두 시스템이 다르므로 원시 스텝 인덱스 비교는 무효다. 동기 아암의
+로그 스텝은 1 학습 스텝(=128 group)이지만, Async-HPT의 로그 스텝은 parameter-sync
+주기(=4 fit-step)이며 group 수와 $\texttt{timing}$ 계열 지표는 주기 내 합산으로
+집계된다. 각 group은 학습된 시점에 정확히 한 번 계수되므로 누적 group 수는 양 아암
+모두 정확하다. 따라서 유효한 교차 비교 축은 (i) 진짜 벽시계와 (ii) 누적 소비 group
+뿐이다. validation은 두 시스템 모두 학습 파이프라인을 정지시키는 설정 종속 비용이므로
+(동기 28\%, 비동기 32\%; 비동기가 2배 자주 검증) 처리량 계산에서 제외한다.
+
+교란의 명시: 두 아암은 데이터 프롬프팅과 채점기가 다르므로 절대 생성 시간의 교차 비교는
+지시적(indicative)이다. 반면 각 런 내부에서 측정되는 구조 지표 --- 위상 점유율, 꼬리
+대기 비율, 유휴율 --- 는 이 교란과 무관하게 견고하다.
+
+% ------------------------------------------------------------------
+% 그림: 실행 효율 종합 (동기 직렬 vs 비동기 겹침). 벡터 PDF = asynchpt_efficiency.pdf
+% (matplotlib 생성; 소스 스크립트는 저장소 scratchpad, 색 팔레트는 make_asynchpt_slides.py와 동일).
+% double-column 전폭 그림이므로 figure*. 단일 컬럼이면 figure + width=\linewidth로 교체.
+% ------------------------------------------------------------------
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{asynchpt_efficiency.pdf}
+  \caption{동일한 8$\times$B200 예산에서 같은 128 prompt-group을 처리하는 두 실행 모델의
+  벽시계 비교. 상단은 Async-HPT의 파이프라인(prompt $\to$ Rollouter pool $\to$ bounded
+  Queue $\to$ Trainer pool, 그리고 param-sync loop-back)이다. 하단은 공유된 벽시계 축
+  위의 세 막대다: 동기 HPT는 생성(orange)$\to$학습(blue)$\to$가중치 동기화(gray)를
+  직렬로 지불하며 생성 위상의 70\%가 straggler 꼬리 대기(빗금)로, 46초에 완료된다.
+  Async-HPT는 Rollouter(6 GPU)와 Trainer(2 GPU) 레인을 겹쳐 실행해 30초에 완료된다
+  --- 같은 작업에 1.54$\times$ 처리량. 우측 통계는 처리량 2.79$\to$4.31 group/s,
+  trainer 유휴 54\%$\to$4.6\%, actor MFU 13.4\%$\to$20.9\%. 이점은 응답 길이가 자라며
+  1.31$\times$(10분)에서 1.59$\times$(40분)로 벌어진다. 수치 출처는 B.0의 각주 참조.}
+  \label{fig:async-efficiency}
+\end{figure*}
+
+B.1 동기 실행의 두 가지 세금
+
+그림~\ref{fig:async-efficiency}가 이 절과 다음 절의 논증을 한 눈에 요약한다.
+첫 번째 세금: 위상 직렬화. colocated 동기 실행은 GPU 전부를 생성 위상과 학습 위상에
+교대로 쓴다. 측정 결과 학습 벽시계(validation 제외)의 54\%가 생성 위상이고, 이 시간
+동안 학습 파이프라인은 완전히 유휴다. 38\%가 학습 컴퓨트, 8\%가 서빙 엔진으로의
+가중치 재동기화다. 어느 순간에도 하드웨어의 절반의 역할이 비어 있으며, 가중치
+동기화와 엔진 sleep/wake 비용(스텝당 3.4s)을 매 스텝 지불한다.
+
+두 번째 세금: straggler 지연-바운드. 생성 위상 안에서도 배치는 가장 느린 trajectory에
+묶인다. 요청의 평균 완료는 7.1초지만 위상은 최장 요청 23.2초 --- 예외 없이 최대 길이
+8{,}192 token에 도달한 trajectory --- 를 기다리며 끝난다. 생성 위상의 70\%가 꼬리
+대기다.
+
+이 세금은 정적이지 않다. 학습이 진행되어 평균 응답이 1{,}972에서 3{,}042 token으로
+자라는 동안 생성 위상은 19.9초에서 29.7초로, 스텝은 33초에서 53초로 팽창했다.
+trajectory가 길수록 세금은 커진다 --- 본문이 동기로 삼은 computer-use가 정확히 그
+영역이다.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\hline
+측정 & 동기 HPT (colocated 8) & Async-HPT (2+6) \\
+\hline
+학습 파이프라인 처리량 (val 제외) & 2.79 group/s & \textbf{4.31 group/s (1.54$\times$)} \\
+매칭 벽시계 윈도 처리량비 (10$\to$40분) & 기준 & 1.31$\times$ $\to$ \textbf{1.59$\times$} \\
+학습 파이프라인 유휴율 & 54\% (직렬 생성 대기) & \textbf{4.6\%} (큐 대기) \\
+생성 스트래글러 꼬리 & 위상의 70\% (max 23.2s / mean 7.1s) & 위상 부재 (82\% 가동 스트리밍) \\
+가중치 동기화 & 매 스텝, 엔진 sleep/wake (3.4s) & 4 fit-step마다 KV-only NCCL (2.2s) \\
+actor MFU & 13.4\% & 20.9\% \\
+\hline
+\end{tabular}
+\caption{동일 8$\times$B200 예산에서의 실행 효율 비교. 처리량은 validation 제외
+벽시계 기준. MFU 격차는 배치 크기 교란을 포함한다(동기 아암은 routing이 배치를
+축소해 8-GPU를 채우지 못함).}
+\end{table}
+
+B.2 Async-HPT의 제거 방식과 그 결과
+
+측정된 결과부터: trainer 유휴는 4.6\%(큐 대기), rollouter 가동률은 82\%, 그리고
+trainer가 대기로 노출하는 시간의 약 15배에 달하는 생성 컴퓨트가 임계경로 밖에서
+흡수된다. 벽시계 처리량은 1.54배(2.79 $\to$ 4.31 group/s)이며, 관찰 윈도를 10분에서
+40분으로 늘리면 응답 길이 성장에 따라 격차는 1.31배에서 1.59배로 벌어진다.
+
+이것은 단일 장치가 아니라 겹쳐진 설계의 결과다. (i) 실행 단위를 attempt로 낮춰 긴
+trajectory가 prompt group 전체를 잡지 못하게 하고(Appendix A.6), (ii) parameter
+sync가 생성을 중단시킬 때 생성된 prefix를 보존해 재개하며(partial rollout, span
+$\le$ 1 version; M5에서 6{,}939건의 trajectory가 폐기 대신 보존되었다), (iii) sync
+자체를 KV-cache 해제만으로 수행해 엔진의 sleep/wake를 제거하고, (iv) 소비가 큐를
+비우는 즉시 생성을 재개한다(live outstanding gate). partial rollout은 특히 sync를
+``최장 in-flight trajectory의 drain 장벽''에서 ``즉시 abort 후 재개''(2.2s)로
+바꾸는 전제 조건이다 --- 이것이 없으면 매 sync가 straggler 세금을 재지불한다.
+
+B.3 엔지니어링 검증: 공정의 통계
+
+위 처리량은 아키텍처 설계만으로 얻어진 것이 아니라, stream 실행이 노출하는 고유
+병목을 순차적으로 측정--제거한 결과이며, 그 공정 자체가 런 기록으로 남아 있다.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\hline
+조치 & Before & After & 개선 \\
+\hline
+직렬화 오프로드 + $O(n)$ 수집 & 수집 대기 542s, 기아 90.2\% & 3.2s, 3.5\% & \textbf{170$\times$ / 26$\times$} \\
+completed-queue 유계화 (2048$\to$384) & 배치 최대 89.9M tok, step 최대 33분 & $\le$10.7M, p95 138s & \textbf{8.4$\times$ / 9.8$\times$} \\
+trim+carryover (정렬 대기 제거) & 수집 11.2s & 3.6s & \textbf{3.1$\times$} \\
+token packing (32768$\to$49152) & update 14.3\,$\mu$s/token & 12.9\,$\mu$s/token & \textbf{+10\%} \\
+partial rollout & sync마다 prefix 폐기 또는 drain & 6{,}939건 보존 (M5) & --- \\
+\hline
+\end{tabular}
+\caption{효율성 조치별 before/after 실측. Before 열은 각 조치 도입 직전 세대 런의
+측정값이다.}
+\end{table}
+
+초기 구현에서 trainer는 벽시계의 90.2\%를 수집 대기로 소모했다. 단일 이벤트루프
+위의 dump 직렬화와 $O(n^2)$ 재조립이 원인으로, 수집 대기가 한 런 안에서 23.7초에서
+98.5초로 성장하는 자기악화 패턴을 보였다. 직렬화의 executor 오프로드와 증분 수집으로
+이 대기는 3.2초로 줄었다.
+
+다음 병목은 backlog였다. completed-queue를 사실상 무제한(2048 group)으로 두자,
+느려진 학습이 큐를 키우고 커진 배치가 학습을 다시 늦추는 되먹임이 배치를 89.9M
+token까지, 스텝을 33분까지 밀어올렸다. 큐를 배치 규모의 약 3배(384 group)로
+유계화하자 배치는 10.7M 이하로, 스텝 p95는 9.8배 아래로 묶였다. 이 유계가 동시에
+Appendix A.5의 신선도 상한($\sim$0.75 param-version)이다 --- 하나의 캡이 실행
+안정성과 sample 시간적 유효성을 함께 담보한다.
+
+마지막으로 HPT 고유의 문제, 즉 가변 group 크기(RL $n$행 vs SFT 1행)와 학습 계약
+(256행 배수)의 충돌은 grow-to-align이 아니라 trim+carryover로 풀었고, 수집 시간이
+3.1배 줄며 정렬 대기가 소거되었다. token packing 확대는 토큰당 update 시간을 10\%
+줄였다(사전 예측 +5--10\%의 상단).
+
+요컨대 4.6\%라는 trainer 유휴율은 설계의 자동적 귀결이 아니라, 90.2\%에서 시작해
+병목을 하나씩 측정하고 제거한 공정의 종점이다.
+
+B.4 이점의 값: 정직한 회계
+
+Appendix A.5가 예고했듯 이 효율은 무상이 아니며, 그 비용은 유계이고 측정 가능하다.
+첫째, 신선도는 관리 대상이 된다: 큐 유계화가 유효 staleness를 $\sim$0.75
+param-version에 묶는 대가로 생산의 약 15\%(7{,}940 group)를 backpressure로 폐기한다
+--- 이 폐기는 낭비가 아니라 신선도의 유지비다. 둘째, correction 기계 자체가
+비용이다: 참조 구현(UPT)이 ratio clip 없이 학습하는 것과 달리 Async-HPT의 절단과
+clip은 비동기가 만든 staleness 때문에 존재하며, proximal anchor의 재전방
+($\approx$actor forward의 1/3)을 매 fit-step 지불한다. 셋째, 초기화가 무겁다
+(453s vs 40s). 이 회계를 명시하는 이유는 주장의 형태 때문이다: asynchrony는 효율을
+공짜로 주지 않는다. 시간이 지날수록 커지는 동기 실행의 세금을, 유계이고 측정
+가능한 validity 비용으로 교환한다.
+
+% ------------------------------------------------------------------
+% 각주: 측정 출처
+% ------------------------------------------------------------------
+% [1] 동기 HPT = wandb v96fvd0p (paper_hpt_sync_qwen25_math_1_5b_beta03),
+%     Async-HPT = f5ugxklh (M5_cleanasync). 동일 노드 8x B200.
+%     후속 main run(oki4kv8u, M5abl_nocispo)은 동일 토폴로지(2+6)·동일 런처 계열로
+%     policy-loss g-slot만 다르며(처리량 중립), 본 부록의 효율 결론이 그대로 이월된다.
+%     주의: v96fvd0p의 "품질"(val) 수치는 본 부록에서 사용하지 않으며 사용해서도 안 됨
+%     (as-run 8x 손실 스케일 + val 채점기 상이(entropy_math) — Ablation_RL.md §13.4).
+%     동기 아암 통계는 step 0-100 구간만 사용(step ~104에서 수동 종료; 그 직전
+%     step 91-100은 divergence storm으로 rl_loss/KL 급등 — timing/throughput엔
+%     영향 경미하나 clean window를 위해 커트). 매칭 벽시계 윈도(<=2400s)는 storm
+%     이전(~step 55 이하)이라 storm과 무관하게 robust.
+% [2] 처리량: 누적 hpt/onpolicy_num_groups / (_runtime - validation 시간).
+%     Async-HPT의 group·timing 지표는 sync 주기당 합산 집계
+%     (fully_async_policy/detach_utils.py aggregation rules, "sum"/"time_sum").
+% [3] 동기 위상 분해: timing_s/{gen,old_log_prob,update_actor,adv,update_weights,
+%     testing} 벽시계 원장. 스트래글러: timing_s/agent_loop/generate_sequences/
+%     {mean,max}, slowest/response_length.
+% [4] B.3 before/after 런: bring-up = s29x2gkz, 2ltw2022 (07-03);
+%     배치 폭발 = uvbi7wq3(M) + j68ocfe6(resume, 최대 98.5M tok 1,965s);
+%     trim+carryover 경계 = uvbi7wq3(M) vs 7aesrah1(M2)/8qfmb55c(M3);
+%     token packing = 8qfmb55c(M3) vs o0qiuods(M4)/f5ugxklh(M5);
+%     partial rollout 건수 = fully_async/partial/total_partial_num 합.
+% [5] 유계화의 배치/스텝 비교는 아암 설정 변화(P0, beta, 큐 깊이)가 겹친
+%     교란을 포함한다. 유휴율(비율)·토큰당 시간(정규화)·배치 상한(경계값)·
+%     런 내 성장 패턴은 교란과 무관. token packing(M3->M4)만 준단일변수.
+% [6] MFU는 compute-호출 시간 기준(유휴 제외)이므로 위상 버블과 독립인
+%     별도 비효율 축이다. 동기 아암의 낮은 MFU는 HPT routing이 배치를
+%     축소(~45-58% 실행률)해 8 colocated GPU를 채우지 못하는 효과를 포함.
