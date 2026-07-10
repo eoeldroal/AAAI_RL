@@ -165,6 +165,10 @@ class ActorConfig(BaseConfig):
     clip_ratio_c: float = 3.0
     loss_agg_mode: str = "token-mean"
     loss_scale_factor: Optional[int] = None
+    # Opt-in custom actor loss by fully-qualified name (default None => shared ppo_loss
+    # is used, so all non-opt-in runs are unchanged). Read in engine_workers when
+    # building self.loss_fn. Used by recipe/paper_hpt to inject the explicit paper dual-loss.
+    custom_loss_fn: Optional[str] = None
     entropy_coeff: float = 0
     tau_pos: float = 1.0
     tau_neg: float = 1.05

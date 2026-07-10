@@ -584,6 +584,14 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 self.loss_fn = partial(
                     distillation_ppo_loss, config=actor_config, distillation_config=distillation_config
                 )
+            elif self.config.actor.get("custom_loss_fn", None):
+                # Opt-in custom actor loss by fully-qualified name (default off => no
+                # behavior change). Used by recipe/paper_hpt to inject the explicit
+                # paper dual-loss without altering the shared ppo_loss path.
+                from verl.utils.import_utils import load_class_from_fqn
+
+                custom_loss = load_class_from_fqn(self.config.actor.custom_loss_fn, "custom actor loss")
+                self.loss_fn = partial(custom_loss, config=actor_config)
             else:
                 self.loss_fn = partial(ppo_loss, config=actor_config)
             self.actor = self.actor_worker_cls(config=actor_training_config)

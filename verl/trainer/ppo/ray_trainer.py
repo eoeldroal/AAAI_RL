@@ -1622,6 +1622,15 @@ class RayPPOTrainer:
                             # IS and off-policy metrics already have rollout_corr/ prefix
                             metrics.update(is_metrics)
 
+                        # HPT routing (recipe/paper_hpt): after reward (needs per-prompt
+                        # success), before advantage. Gated + default-off => zero change to
+                        # non-HPT runs. Replaces unsolved prompts with an SFT demonstration row.
+                        if self.config.algorithm.get("paper_hpt", {}).get("enable", False):
+                            from recipe.paper_hpt.paper_hpt_fit_hook import route_in_fit
+
+                            batch, hpt_metrics = route_in_fit(self, batch)
+                            metrics.update(hpt_metrics)
+
                         # compute advantages, executed on the driver process
                         norm_adv_by_std_in_grpo = self.config.algorithm.get(
                             "norm_adv_by_std_in_grpo", True
