@@ -90,6 +90,8 @@ conda 환경 자체와 `.rt/`는 복사하지 않는다. 새 B200 서버에서 `
 
 대상 루트는 미리 생성한다. 명령은 기본적으로 dry-run이며 `--execute`가 있을 때만 데이터를 쓴다.
 
+최종 검증된 세 allowlist root의 regular-file 합계는 37,654,555,850 bytes(약 35.07 GiB)다: HF eval 32 GiB, Tier-1 1.3 GiB, rollout selection 2.1 GiB(allocated-size 기준 반올림).
+
 ```bash
 bash scripts/migration/transfer_bundle.sh "$VERL_ROOT" user@new-host:/srv/AAAI_RL
 bash scripts/migration/transfer_bundle.sh --execute "$VERL_ROOT" user@new-host:/srv/AAAI_RL
