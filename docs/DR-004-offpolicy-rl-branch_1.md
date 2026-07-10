@@ -1,8 +1,10 @@
 # DR-004. RL Branch의 Off-Policy 처리 — Staleness 보정과 Trust-Region Clip의 분리 (Decoupling)
 
-_Last updated: 2026-07-07_
+_Last updated: 2026-07-10_
 
 Status: 분석부 정리 · C1 config/routing/MIS-bypass 구현 완료(2026-07-04) · M-first ablation에서는 C1로 채택(entry-recent + TIS-w) · 기본값 `rollout` 유지 시 D0 경로 불변
+
+> **실증 결과 노트 (2026-07-10, Ablation_RL.md §14.2)**: 본 문서 §6의 "이점은 조건부" 예측이 그대로 실증됐다 — 현행 main(nocispo, decoupled+vanilla)의 실측 w-포화율 `P(w>C_w=2)` 중앙값 **0.10%**(평온기 0.085%, w̄=0.954) → 이 레짐의 낡음이 낮아 **디커플링은 기계적으로 준-불활성**. C1 축은 이 통계로 무런(無run) 폐쇄됐고 D0′ 재실행은 취소됐다. 채택(entry+TIS-w)은 유지하되(비용 무해·보험 성격), 논문에서 단독 기여를 주장하지 않는다.
 범위: mixed HPT batch에서 **RL branch**의 off-policy 처리 — clip anchor를 `rollout` vs `entry`로 둘 때의 semantics, 그리고 그에 딸려 활성화되는 off-policy correction. **SFT branch**의 off-policy 처리는 DR-003, aggregation/정규화는 DR-001, auxiliary 정칙화(entropy/KL)는 DR-002 소관.
 관련 코드: `verl/workers/utils/losses.py::ppo_loss`, `verl/trainer/ppo/core_algos.py::compute_policy_loss_vanilla`, `verl/trainer/ppo/rollout_corr_helper.py::{_compute_hpt_rollout_correction_and_add_to_batch, compute_rollout_correction_and_rejection_mask}`, `verl/experimental/fully_async_policy/hpt_training.py::{apply_hpt_rollout_logprob_anchor, should_use_hpt_rollout_logprob_anchor, filter_hpt_stale_rollout_samples}`, `verl/experimental/fully_async_policy/hpt_config.py::AsyncHptConfig`, `verl/experimental/separation/ray_trainer.py::{_fit_compute_log_prob, _compute_old_log_prob}`
 전제: multi-step minibatch 학습, fully-async + HPT, GRPO advantage.

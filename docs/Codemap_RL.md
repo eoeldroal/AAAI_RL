@@ -1,6 +1,6 @@
 # RL Code Map
 
-_Last updated: 2026-07-07_
+_Last updated: 2026-07-10_
 
 Navigation and debugging map for this async-HPT `verl` fork. Use it to find
 where code lives, how a rollout sample becomes a learner update, and — when a
@@ -61,7 +61,7 @@ tests/special_RL/                       # CPU contract tests (see below)
 main_scripts/*.sh                       # our real main-run launchers
 tests/special_e2e/run_fully_async_policy_*.sh  # smoke / contract launchers
 datas/openr1_hpt_{smoke,main}/          # generated datasets
-models/Qwen2.5-Math-7B/                 # main-run base model
+models/Qwen2.5-Math-1.5B/               # current main-run base model (7B/LUFFY-1.5B-Zero also present)
 docs/Readme_RL.md                       # environment setup, launch, log triage
 docs/AsyncBudget_RL.md                  # queue/staleness/HPT budget formulas
 ```
@@ -202,7 +202,7 @@ aligned batch and defers the residue (< one multiple) to the next step via
 | `sft_beta_mode` | `constant` or `length_inverse` terminal pseudo reward |
 | `sft_entropy_enabled` / `sft_kl_enabled` | default false; include SFT rows in auxiliary masks only when explicitly true |
 | `k_max` | RL staleness drop bound (SFT rows exempt) |
-| `success_threshold` / `success_score_key` | what counts as a successful rollout |
+| `success_threshold` / `success_score_key` | what counts as a successful rollout (`score > threshold`). **Sentinel use**: `-1.0` makes every rollout "successful" → `p_success≡1 > gamma` → SFT routing never fires while HPT stays enabled — the teacher-channel-off (pure async GRPO) ablation with anchors/IS/queue identical to an HPT main (`run_..._RLonly.sh`; Ablation §14.4). Distorts `hpt/onpolicy_success_rate≡1.0` (read `critic/score/mean` instead). Do NOT use `async_hpt.enabled=False` for this — latent fsdp2 crash (`Debug_RL.md` landmine). |
 | `tau_dataset_path` / `tau_messages_key` | tau lookup parquet + column |
 | `fail_on_missing_tau` | SFT-routed prompt without tau -> raise vs fall back to RL |
 | `trajectory_scheduler.enabled` | per-attempt scheduling (needs async, `rollout.n>1`) |
@@ -228,6 +228,13 @@ PPO/GRPO), `cispo` (upper-only clipped IS, detached — every token keeps a grad
 driving entropy collapse; SFT tokens excluded via `hpt_sft_token_mask`). `cispo_klcov`
 reduces exactly to `cispo` when `kl_cov_ratio` selects no tokens, so `loss_mode` is the
 single on/off switch. See `Improvement_RL.md` §5.12.
+
+> **Empirical status (2026-07-10, Ablation §14 / Improvement §5.13)**: the research
+> main is now **`vanilla`** (decoupled + Clip-Higher, `run_..._M5abl_nocispo.sh`).
+> `cispo` was demoted after the C2 ablation — outcome-inferior AND the cause of the
+> recurring ~step-100 KL-storm wall (its detached clip removes the min-clip brake);
+> `cispo_klcov` showed no benefit at the tested dials (M7). Both stay implemented
+> and tested as ablation arms.
 
 ## Async Budget (from `AsyncBudget_RL.md`, enforced in the rollouter)
 
@@ -289,8 +296,11 @@ conda activate RL && cd <repo> && pytest tests/special_RL/ -v
 
 Data prep (`examples/data_preprocess/openr1_hpt.py`) builds `train.parquet` (carries
 `prompt_uid` + `tau_messages`), `test.parquet`, and eval sets. Smoke = 12 train
-rows / Qwen2.5-0.5B / `gamma=1.0`; main = 45.7k rows / `models/Qwen2.5-Math-7B` /
-`gamma=0.0` / AIME24+AMC23+MATH-500 eval.
+rows / Qwen2.5-0.5B / `gamma=1.0`; the current research mains (M-series,
+`openr1_hpt_main_v2`) = `models/Qwen2.5-Math-1.5B` / `gamma=0.0` / 6-bench eval
+(AIME24/25·AMC23·MATH-500·Minerva·Olympiad-Bench, in1536); the original
+`run_..._main.sh` recipe (45.7k rows / `models/Qwen2.5-Math-7B` / 3-bench eval)
+remains as the D0-generation reference.
 
 ```
 # smoke (8 GPU: 4 rollout + 4 train); auto-generates data if missing

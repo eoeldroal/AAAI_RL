@@ -1,6 +1,6 @@
 # RL Debugging & Profiling Notes
 
-_Last updated: 2026-07-07_
+_Last updated: 2026-07-10_
 
 How we keep this fork's code clean and diagnose performance in the async
 RL + HPT stack. This is not a replacement for upstream tool docs (`ruff`,
@@ -178,3 +178,40 @@ pair the implementation with a slow-but-obvious oracle so the property tests a
 second, independent computation rather than restating the code. hypothesis is in
 `requirements-test.txt`; the test `importorskip`s it so it skips cleanly if
 absent. It is a CPU-only `*_on_cpu.py` test.
+
+## Known landmine — non-HPT old-logprob path is fsdp2-incompatible (2026-07-10)
+
+**Symptom:** launching the fully-async stack with `async_hpt.enabled=False`
+(and `algorithm.rollout_correction.bypass_mode=False`) dies on the first
+fit-step with:
+
+```
+AssertionError: No DTensor-type parameters found in the model. FSDP2 sharding may not be enabled.
+  at WorkerDict.actor_save_model_to_cpu()
+```
+
+**Mechanism:** with HPT off, `FullyAsyncTrainer._compute_old_log_prob` takes the
+stock MIS branch — it snapshots/restores *version-1-of-cycle* weights via
+`actor_rollout_wg.save_model_to_cpu(...)` — and that helper is incompatible with
+this fork's fsdp2 build. Every HPT run bypasses the branch (entry-anchor
+shortcut, or the rollout-anchor path in `separation/ray_trainer._fit_compute_log_prob`),
+so the bug stayed latent through the entire M-series and only fired on the first
+non-HPT launch (RLonly v1, `m3hdp3jm`, dead at startup).
+
+**Workarounds (choose per experiment intent):**
+- *Teacher-channel-off ablation while keeping everything else identical to an
+  HPT main*: keep `async_hpt.enabled=True` and seal the routing with the
+  sentinel `async_hpt.success_threshold=-1.0` — every score counts as success,
+  `p_success≡1 > gamma`, SFT never fires, k=0 groups stay as advantage-0 RL rows
+  (pure-GRPO semantics), and the entry anchor keeps the crashing branch
+  unreachable. Used by `main_scripts/run_..._RLonly.sh` (v2). Caveat: the
+  sentinel distorts `hpt/onpolicy_success_rate≡1.0` (aggregation only —
+  read the real success rate from `critic/score/mean`).
+- *Genuinely non-HPT run*: either set `rollout_correction.bypass_mode=True`
+  (old_log_probs = rollout logprobs; skips the branch) or fix
+  `save_model_to_cpu` for fsdp2/DTensor before launching.
+
+**Lesson:** "gated code equals dead code" is false — a config flip can route into
+paths no prior run ever exercised. When flipping a top-level mode flag
+(`async_hpt.enabled`, `bypass_mode`, strategy), trace the *first fit-step's*
+control flow end-to-end before burning a launch.

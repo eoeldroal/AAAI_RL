@@ -1,8 +1,13 @@
 # DR-005. RL Branch 목적함수의 결합 설계 — 통일 추정량, 슬롯 분리, 정준 조합
 
-_Last updated: 2026-07-07_
+_Last updated: 2026-07-10_
 
 Status: **방향 문서** · C2 upper-only CISPO config+loss 구현 완료(2026-07-04) · M-first ablation에서는 C2=CISPO로 채택 · 기본값은 여전히 `rollout` anchor(D0 불변)
+
+> **★실증 결과 노트 (2026-07-10, Ablation_RL.md §14 / Improvement_RL.md §5.13)★**
+> C2 ablation이 이 문서의 g-슬롯 채택(upper-only CISPO)을 **이 레짐에서 반증**했다:
+> (a) **성능** — vanilla Clip-Higher arm(M5abl_nocispo)이 CISPO 앵커(M5)를 정점 +1.7·창평균 우위로 돌파(40.17 vs 38.47), (b) **안정성** — M-시리즈의 재발성 ~step-100 KL-폭풍 벽(M4·M5·M7·M5R 4런)이 **CISPO 귀인**으로 확정: `sg(clip(r))`가 min-clip의 비관성(브레이크)을 제거해 과확신 토큰 과이동→엔트로피붕괴→길이폭발 경로를 연다. vanilla는 `pg_clipfrac` 0.5~9%로 브레이크 실작동, 같은 스택에서 190스텝 무폭풍.
+> 이는 본 문서 §4.1의 조건부 예측("이 레짐이 gradient-死를 안 만들면 CISPO가 살릴 것이 없다")의 실증이자 그 초과다 — 살릴 것이 없었을 뿐 아니라 **브레이크 상실의 비용이 순음(純陰)**이었다. 수학적 판별(슬롯 분리, Lemma 1-4)은 유효하게 남는다 — 반증된 것은 결합 가능성이 아니라 g-슬롯 선택이다. **현행 채택: g-슬롯 = vanilla Clip-Higher(0.2/0.28)** (main = decoupled+vanilla). "도출 → ablation 확인 → 수정"(Ablation §8)의 정당한 종결.
 범위: async-HPT **RL branch** 목적함수에서 staleness 처리와 trust-region 처리를 **어떻게 결합해도 되는가**의 수학적 판별과, 그 판별을 통과한 목표 조합의 고정. SFT branch(DR-003)·aggregation(DR-001)·auxiliary(DR-002)는 **불변 전제이자 보존 조건**이다.
 관련 코드: `verl/workers/utils/losses.py::ppo_loss`, `verl/trainer/ppo/core_algos.py::compute_policy_loss_vanilla`(및 `rollout_is_weights` 적용점), `verl/trainer/ppo/rollout_corr_helper.py::compute_rollout_correction_and_rejection_mask`, `verl/experimental/fully_async_policy/hpt_training.py`, `verl/experimental/separation/ray_trainer.py::_compute_old_log_prob`
 관련 문헌: HCS 2022 "Batch size-invariance"(arXiv:2110.00641) · AReaL(2505.24298) · A-3PO(2512.06547) · CISPO/MiniMax-M1(2506.13585) · SAPO(2511.20347) · GSPO · DAPO Clip-Higher / Dr.GRPO · dual-clip(1912.09729)
