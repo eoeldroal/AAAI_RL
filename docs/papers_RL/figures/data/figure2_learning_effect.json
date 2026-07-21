@@ -1,0 +1,29 @@
+{
+  "figure_id": "figure2_learning_effect",
+  "status": "documented_interim",
+  "metric": "lenient6_naive_mean_at_8",
+  "windows": [
+    {
+      "label": "20-50",
+      "streamweave": 37.0,
+      "rl_only": 36.6
+    },
+    {
+      "label": "130-160",
+      "streamweave": 38.6,
+      "rl_only": 35.17
+    }
+  ],
+  "peak": {
+    "streamweave": 40.17,
+    "streamweave_step": 170,
+    "rl_only": 37.73,
+    "rl_only_step": 30
+  },
+  "source": "Ablation_RL.md, Section 14.4",
+  "restrictions": [
+    "This is a windowed learning-dynamics figure, not a quality-versus-wall-clock curve.",
+    "It does not replace the final fixed-checkpoint mean@32 evaluation.",
+    "The peak values occur at different steps and are intentionally not rendered in the main panel."
+  ]
+}

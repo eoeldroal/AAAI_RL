@@ -1,0 +1,207 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="812" viewBox="0 0 1600 812" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title desc" focusable="false" shape-rendering="geometricPrecision" text-rendering="geometricPrecision">
+  <title id="title">The composition gap (panel a) — three executions of the same workload</title>
+  <desc id="desc">Three rows over a shared time axis, drawn with the field-standard bar vocabulary. Row 1 fully-asynchronous RL: rollout generation bars span a parameter-version boundary (theta) with a weight-sync marker and never wait, but a group whose attempts all fail yields no gradient. Row 2 synchronous hybrid: bars idle until a barrier at the slowest attempt, then each completed group routes to RL or to an expert trajectory and SFT. Row 3 combining the two: the completed group is the unit the decision needs, but it cannot sit in a trajectory stream — holding it whole restores the barrier (execution layer), letting it flow leaves the expert row with no version to correct (theory layer).</desc>
+  <metadata>{"figure_id":"figure1a_composition_gap","status":"converged-r3","visible_text_policy":"legend, row names, short state labels, verdict lines"}</metadata>
+  <defs>
+    <style>
+      .t { font-family: "Helvetica Neue", "Source Sans 3", "Noto Sans", "Apple SD Gothic Neo", Arial, sans-serif; fill: #1C2738; font-kerning: normal; }
+      .stage { font-size: 27px; font-weight: 700; letter-spacing: 0.2px; }
+      .label { font-size: 23px; font-weight: 650; }
+      .small { font-size: 19px; font-weight: 550; }
+      .tiny { font-size: 17px; font-weight: 650; }
+      .micro { font-size: 15px; font-weight: 650; }
+      .muted { fill: #637185; }
+      .on-dark { fill: #FFFFFF; }
+      .blue-text { fill: #2456BE; }
+      .orange-text { fill: #A65D00; }
+      .teal-text { fill: #0D6D64; }
+      .coral-text { fill: #B8433D; }
+      .dark-text { fill: #4D5B6C; }
+      .line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .roll { fill: #CFE0FA; stroke: #2F63D8; stroke-width: 1.6; }
+      .exp { fill: #FBE7C7; stroke: #D8891C; stroke-width: 1.6; }
+    </style>
+    <marker id="arrow-ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#1C2738"/></marker>
+    <marker id="arrow-muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#8B98A8"/></marker>
+    <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#2F63D8"/></marker>
+    <marker id="arrow-orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#D8891C"/></marker>
+  </defs>
+  <rect width="1600" height="812" fill="#FFFFFF"/>
+
+  <!-- ===================== header + legend ===================== -->
+  <text x="34" y="50" class="t stage muted">(a)</text>
+  <text x="78" y="54" class="t stage">The composition gap</text>
+  <path d="M78 71 H300" class="line" stroke="#1C2738" stroke-width="4"/>
+
+  <g id="legend">
+    <rect x="640" y="36" width="46" height="15" rx="7" class="roll"/>
+    <text x="694" y="49" class="t micro muted">rollout</text>
+    <rect x="770" y="36" width="46" height="15" rx="7" class="exp"/>
+    <text x="824" y="49" class="t micro muted">expert</text>
+    <rect x="902" y="33" width="10" height="21" rx="2" fill="#F3C623"/>
+    <text x="918" y="49" class="t micro muted">weight sync</text>
+    <path d="M1044 32 V54" class="line" stroke="#637185" stroke-width="1.6" stroke-dasharray="5 4"/>
+    <text x="1054" y="49" class="t micro muted">&#952; = policy version</text>
+    <rect x="1246" y="34" width="18" height="18" rx="4" fill="#2F63D8"/>
+    <path d="M1250 43 L1253 46 L1260 38" class="line" stroke="#FFFFFF" stroke-width="2.2"/>
+    <text x="1272" y="49" class="t micro muted">pass</text>
+    <rect x="1326" y="34" width="18" height="18" rx="4" fill="#2F63D8"/>
+    <path d="M1330 38 L1340 48 M1340 38 L1330 48" class="line" stroke="#FFFFFF" stroke-width="2"/>
+    <text x="1352" y="49" class="t micro muted">fail</text>
+  </g>
+  <path d="M40 78 H1560" class="line" stroke="#E2E8F0" stroke-width="1.6"/>
+
+  <!-- ===================== row 1: fully-asynchronous RL ===================== -->
+  <g id="row-async">
+    <text x="40" y="128" class="t label">&#9312; Fully-asynchronous RL</text>
+
+    <!-- ROLLOUTER lane: rollouts keep generating across weight syncs; one that spans a sync becomes stale (faded, dashed tail) -->
+    <text x="44" y="167" class="t micro muted">gen</text>
+    <rect x="70" y="156" width="168" height="14" rx="7" class="roll"/>
+    <rect x="70" y="178" width="220" height="14" rx="7" class="roll"/>
+    <rect x="294" y="178" width="66" height="14" rx="7" fill="#DCE8FC" opacity="0.6" stroke="#2F63D8" stroke-width="1.2" stroke-dasharray="4 3"/>
+    <rect x="70" y="200" width="220" height="14" rx="7" class="roll"/>
+    <rect x="294" y="200" width="250" height="14" rx="7" fill="#DCE8FC" opacity="0.6" stroke="#2F63D8" stroke-width="1.2" stroke-dasharray="4 3"/>
+    <rect x="70" y="222" width="220" height="14" rx="7" class="roll"/>
+    <rect x="294" y="222" width="126" height="14" rx="7" fill="#DCE8FC" opacity="0.6" stroke="#2F63D8" stroke-width="1.2" stroke-dasharray="4 3"/>
+    <!-- TRAINER lane: consumes concurrently while generation keeps flowing (overlap) -->
+    <text x="40" y="259" class="t micro muted">train</text>
+    <rect x="70" y="250" width="474" height="13" rx="6" fill="#26364A"/>
+    <path d="M108 252 V261 M146 252 V261 M184 252 V261 M222 252 V261 M260 252 V261 M330 252 V261 M368 252 V261 M406 252 V261 M496 252 V261 M534 252 V261" class="line" stroke="#6B7C93" stroke-width="1.4"/>
+    <!-- two weight syncs crossing BOTH lanes = the async policy-version axis -->
+    <rect x="286" y="150" width="8" height="120" fill="#F3C623"/>
+    <rect x="448" y="150" width="8" height="120" fill="#F3C623"/>
+    <text x="290" y="144" text-anchor="middle" class="t micro muted">&#952;: k&#8594;k+1</text>
+    <text x="452" y="144" text-anchor="middle" class="t micro muted">k+1&#8594;k+2</text>
+    <text x="300" y="286" text-anchor="middle" class="t micro muted">faded = stale (older &#952;)</text>
+    <!-- completed rollouts are grouped (right half unchanged) -->
+    <path d="M562 208 H612" class="line" stroke="#8B98A8" stroke-width="2.2" marker-end="url(#arrow-muted)"/>
+    <text x="588" y="198" text-anchor="middle" class="t micro muted">grouped</text>
+
+    <!-- some pass -> RL update -->
+    <text x="672" y="150" text-anchor="middle" class="t micro muted">some pass</text>
+    <rect x="624" y="158" width="96" height="40" rx="9" fill="#E8F5F2" stroke="#138276" stroke-width="2"/>
+    <rect x="632" y="170" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M635.5 178.5 L638.5 181.5 L644.5 174.5" class="line" stroke="#FFFFFF" stroke-width="2.2"/>
+    <rect x="654" y="170" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M657 173 L667 183 M667 173 L657 183" class="line" stroke="#FFFFFF" stroke-width="2"/>
+    <rect x="676" y="170" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M679.5 178.5 L682.5 181.5 L688.5 174.5" class="line" stroke="#FFFFFF" stroke-width="2.2"/>
+    <rect x="698" y="170" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M701.5 178.5 L704.5 181.5 L710.5 174.5" class="line" stroke="#FFFFFF" stroke-width="2.2"/>
+    <text x="742" y="171" text-anchor="middle" class="t micro blue-text">RL</text>
+    <path d="M724 178 H760" class="line" stroke="#1C2738" stroke-width="2.2" marker-end="url(#arrow-ink)"/>
+    <rect x="766" y="157" width="54" height="42" rx="11" fill="#1C2738"/><circle cx="793" cy="178" r="7" fill="#FFFFFF"/>
+
+    <!-- all fail -> no gradient -->
+    <text x="672" y="223" text-anchor="middle" class="t micro muted">all fail</text>
+    <rect x="624" y="230" width="96" height="40" rx="9" fill="#E8F5F2" stroke="#138276" stroke-width="2"/>
+    <rect x="632" y="242" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M635 245 L645 255 M645 245 L635 255" class="line" stroke="#FFFFFF" stroke-width="2"/>
+    <rect x="654" y="242" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M657 245 L667 255 M667 245 L657 255" class="line" stroke="#FFFFFF" stroke-width="2"/>
+    <rect x="676" y="242" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M679 245 L689 255 M689 245 L679 255" class="line" stroke="#FFFFFF" stroke-width="2"/>
+    <rect x="698" y="242" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M701 245 L711 255 M711 245 L701 255" class="line" stroke="#FFFFFF" stroke-width="2"/>
+    <path d="M724 250 H760" class="line" stroke="#8B98A8" stroke-width="2.2" stroke-dasharray="6 6"/>
+    <rect x="766" y="229" width="54" height="42" rx="11" fill="none" stroke="#8B98A8" stroke-width="2" stroke-dasharray="6 5"/>
+    <text x="793" y="255" text-anchor="middle" class="t micro muted">&#8711;=0</text>
+
+    <text x="900" y="180" class="t small dark-text">&#10003; fast &#183; never waits</text>
+    <text x="900" y="212" class="t small coral-text">&#10007; no signal when the group all-fails</text>
+  </g>
+  <path d="M40 296 H1560" class="line" stroke="#E2E8F0" stroke-width="1.6"/>
+
+  <!-- ===================== row 2: synchronous hybrid ===================== -->
+  <g id="row-sync">
+    <text x="40" y="346" class="t label">&#9313; Synchronous hybrid post-training</text>
+
+    <!-- bars arrive then idle (dashed) until the barrier at the slowest attempt -->
+    <rect x="240" y="376" width="220" height="96" fill="#8B98A8" opacity="0.12"/>
+    <rect x="70" y="380" width="170" height="15" rx="7" class="roll"/>
+    <rect x="70" y="404" width="300" height="15" rx="7" class="roll"/>
+    <rect x="70" y="428" width="230" height="15" rx="7" class="roll"/>
+    <rect x="70" y="452" width="360" height="15" rx="7" class="roll"/>
+    <path d="M240 387 H452 M370 411 H452 M300 435 H452 M430 459 H452" class="line" stroke="#8B98A8" stroke-width="2" stroke-dasharray="6 6" opacity="0.7"/>
+    <rect x="456" y="376" width="13" height="96" fill="#8B98A8" opacity="0.55"/>
+    <text x="362" y="492" text-anchor="middle" class="t micro muted">all wait for the slowest</text>
+
+    <!-- some pass -> RL -->
+    <text x="560" y="372" text-anchor="middle" class="t micro muted">some pass</text>
+    <rect x="512" y="380" width="96" height="40" rx="9" fill="#E8F5F2" stroke="#138276" stroke-width="2"/>
+    <rect x="520" y="392" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M523.5 400.5 L526.5 403.5 L532.5 396.5" class="line" stroke="#FFFFFF" stroke-width="2.2"/>
+    <rect x="542" y="392" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M545 395 L555 405 M555 395 L545 405" class="line" stroke="#FFFFFF" stroke-width="2"/>
+    <rect x="564" y="392" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M567.5 400.5 L570.5 403.5 L576.5 396.5" class="line" stroke="#FFFFFF" stroke-width="2.2"/>
+    <rect x="586" y="392" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M589 395 L599 405 M599 395 L589 405" class="line" stroke="#FFFFFF" stroke-width="2"/>
+    <path d="M624 388 L638 402 L624 416 L610 402 Z" fill="#138276"/>
+    <text x="656" y="382" text-anchor="middle" class="t micro blue-text">RL</text>
+    <path d="M638 402 H660" class="line" stroke="#2F63D8" stroke-width="2.4" marker-end="url(#arrow-blue)"/>
+    <rect x="666" y="381" width="54" height="42" rx="11" fill="#1C2738"/><circle cx="693" cy="402" r="7" fill="#FFFFFF"/>
+
+    <!-- all fail -> expert -> SFT -->
+    <text x="820" y="372" text-anchor="middle" class="t micro muted">all fail</text>
+    <rect x="772" y="380" width="96" height="40" rx="9" fill="#E8F5F2" stroke="#138276" stroke-width="2"/>
+    <rect x="780" y="392" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M783 395 L793 405 M793 395 L783 405" class="line" stroke="#FFFFFF" stroke-width="2"/>
+    <rect x="802" y="392" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M805 395 L815 405 M815 395 L805 405" class="line" stroke="#FFFFFF" stroke-width="2"/>
+    <rect x="824" y="392" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M827 395 L837 405 M837 395 L827 405" class="line" stroke="#FFFFFF" stroke-width="2"/>
+    <rect x="846" y="392" width="16" height="16" rx="4" fill="#2F63D8"/><path d="M849 395 L859 405 M859 395 L849 405" class="line" stroke="#FFFFFF" stroke-width="2"/>
+    <path d="M884 388 L898 402 L884 416 L870 402 Z" fill="#138276"/>
+    <rect x="916" y="394" width="86" height="15" rx="7" class="exp"/>
+    <text x="959" y="428" text-anchor="middle" class="t micro orange-text">expert</text>
+    <text x="1030" y="382" text-anchor="middle" class="t micro orange-text">SFT</text>
+    <path d="M902 402 H912 M1004 402 H1024" class="line" stroke="#D8891C" stroke-width="2.4" marker-end="url(#arrow-orange)"/>
+    <rect x="1030" y="381" width="54" height="42" rx="11" fill="#1C2738"/><circle cx="1057" cy="402" r="7" fill="#FFFFFF"/>
+
+    <text x="1130" y="392" class="t small dark-text">&#10003; source-correct</text>
+    <text x="1130" y="424" class="t small coral-text">&#10007; waits at every step</text>
+  </g>
+  <path d="M40 520 H1560" class="line" stroke="#E2E8F0" stroke-width="1.6"/>
+
+  <!-- ===================== row 3: the composition gap (hinge + two horns) ===================== -->
+  <g id="row-gap">
+    <text x="40" y="566" class="t label">&#9314; Combining &#9312; + &#9313;</text>
+
+    <!-- hinge: the completed group is the unit the decision needs -->
+    <rect x="70" y="640" width="150" height="46" rx="10" fill="#E8F5F2" stroke="#138276" stroke-width="2.5"/>
+    <rect x="84" y="642" width="132" height="13" rx="6" class="roll"/>
+    <rect x="84" y="659" width="132" height="13" rx="6" class="roll"/>
+    <text x="145" y="708" text-anchor="middle" class="t small teal-text">group</text>
+    <text x="145" y="728" text-anchor="middle" class="t micro muted">decision unit</text>
+
+    <!-- fork: two bad choices -->
+    <path d="M224 654 C280 640 300 606 336 598" class="line" stroke="#1C2738" stroke-width="2.6" marker-end="url(#arrow-ink)"/>
+    <path d="M224 672 C280 686 300 722 336 730" class="line" stroke="#1C2738" stroke-width="2.6" marker-end="url(#arrow-ink)"/>
+
+    <!-- UP horn: hold the group whole -> the barrier returns -> efficiency lost (execution layer) -->
+    <text x="342" y="586" class="t small dark-text">hold the group whole</text>
+    <rect x="346" y="598" width="596" height="56" fill="#8B98A8" opacity="0.10"/>
+    <rect x="360" y="604" width="150" height="14" rx="7" class="roll"/>
+    <rect x="360" y="622" width="110" height="14" rx="7" class="roll"/>
+    <rect x="360" y="640" width="130" height="14" rx="7" class="roll"/>
+    <rect x="524" y="600" width="13" height="52" fill="#8B98A8" opacity="0.55"/>
+    <path d="M550 611 H930 M550 629 H930 M550 647 H930" class="line" stroke="#8B98A8" stroke-width="2" stroke-dasharray="6 7" opacity="0.6"/>
+    <circle cx="924" cy="629" r="16" fill="#FFFFFF" stroke="#637185" stroke-width="2.4"/>
+    <path d="M924 629 V618 M924 629 H932" class="line" stroke="#637185" stroke-width="2.4"/>
+    <text x="982" y="623" class="t small coral-text">&#10007; efficiency lost</text>
+    <rect x="982" y="635" width="94" height="18" rx="9" fill="#EAEFF5" stroke="#4D5B6C" stroke-width="1.2"/>
+    <text x="1029" y="648" text-anchor="middle" class="t micro dark-text">EXECUTION</text>
+    <text x="1086" y="648" class="t micro muted">the barrier returns</text>
+
+    <!-- DOWN horn: let the stream flow -> expert has no version -> semantics rewritten (theory layer) -->
+    <text x="342" y="676" class="t small dark-text">let the stream flow</text>
+    <!-- one correction gate that reads a version -->
+    <rect x="560" y="696" width="150" height="52" rx="11" fill="#EFF4FD" stroke="#2F63D8" stroke-width="2.2"/>
+    <text x="635" y="718" text-anchor="middle" class="t micro blue-text">policy-lag correction</text>
+    <text x="635" y="736" text-anchor="middle" class="t micro muted">reads a version</text>
+    <!-- rollout carries a version (theta=k): correction is defined -> passes through neutral -->
+    <text x="356" y="709" class="t micro blue-text">rollout &#183; &#952; =</text>
+    <rect x="452" y="700" width="20" height="17" rx="3" fill="#DCE8FC" stroke="#2F63D8" stroke-width="1.4"/>
+    <text x="462" y="713" text-anchor="middle" class="t micro blue-text">k</text>
+    <rect x="476" y="703" width="82" height="14" rx="7" class="roll"/>
+    <rect x="712" y="703" width="92" height="14" rx="7" class="roll"/>
+    <!-- expert carries no version (empty slot): correction has nothing to read -> flows corrupted, not dropped -->
+    <text x="356" y="742" class="t micro orange-text">expert &#183; &#952; =</text>
+    <rect x="451" y="732" width="22" height="18" rx="3" fill="none" stroke="#8B98A8" stroke-width="1.8" stroke-dasharray="3 2"/>
+    <text x="462" y="746" text-anchor="middle" class="t micro muted">&#8709;</text>
+    <rect x="476" y="735" width="82" height="14" rx="7" class="exp"/>
+    <rect x="712" y="735" width="120" height="14" rx="7" fill="#FBE7C7" stroke="#D8891C" stroke-width="1.6"/>
+    <path d="M716 749 L730 735 M730 749 L744 735 M744 749 L758 735 M758 749 L772 735 M772 749 L786 735 M786 749 L800 735 M800 749 L814 735 M814 749 L828 735" class="line" stroke="#3A4A5E" stroke-width="1.7" opacity="0.8"/>
+    <text x="852" y="716" class="t small coral-text">&#10007; semantics rewritten</text>
+    <rect x="852" y="728" width="72" height="18" rx="9" fill="#EAEFF5" stroke="#4D5B6C" stroke-width="1.2"/>
+    <text x="888" y="741" text-anchor="middle" class="t micro dark-text">THEORY</text>
+    <text x="932" y="741" class="t micro muted">expert has no version to correct</text>
+  </g>
+</svg>

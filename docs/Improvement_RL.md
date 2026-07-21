@@ -660,7 +660,7 @@ ablation 1순위 arm M5abl_nocispo(`oki4kv8u`, 델타 = `loss_mode: cispo→vani
 | LUFFY-local | 39.58 / 51.21 | protocol-fair 목표 |
 | paper-HPT sync `v96fvd0p` | 29.49 / 39.97 @50 | **비교 무효 2중**: 8×-scale as-run(유효 clip 10) + **채점기 불일치**(boxing-필수 entropy_math, 하방편향 — 우리 lenient 척도 아님). "압도" 주장 금지, 동일 채점기 재채점 선행 |
 
-판정 절차: step 20-30의 +3.6~+5.8 "우위"는 M5 골짜기 신기루로 기각(당시 보류) → 40-50에서 역전당함 → 55+ 재역전 → **폭풍 벽 통과 + 150-190 고원 확립 후에야** 사전등록 3규칙(창평균/정점/안정성) 전부 충족으로 승격. 논문 41.9와의 직접 비교는 프로토콜 불일치(관대 grader +1~4·k=8 vs 32)로 금지 — "상회/동급"의 지면 확정은 mean@32 다중시드 paired 재평가로만.
+판정 절차: step 20-30의 +3.6~+5.8 "우위"는 M5 골짜기 신기루로 기각(당시 보류) → 40-50에서 역전당함 → 55+ 재역전 → **폭풍 벽 통과 + 150-190 고원 확립 후에야** 사전등록 3규칙(창평균/정점/안정성) 전부 충족으로 승격. 논문 41.9와의 직접 비교는 프로토콜 불일치(관대 grader +1~4·k=8 vs 32)로 금지 — "상회/동급"의 지면 확정은 동일 grader·decoding·budget의 fixed-checkpoint mean@32와 문항단위 paired hierarchical bootstrap 재평가로만.
 
 ### 5.13.5 격자 재편 + H축 신설 (요약 — 상세는 Ablation §14)
 

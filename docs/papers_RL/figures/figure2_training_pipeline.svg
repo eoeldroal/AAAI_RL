@@ -1,0 +1,195 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="610" viewBox="0 0 1600 610" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title desc" focusable="false" shape-rendering="geometricPrecision" text-rendering="geometricPrecision">
+  <title id="title">StreamWeave end-to-end training pipeline</title>
+  <desc id="desc">Prompt groups are dispatched into independent rollout workers and reconstructed at complete-group context. A source selector emits either policy rollouts or an expert trajectory, preserves provenance through a mixed stream, and applies source-specific operators before updating the model. A separate control path refreshes rollout workers.</desc>
+  <metadata>{"figure_id":"figure2_training_pipeline","status":"ready","visible_text_policy":"component identity and short state labels only"}</metadata>
+  <defs>
+    <style>
+      .t { font-family: "Helvetica Neue", "Source Sans 3", "Noto Sans", "Apple SD Gothic Neo", Arial, sans-serif; fill: #1C2738; font-kerning: normal; }
+      .panel { font-size: 22px; font-weight: 650; }
+      .stage { font-size: 28px; font-weight: 700; letter-spacing: 0.2px; }
+      .label { font-size: 24px; font-weight: 600; }
+      .small { font-size: 20px; font-weight: 550; }
+      .tiny { font-size: 18px; font-weight: 650; }
+      .micro { font-size: 16px; font-weight: 650; }
+      .value { font-size: 21px; font-weight: 700; }
+      .focus-title { font-size: 20px; font-weight: 750; letter-spacing: -0.15px; }
+      .muted { fill: #637185; }
+      .on-dark { fill: #FFFFFF; }
+      .blue-text { fill: #2456BE; }
+      .orange-text { fill: #A65D00; }
+      .teal-text { fill: #0D6D64; }
+      .coral-text { fill: #B8433D; }
+      .dark-text { fill: #4D5B6C; }
+      .line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+    <marker id="arrow-ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#1C2738"/></marker>
+    <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#2F63D8"/></marker>
+    <marker id="arrow-orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#D8891C"/></marker>
+    <marker id="arrow-teal" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#138276"/></marker>
+    <marker id="arrow-blue-small" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L9,4.5 L0,9 Z" fill="#2F63D8"/></marker>
+    <marker id="arrow-orange-small" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L9,4.5 L0,9 Z" fill="#D8891C"/></marker>
+    <marker id="arrow-coral-small" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L9,4.5 L0,9 Z" fill="#D95F59"/></marker>
+    <pattern id="hatch-coral" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><line x1="0" y1="0" x2="0" y2="9" stroke="#D95F59" stroke-width="3"/></pattern>
+    
+  </defs>
+  <rect width="1600" height="610" fill="#FFFFFF"/>
+  
+  <g id="rollout-plane">
+    <path d="M36 52 H58" class="line" stroke="#2F63D8" stroke-width="5"/>
+    <text x="72" y="60" class="t panel">Fully-asynchronous rollout</text>
+    <line x1="36" y1="82" x2="646" y2="82" stroke="#D7E0EA" stroke-width="1.2"/>
+
+    <g id="prompt-groups">
+      <text x="90" y="132" text-anchor="middle" class="t tiny muted">Prompts</text>
+      <g class="prompt-group-icon">
+    <rect x="42" y="160" width="96" height="58" rx="11" fill="#E8F5F2" stroke="#138276" stroke-width="2"/>
+    <rect x="54" y="175" width="36" height="28" rx="8" fill="#138276"/>
+    <text x="72" y="195" text-anchor="middle" class="t tiny on-dark">g1</text>
+    <path d="M101 182 H122 M101 196 H111" class="line" stroke="#4D5B6C" stroke-width="2.6" opacity="0.72"/>
+  </g>
+      <g class="prompt-group-icon">
+    <rect x="42" y="270" width="96" height="58" rx="11" fill="#E8F5F2" stroke="#138276" stroke-width="2"/>
+    <rect x="54" y="285" width="36" height="28" rx="8" fill="#138276"/>
+    <text x="72" y="305" text-anchor="middle" class="t tiny on-dark">g2</text>
+    <path d="M101 292 H122 M101 306 H111" class="line" stroke="#4D5B6C" stroke-width="2.6" opacity="0.72"/>
+  </g>
+      <g class="prompt-group-icon">
+    <rect x="42" y="380" width="96" height="58" rx="11" fill="#E8F5F2" stroke="#138276" stroke-width="2"/>
+    <rect x="54" y="395" width="36" height="28" rx="8" fill="#138276"/>
+    <text x="72" y="415" text-anchor="middle" class="t tiny on-dark">g3</text>
+    <path d="M101 402 H122 M101 416 H111" class="line" stroke="#4D5B6C" stroke-width="2.6" opacity="0.72"/>
+  </g>
+    </g>
+
+    <g id="attempt-scheduler">
+      <text x="188" y="132" text-anchor="middle" class="t tiny muted">Dispatch</text>
+      <circle cx="188" cy="299" r="11" fill="#E8F5F2" stroke="#138276" stroke-width="2"/>
+      <path d="M140 189 C164 189 156 299 176 299 M140 299 H176 M140 409 C164 409 156 299 176 299" class="line" stroke="#138276" stroke-width="2.8"/>
+      <path d="M200 299 C220 299 218 193 248 193 M200 299 H248 M200 299 C220 299 218 409 248 409" class="line" stroke="#2F63D8" stroke-width="2.8" marker-end="url(#arrow-blue-small)"/>
+    </g>
+
+    <g id="rollouter-pool">
+      <text x="330" y="132" text-anchor="middle" class="t tiny muted">Rollout workers</text>
+      <rect x="250" y="158" width="160" height="70" rx="8" fill="#EAF0FD" stroke="#2F63D8" stroke-width="1.5"/>
+      <circle cx="273" cy="193" r="11" fill="#1C2738"/>
+      <path d="M296 183 H352 M296 202 H386" class="line" stroke="#2F63D8" stroke-width="3.4"/>
+      <circle cx="386" cy="202" r="5" fill="#138276"/>
+
+      <rect x="250" y="268" width="160" height="70" rx="8" fill="#EAF0FD" stroke="#2F63D8" stroke-width="1.5"/>
+      <circle cx="273" cy="303" r="11" fill="#1C2738"/>
+      <path d="M296 293 H382 M296 312 H350" class="line" stroke="#2F63D8" stroke-width="3.4"/>
+      <circle cx="350" cy="312" r="5" fill="#138276"/>
+
+      <rect x="250" y="378" width="160" height="70" rx="8" fill="#EAF0FD" stroke="#2F63D8" stroke-width="1.5"/>
+      <circle cx="273" cy="413" r="11" fill="#1C2738"/>
+      <path d="M296 403 H340 M296 422 H390" class="line" stroke="#2F63D8" stroke-width="3.4"/>
+      <circle cx="390" cy="422" r="5" fill="#138276"/>
+    </g>
+
+    <g id="group-reconstruction">
+      <text x="531" y="132" text-anchor="middle" class="t tiny muted">Reconstruct</text>
+      <path d="M412 193 H468 M412 303 H468 M412 413 H468" class="line" stroke="#138276" stroke-width="2.8" marker-end="url(#arrow-teal)"/>
+      <g class="group-tray">
+    <rect x="470" y="155" width="122" height="70" rx="13" fill="#E8F5F2" stroke="#138276" stroke-width="2"/>
+    <rect x="482" y="164" width="34" height="21" rx="7" fill="#138276"/>
+    <text x="499" y="180" text-anchor="middle" class="t tiny on-dark">g1</text>
+    <rect x="483" y="190" width="18" height="21" rx="5" fill="#2F63D8" stroke="#2F63D8" stroke-width="1.7" /><rect x="507" y="190" width="18" height="21" rx="5" fill="#2F63D8" stroke="#2F63D8" stroke-width="1.7" /><rect x="531" y="190" width="18" height="21" rx="5" fill="#2F63D8" stroke="#2F63D8" stroke-width="1.7" /><rect x="555" y="190" width="18" height="21" rx="5" fill="#2F63D8" stroke="#2F63D8" stroke-width="1.7" />
+  </g>
+      <g class="group-tray">
+    <rect x="470" y="265" width="122" height="70" rx="13" fill="#E8F5F2" stroke="#138276" stroke-width="2"/>
+    <rect x="482" y="274" width="34" height="21" rx="7" fill="#138276"/>
+    <text x="499" y="290" text-anchor="middle" class="t tiny on-dark">g2</text>
+    <rect x="483" y="300" width="18" height="21" rx="5" fill="#2F63D8" stroke="#2F63D8" stroke-width="1.7" /><rect x="507" y="300" width="18" height="21" rx="5" fill="#2F63D8" stroke="#2F63D8" stroke-width="1.7" /><rect x="531" y="300" width="18" height="21" rx="5" fill="#2F63D8" stroke="#2F63D8" stroke-width="1.7" /><rect x="555" y="300" width="18" height="21" rx="5" fill="#2F63D8" stroke="#2F63D8" stroke-width="1.7" />
+  </g>
+      <g class="group-tray">
+    <rect x="470" y="375" width="122" height="70" rx="13" fill="#FFF1EF" stroke="#D95F59" stroke-width="2"/>
+    <rect x="482" y="384" width="34" height="21" rx="7" fill="#D95F59"/>
+    <text x="499" y="400" text-anchor="middle" class="t tiny on-dark">g3</text>
+    <rect x="483" y="410" width="18" height="21" rx="5" fill="#2F63D8" stroke="#2F63D8" stroke-width="1.7" /><rect x="507" y="410" width="18" height="21" rx="5" fill="#2F63D8" stroke="#2F63D8" stroke-width="1.7" /><rect x="531" y="410" width="18" height="21" rx="5" fill="#2F63D8" stroke="#2F63D8" stroke-width="1.7" /><rect x="555" y="410" width="18" height="21" rx="5" fill="#FFFFFF" stroke="#8B98A8" stroke-width="1.7" stroke-dasharray="4 4"/>
+  </g>
+      <path d="M592 190 H614 Q630 190 630 206 V245 M592 300 H614 Q630 300 630 284 V245" class="line" stroke="#138276" stroke-width="2.8"/>
+      <circle cx="630" cy="245" r="5" fill="#138276" stroke="#FFFFFF" stroke-width="1.5"/>
+    </g>
+  </g>
+
+  <g id="composition-plane">
+    <path d="M674 52 H700" class="line" stroke="#138276" stroke-width="6"/>
+    <text x="714" y="60" class="t focus-title">Provenance-aware composition</text>
+    <line x1="674" y1="82" x2="1108" y2="82" stroke="#D7E0EA" stroke-width="1.2"/>
+
+    <g id="source-choice">
+      <text x="700" y="132" text-anchor="middle" class="t tiny muted">Select source</text>
+      <path d="M630 245 H663" class="line" stroke="#138276" stroke-width="3" marker-end="url(#arrow-teal)"/>
+      <path d="M700 208 L737 245 L700 282 L663 245 Z" fill="#138276"/>
+      <path d="M684 245 H699 M699 245 L716 232 M699 245 L716 258" class="line" stroke="#FFFFFF" stroke-width="3.4"/>
+      <path d="M737 235 C751 235 751 192 768 192" class="line" stroke="#2F63D8" stroke-width="3.2" marker-end="url(#arrow-blue-small)"/>
+      <path d="M700 282 V380 H768" class="line" stroke="#D8891C" stroke-width="3.2" marker-end="url(#arrow-orange-small)"/>
+    </g>
+
+    <g id="selected-policy-payload">
+      <g class="rollout-stack-icon">
+    <rect x="779" y="157" width="89" height="63" rx="9" fill="#FFFFFF" stroke="#2F63D8" stroke-width="1.5" opacity="0.7"/>
+    <rect x="772" y="164" width="89" height="63" rx="9" fill="#EAF0FD" stroke="#2F63D8" stroke-width="2"/>
+    <path d="M787 184 H844 M787 199 H830" class="line" stroke="#2F63D8" stroke-width="2.8"/>
+  </g>
+      <text x="820" y="252" text-anchor="middle" class="t tiny blue-text">Policy group</text>
+      <path d="M870 192 H994 V260 H1018" class="line" stroke="#2F63D8" stroke-width="2.8"/>
+    </g>
+
+    <g id="expert-store-and-payload">
+      <g class="expert-document-icon">
+    <path d="M772 355 Q772 345 782 345 H844 L868 369 V407 Q868 417 858 417 H782 Q772 417 772 407 Z" fill="#FFF3E2" stroke="#D8891C" stroke-width="2"/>
+    <path d="M844 345 V369 H868" class="line" stroke="#D8891C" stroke-width="2"/>
+    <path d="M788 377 H848 M788 392 H834" class="line" stroke="#D8891C" stroke-width="3"/>
+  </g>
+      <text x="820" y="443" text-anchor="middle" class="t tiny orange-text">Expert trajectory</text>
+      <path d="M870 381 H994 V318 H1018" class="line" stroke="#D8891C" stroke-width="2.8"/>
+    </g>
+
+    <g id="bounded-mixed-stream">
+      <rect x="1020" y="228" width="42" height="120" rx="6" fill="#1C2738"/>
+      <rect x="1028" y="239" width="26" height="20" rx="4" fill="#2F63D8"/>
+      <rect x="1028" y="265" width="26" height="20" rx="4" fill="#D8891C"/>
+      <rect x="1028" y="291" width="26" height="20" rx="4" fill="#2F63D8"/>
+      <rect x="1028" y="317" width="26" height="20" rx="4" fill="#D8891C"/>
+      <text x="1041" y="378" text-anchor="middle" class="t tiny">Stream</text>
+    </g>
+
+    <g id="provenance-context">
+      <text x="891" y="477" text-anchor="middle" class="t small teal-text">Provenance</text>
+      <line x1="758" y1="493" x2="1041" y2="493" stroke="#138276" stroke-width="2.2"/>
+      <text x="891" y="520" text-anchor="middle" class="t tiny muted">group / source / policy</text>
+      <path d="M1041 493 H1076 V350 H1064" class="line" stroke="#138276" stroke-width="2" stroke-dasharray="5 6"/>
+    </g>
+  </g>
+
+  <g id="learning-plane">
+    <path d="M1138 52 H1160" class="line" stroke="#1C2738" stroke-width="5"/>
+    <text x="1174" y="60" class="t panel">Source-aware update</text>
+    <line x1="1138" y1="82" x2="1572" y2="82" stroke="#D7E0EA" stroke-width="1.2"/>
+
+    <path d="M1062 288 H1122" class="line" stroke="#1C2738" stroke-width="3" marker-end="url(#arrow-ink)"/>
+    <circle cx="1138" cy="288" r="11" fill="#FFFFFF" stroke="#4D5B6C" stroke-width="2"/>
+    <path d="M1149 288 C1168 288 1160 219 1188 219 M1149 288 C1168 288 1160 369 1188 369" class="line" stroke="#4D5B6C" stroke-width="2.8"/>
+
+    <rect x="1190" y="180" width="178" height="78" rx="8" fill="#EAF0FD" stroke="#2F63D8" stroke-width="1.7"/>
+    <text x="1279" y="227" text-anchor="middle" class="t label blue-text">RL operators</text>
+
+    <rect x="1190" y="330" width="178" height="78" rx="8" fill="#FFF3E2" stroke="#D8891C" stroke-width="1.7"/>
+    <text x="1279" y="377" text-anchor="middle" class="t label orange-text">SFT update</text>
+
+    <path d="M1368 219 H1398 Q1418 219 1418 239 V288 M1368 369 H1398 Q1418 369 1418 349 V288" class="line" stroke="#138276" stroke-width="2.8"/>
+    <circle cx="1418" cy="288" r="16" fill="#E8F5F2" stroke="#138276" stroke-width="2"/>
+    <path d="M1410 288 H1426 M1418 280 V296" class="line" stroke="#138276" stroke-width="2.6"/>
+    <path d="M1434 288 H1458" class="line" stroke="#1C2738" stroke-width="3" marker-end="url(#arrow-ink)"/>
+    <rect x="1462" y="253" width="116" height="70" rx="8" fill="#1C2738"/>
+    <circle cx="1487" cy="288" r="12" fill="#FFFFFF"/>
+    <text x="1535" y="295" text-anchor="middle" class="t tiny on-dark">Model</text>
+  </g>
+
+  <g id="control-plane">
+    <path d="M1520 323 V550 H330 V450" class="line" stroke="#8B98A8" stroke-width="2" stroke-dasharray="8 8" marker-end="url(#arrow-ink)"/>
+    <rect x="808" y="534" width="188" height="30" fill="#FFFFFF"/>
+    <text x="902" y="558" text-anchor="middle" class="t small muted">parameter refresh</text>
+  </g>
+</svg>

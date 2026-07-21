@@ -1,0 +1,51 @@
+{
+  "figure_id": "figure3_execution_efficiency",
+  "status": "provisional_matched_measurement",
+  "hardware": "8xB200",
+  "work_unit": "128_prompt_groups",
+  "timeline_seconds": {
+    "sync": {
+      "generation": 24.84,
+      "generation_tail_wait": 17.39,
+      "learning": 17.48,
+      "parameter_sync": 3.68,
+      "total": 46.0
+    },
+    "streamweave": {
+      "total": 30.0
+    }
+  },
+  "metrics": [
+    {
+      "label": "group/s",
+      "sync": 2.79,
+      "streamweave": 4.31,
+      "max": 5.0,
+      "decimals": 2
+    },
+    {
+      "label": "idle (%)",
+      "sync": 54.0,
+      "streamweave": 4.6,
+      "max": 60.0,
+      "decimals": 1
+    },
+    {
+      "label": "MFU (%)",
+      "sync": 13.4,
+      "streamweave": 20.9,
+      "max": 25.0,
+      "decimals": 1
+    }
+  ],
+  "runs": {
+    "sync": "v96fvd0p",
+    "streamweave": "f5ugxklh"
+  },
+  "source": "Efficiency.tex, measured 2026-07-09",
+  "restrictions": [
+    "The async arm is the former M5/CISPO run, not the current nocispo main.",
+    "Refresh all visible values after the matched nocispo efficiency rerun.",
+    "The figure isolates execution measurements and does not claim quality equivalence."
+  ]
+}

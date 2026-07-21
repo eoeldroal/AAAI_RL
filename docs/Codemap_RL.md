@@ -1,6 +1,6 @@
 # RL Code Map
 
-_Last updated: 2026-07-10_
+_Last updated: 2026-07-21_
 
 Navigation and debugging map for this async-HPT `verl` fork. Use it to find
 where code lives, how a rollout sample becomes a learner update, and — when a
@@ -139,15 +139,20 @@ _fit_update_actor -> ppo_loss -> standard vanilla PPO with SFT self-detach
 
 ```
 config validated        hpt_config.validate_async_hpt_config
+  -> schedule attempts   fully_async_rollouter (independent trajectory execution)
+  -> reconstruct group   hpt_rollout_accumulator.HptPromptGroupAccumulator.pop_ready
   -> gate routes         hpt_gate.HptRolloutGate.route_rollout_sample / .route
-     (SFT swaps full_batch to tau payload; RL keeps generated DataProto)
-  -> [scheduler] regroup hpt_rollout_accumulator.HptPromptGroupAccumulator.pop_ready
+     (source is fixed on a complete group before queue admission)
   -> queue (cloudpickle) message_queue.put_sample / get_sample
   -> assemble            hpt_assembler.HptBatchAssembler.assemble_rollout_samples
-     (writes hpt_is_sft and row-aligned HPT route metadata)
+     (trainer-side materialization writes hpt_is_sft and row-aligned route metadata)
   -> anchor + filter     hpt_training.apply_hpt_rollout_logprob_anchor / filter_hpt_stale_rollout_samples
   -> loss                losses.ppo_loss -> branch-blind vanilla PPO + SFT self-detach
 ```
+
+The queue carries a **routed prompt-group record**, not learner-ready rows.
+Policy groups and expert trajectories become learner rows only when the trainer
+consumes them through `HptBatchAssembler`.
 
 **Key asymmetry (memorize this):** an **SFT** route collapses a prompt group to
 **1 learner row**; an **RL** route expands to **`rollout.n` rows**. So
@@ -176,12 +181,16 @@ aligned batch and defers the residue (< one multiple) to the next step via
   not at generation time — RL wraps the already-generated rollout into a
   `DataProto`; SFT tokenizes the tau transcript into the same row shape. This
   symmetry is why `HptBatchAssembler` exists as a single entry point.
-- **Rollout-logprob anchor** (`hpt_training.py`): RL rows use the rollout engine's
-  own `rollout_log_probs` as `old_log_probs` (needs `rollout.calculate_log_probs=True`).
+- **RL proximal anchor** (`hpt_training.py`): the implementation supports rollout-
+  or learner-entry anchoring. The current paper main uses the learner-entry policy
+  as `old_log_probs` and separately applies rollout-to-entry token-level IS; the
+  rollout-anchored path remains a comparison setting.
 - **branch-blind policy loss** (`losses.py::ppo_loss` HPT branch):
   batch is HPT iff it carries `hpt_is_sft`; obsolete B_eff fields are rejected.
   SFT rows pin ratio=1 (`old = log_prob.detach()`) -> advantage-weighted NLL;
-  RL rows use the standard clipped vanilla PPO path unchanged. HPT does not
+  RL rows use the selected base policy-loss path. The current paper main uses
+  standard clipped vanilla PPO; CISPO modes are ablations, not Method components.
+  HPT does not
   replace the base RL advantage estimator — RL rows still use the existing GRPO
   advantage path; HPT only adds the route decision, SFT self-detach, and
   auxiliary masking. Truncated-RL rows flagged `hpt_is_truncated_rl`

@@ -1,0 +1,203 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="780" viewBox="0 0 1600 780" role="img" aria-labelledby="title desc">
+  <title id="title">StreamWeave overview: learning boundaries without execution barriers</title>
+  <desc id="desc">A compact comparison of naive composition and StreamWeave. StreamWeave executes rollout attempts independently, decides the source after complete group context is available, and applies source-native updates in one shared learner.</desc>
+
+  <defs>
+    <style>
+      .ink { fill: #1c2738; }
+      .muted { fill: #6f7d90; }
+      .small { font: 500 15px "Helvetica Neue", "Source Sans 3", sans-serif; }
+      .body { font: 500 17px "Helvetica Neue", "Source Sans 3", sans-serif; }
+      .label { font: 650 18px "Helvetica Neue", "Source Sans 3", sans-serif; letter-spacing: 0.2px; }
+      .lane { font: 700 18px "Helvetica Neue", "Source Sans 3", sans-serif; letter-spacing: 0.8px; }
+      .panel-title { font: 700 26px "Helvetica Neue", "Source Sans 3", sans-serif; letter-spacing: -0.2px; }
+      .hero { font: 700 21px "Helvetica Neue", "Source Sans 3", sans-serif; }
+      .white { fill: #ffffff; }
+      .blue-fill { fill: #2f63d8; }
+      .orange-fill { fill: #d8891c; }
+      .teal-fill { fill: #138276; }
+      .coral-fill { fill: #d95f59; }
+      .blue-stroke { stroke: #2f63d8; }
+      .orange-stroke { stroke: #d8891c; }
+      .teal-stroke { stroke: #138276; }
+      .coral-stroke { stroke: #d95f59; }
+      .neutral-stroke { stroke: #7a8798; }
+      .line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+    <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#2f63d8"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#d8891c"/>
+    </marker>
+    <marker id="arrow-teal" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#138276"/>
+    </marker>
+    <marker id="arrow-ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#1c2738"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="780" fill="#ffffff"/>
+
+  <!-- Panel (a): naive composition -->
+  <rect x="22" y="24" width="410" height="728" rx="20" fill="#fbfcfe" stroke="#d8e0ea" stroke-width="1.6"/>
+  <text x="52" y="66" class="small muted">(a)</text>
+  <text x="84" y="68" class="panel-title ink">Naive composition</text>
+  <text x="52" y="98" class="body muted">One boundary, two bad choices</text>
+
+  <text x="52" y="142" class="label ink">Keep group control flow</text>
+  <rect x="54" y="165" width="36" height="36" rx="9" fill="#e5f4f1" stroke="#138276" stroke-width="1.5"/>
+  <text x="72" y="190" text-anchor="middle" class="label" fill="#138276">g</text>
+  <path d="M102 179 H248" class="line blue-stroke" stroke-width="4"/>
+  <path d="M102 207 H292" class="line blue-stroke" stroke-width="4"/>
+  <path d="M102 235 H333" class="line blue-stroke" stroke-width="4"/>
+  <circle cx="102" cy="179" r="5" class="blue-fill"/>
+  <circle cx="102" cy="207" r="5" class="blue-fill"/>
+  <circle cx="102" cy="235" r="5" class="blue-fill"/>
+  <circle cx="248" cy="179" r="5" class="blue-fill"/>
+  <circle cx="292" cy="207" r="5" class="blue-fill"/>
+  <circle cx="333" cy="235" r="5" class="blue-fill"/>
+  <path d="M248 179 H360 M292 207 H360 M333 235 H360" class="line neutral-stroke" stroke-width="3" stroke-dasharray="5 7" opacity="0.5"/>
+  <path d="M360 157 V254" class="line coral-stroke" stroke-width="5"/>
+  <path d="M369 166 l15 -15 M369 188 l15 -15 M369 210 l15 -15 M369 232 l15 -15 M369 254 l15 -15" class="line coral-stroke" stroke-width="2"/>
+  <text x="216" y="278" text-anchor="middle" class="small muted">fast attempts wait for the slowest</text>
+  <text x="216" y="304" text-anchor="middle" class="label" fill="#d95f59">Global synchronization returns</text>
+
+  <line x1="54" y1="334" x2="400" y2="334" stroke="#d8e0ea" stroke-width="1.4"/>
+  <text x="52" y="376" class="label ink">Reuse the async stream unchanged</text>
+  <rect x="54" y="400" width="36" height="36" rx="9" fill="#e5f4f1" stroke="#138276" stroke-width="1.5"/>
+  <text x="72" y="425" text-anchor="middle" class="label" fill="#138276">g</text>
+  <path d="M102 410 H231" class="line blue-stroke" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <path d="M102 439 H272" class="line blue-stroke" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <path d="M102 468 H196" class="line blue-stroke" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <path d="M94 391 H286 M94 391 V482 M94 482 H286" class="line teal-stroke" stroke-width="2" stroke-dasharray="7 7"/>
+  <path d="M261 391 l25 0 M261 482 l25 0" class="line coral-stroke" stroke-width="4"/>
+  <rect x="306" y="393" width="74" height="28" rx="7" fill="#eef3fb" stroke="#2f63d8" stroke-width="1.4"/>
+  <rect x="306" y="431" width="74" height="28" rx="7" fill="#eef3fb" stroke="#2f63d8" stroke-width="1.4"/>
+  <rect x="306" y="469" width="74" height="28" rx="7" fill="#eef3fb" stroke="#2f63d8" stroke-width="1.4"/>
+  <path d="M285 408 H304 M285 446 H304 M285 484 H304" class="line blue-stroke" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <circle cx="285" cy="445" r="17" fill="#fff2f1" stroke="#d95f59" stroke-width="2"/>
+  <text x="285" y="452" text-anchor="middle" class="label" fill="#d95f59">!</text>
+  <text x="216" y="529" text-anchor="middle" class="small muted">arrival order acts before context is complete</text>
+  <text x="216" y="555" text-anchor="middle" class="label" fill="#d95f59">Learning composition is rewritten</text>
+
+  <rect x="52" y="613" width="348" height="91" rx="14" fill="#fff5f4" stroke="#f0c5c1" stroke-width="1.3"/>
+  <text x="226" y="648" text-anchor="middle" class="body muted">A naive merge must sacrifice</text>
+  <text x="226" y="681" text-anchor="middle" class="hero" fill="#d95f59">execution or learning meaning</text>
+
+  <!-- Panel (b): StreamWeave -->
+  <rect x="454" y="24" width="1124" height="728" rx="20" fill="#ffffff" stroke="#cfd9e5" stroke-width="1.8"/>
+  <text x="488" y="66" class="small muted">(b)</text>
+  <text x="520" y="68" class="panel-title ink">StreamWeave</text>
+  <text x="520" y="98" class="body muted">Keep complete context local; keep the pipeline moving globally</text>
+
+  <!-- Execution lane -->
+  <rect x="488" y="122" width="1056" height="213" rx="16" fill="#f7f9fc"/>
+  <rect x="506" y="142" width="30" height="30" rx="15" fill="#2f63d8"/>
+  <text x="521" y="163" text-anchor="middle" class="label white">1</text>
+  <text x="552" y="164" class="lane ink">EXECUTE independently</text>
+  <text x="1498" y="164" text-anchor="end" class="small muted">time</text>
+  <path d="M640 315 H1508" class="line neutral-stroke" stroke-width="1.5" marker-end="url(#arrow-ink)" opacity="0.55"/>
+
+  <!-- Group g1 -->
+  <rect x="620" y="180" width="38" height="38" rx="9" fill="#e5f4f1" stroke="#138276" stroke-width="1.5"/>
+  <text x="639" y="205" text-anchor="middle" class="label" fill="#138276">g1</text>
+  <path d="M676 184 H829 M676 199 H902 M676 214 H966" class="line blue-stroke" stroke-width="3.5"/>
+  <circle cx="676" cy="184" r="4.5" class="blue-fill"/><circle cx="829" cy="184" r="4.5" class="blue-fill"/>
+  <circle cx="676" cy="199" r="4.5" class="blue-fill"/><circle cx="902" cy="199" r="4.5" class="blue-fill"/>
+  <circle cx="676" cy="214" r="4.5" class="blue-fill"/><circle cx="966" cy="214" r="4.5" class="blue-fill"/>
+  <path d="M972 176 V222" class="line teal-stroke" stroke-width="3"/>
+  <circle cx="972" cy="199" r="10" fill="#ffffff" stroke="#138276" stroke-width="2"/>
+  <path d="M967 199 l4 4 l7 -9" class="line teal-stroke" stroke-width="2.2"/>
+
+  <!-- Group g2, starts later but completes first -->
+  <rect x="684" y="236" width="38" height="38" rx="9" fill="#e5f4f1" stroke="#138276" stroke-width="1.5"/>
+  <text x="703" y="261" text-anchor="middle" class="label" fill="#138276">g2</text>
+  <path d="M740 240 H821 M740 255 H851 M740 270 H879" class="line blue-stroke" stroke-width="3.5"/>
+  <circle cx="740" cy="240" r="4.5" class="blue-fill"/><circle cx="821" cy="240" r="4.5" class="blue-fill"/>
+  <circle cx="740" cy="255" r="4.5" class="blue-fill"/><circle cx="851" cy="255" r="4.5" class="blue-fill"/>
+  <circle cx="740" cy="270" r="4.5" class="blue-fill"/><circle cx="879" cy="270" r="4.5" class="blue-fill"/>
+  <path d="M885 232 V278" class="line teal-stroke" stroke-width="3"/>
+  <circle cx="885" cy="255" r="10" fill="#ffffff" stroke="#138276" stroke-width="2"/>
+  <path d="M880 255 l4 4 l7 -9" class="line teal-stroke" stroke-width="2.2"/>
+
+  <!-- Group g3 -->
+  <rect x="1000" y="236" width="38" height="38" rx="9" fill="#e5f4f1" stroke="#138276" stroke-width="1.5"/>
+  <text x="1019" y="261" text-anchor="middle" class="label" fill="#138276">g3</text>
+  <path d="M1056 240 H1115 M1056 255 H1169 M1056 270 H1218" class="line blue-stroke" stroke-width="3.5"/>
+  <circle cx="1056" cy="240" r="4.5" class="blue-fill"/><circle cx="1115" cy="240" r="4.5" class="blue-fill"/>
+  <circle cx="1056" cy="255" r="4.5" class="blue-fill"/><circle cx="1169" cy="255" r="4.5" class="blue-fill"/>
+  <circle cx="1056" cy="270" r="4.5" class="blue-fill"/><circle cx="1218" cy="270" r="4.5" class="blue-fill"/>
+  <path d="M1224 232 V278" class="line teal-stroke" stroke-width="3"/>
+  <circle cx="1224" cy="255" r="10" fill="#ffffff" stroke="#138276" stroke-width="2"/>
+  <path d="M1219 255 l4 4 l7 -9" class="line teal-stroke" stroke-width="2.2"/>
+
+  <text x="793" y="226" class="small" fill="#138276">g2 completes before g1</text>
+  <path d="M863 229 L879 244" class="line teal-stroke" stroke-width="1.8" marker-end="url(#arrow-teal)"/>
+  <text x="1322" y="236" class="body ink">Groups complete independently</text>
+  <text x="1322" y="261" class="small muted">without waiting for a global batch</text>
+  <path d="M1302 247 H1250" class="line teal-stroke" stroke-width="2" marker-end="url(#arrow-teal)"/>
+
+  <!-- Decision lane -->
+  <rect x="488" y="351" width="1056" height="126" rx="16" fill="#f3faf8"/>
+  <rect x="506" y="370" width="30" height="30" rx="15" fill="#138276"/>
+  <text x="521" y="391" text-anchor="middle" class="label white">2</text>
+  <text x="552" y="392" class="lane ink">DECIDE with complete context</text>
+  <text x="1508" y="392" text-anchor="end" class="small" fill="#138276">source is chosen only after group completion</text>
+
+  <path d="M885 278 V418" class="line teal-stroke" stroke-width="2" stroke-dasharray="5 6" marker-end="url(#arrow-teal)"/>
+  <path d="M972 222 V418" class="line teal-stroke" stroke-width="2" stroke-dasharray="5 6" marker-end="url(#arrow-teal)"/>
+  <path d="M1224 278 V418" class="line teal-stroke" stroke-width="2" stroke-dasharray="5 6" marker-end="url(#arrow-teal)"/>
+
+  <rect x="835" y="419" width="99" height="39" rx="10" fill="#fff4e5" stroke="#d8891c" stroke-width="2"/>
+  <rect x="843" y="425" width="27" height="27" rx="7" fill="#138276"/>
+  <text x="856" y="444" text-anchor="middle" class="small white">g2</text>
+  <text x="884" y="445" class="small" fill="#a96008">expert</text>
+
+  <rect x="943" y="419" width="100" height="39" rx="10" fill="#edf3ff" stroke="#2f63d8" stroke-width="2"/>
+  <rect x="951" y="425" width="27" height="27" rx="7" fill="#138276"/>
+  <text x="964" y="444" text-anchor="middle" class="small white">g1</text>
+  <text x="992" y="445" class="small" fill="#244fae">policy</text>
+
+  <rect x="1174" y="419" width="100" height="39" rx="10" fill="#edf3ff" stroke="#2f63d8" stroke-width="2"/>
+  <rect x="1182" y="425" width="27" height="27" rx="7" fill="#138276"/>
+  <text x="1195" y="444" text-anchor="middle" class="small white">g3</text>
+  <text x="1223" y="445" class="small" fill="#244fae">policy</text>
+
+  <path d="M935 439 H941 M1045 439 H1172 M1276 439 H1492" class="line neutral-stroke" stroke-width="2" stroke-dasharray="5 7"/>
+  <text x="1430" y="459" text-anchor="middle" class="small muted">bounded mixed stream</text>
+
+  <!-- Learning lane -->
+  <rect x="488" y="493" width="1056" height="201" rx="16" fill="#fbfcfe"/>
+  <rect x="506" y="513" width="30" height="30" rx="15" fill="#1c2738"/>
+  <text x="521" y="534" text-anchor="middle" class="label white">3</text>
+  <text x="552" y="535" class="lane ink">LEARN by source</text>
+  <text x="552" y="561" class="small muted">context travels with every admitted signal</text>
+
+  <path d="M884 458 C884 520 827 542 827 588 H1110" class="line orange-stroke" stroke-width="4" marker-end="url(#arrow-orange)"/>
+  <path d="M993 458 C993 500 1040 532 1110 552" class="line blue-stroke" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <path d="M1224 458 C1224 492 1190 515 1110 552" class="line blue-stroke" stroke-width="4" marker-end="url(#arrow-blue)"/>
+
+  <rect x="1113" y="520" width="391" height="142" rx="16" fill="#ffffff" stroke="#9eacbd" stroke-width="1.8"/>
+  <text x="1138" y="549" class="label ink">Shared learner</text>
+  <path d="M1138 574 H1335" class="line blue-stroke" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <text x="1140" y="567" class="small" fill="#244fae">rollout-native update</text>
+  <path d="M1138 621 H1335" class="line orange-stroke" stroke-width="4" marker-end="url(#arrow-orange)"/>
+  <text x="1140" y="614" class="small" fill="#a96008">expert-native update</text>
+  <circle cx="1370" cy="598" r="27" fill="#f3faf8" stroke="#138276" stroke-width="2.2"/>
+  <text x="1370" y="605" text-anchor="middle" class="hero" fill="#138276">mix</text>
+  <path d="M1337 574 C1350 574 1349 588 1350 590 M1337 621 C1350 621 1349 608 1350 606" class="line teal-stroke" stroke-width="2"/>
+  <text x="1370" y="647" text-anchor="middle" class="small muted">declared composition</text>
+  <text x="1454" y="577" text-anchor="middle" class="small ink">policy update</text>
+  <path d="M1397 598 H1470" class="line" stroke="#1c2738" stroke-width="3" marker-end="url(#arrow-ink)"/>
+  <circle cx="1485" cy="598" r="11" fill="#1c2738"/>
+
+  <rect x="716" y="617" width="330" height="51" rx="12" fill="#eaf6f3" stroke="#b8ddd6" stroke-width="1.3"/>
+  <path d="M738 641 H790" class="line blue-stroke" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <path d="M738 653 H790" class="line orange-stroke" stroke-width="4" marker-end="url(#arrow-orange)"/>
+  <text x="812" y="649" class="body" fill="#126d65">generation and learning overlap</text>
+
+  <rect x="625" y="710" width="784" height="30" rx="15" fill="#eaf6f3"/>
+  <text x="1017" y="732" text-anchor="middle" class="hero" fill="#126d65">Preserve learning boundaries without restoring execution barriers.</text>
+</svg>

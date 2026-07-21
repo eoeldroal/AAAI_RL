@@ -487,7 +487,7 @@ resp_len_row  = response_mask.sum(-1) ;  correct_row = advantages>0 (또는 toke
 ### 14.5 판정 대기 원장
 
 1. ~~RLonly 완주(200) → H축 판정~~ **완료(2026-07-10)**: 조기절단@162로 판정 성립 — 교사 채널 기여 +3.4(후반 창)·+2.4(정점), §14.4 결과 참조. "async-HPT 핵심 기여 실증" 분기 확정.
-2. **protocol-fair 재평가**: {nocispo@170, @190, LUFFY}를 **mean@32·다중 시드·문항단위 paired 부트스트랩**으로 — "LUFFY 상회/동급"의 지면 확정은 이것으로만. 논문 41.9와의 직접 비교는 금지(grader 관대 +1~4·k 불일치, `upt-comparison-validity` 원장).
+2. **protocol-fair fixed-checkpoint 재평가**: {nocispo@170, @190, LUFFY}를 동일 grader·decoding·budget 아래 **문항당 32 stochastic generations의 mean@32 + 문항단위 paired hierarchical bootstrap 10,000회 95% CI**로 평가한다. 전 모델에 같은 재현 가능 evaluation-seed set을 쓰되, 이는 독립 training seed가 아니다. `mean@32`는 average pass@1 추정이며 pass@32가 아니다. "LUFFY 상회/동급"의 지면 확정은 이것으로만 한다. 논문 41.9와의 직접 비교는 금지(grader 관대 +1~4·k 불일치, `upt-comparison-validity` 원장).
 3. **nocispo_cont(190→300)**: 150-190 고원이 완만 상승 중(+0.015/step)이라 잔여 상승 확인.
 4. paper-HPT sync(`v96fvd0p`) 공정화 — ① 8×-scale 유효성 판별, ② **동일 채점기 재채점**(그 런의 val은 boxing-필수 entropy_math로 하방편향, §13.4). 둘 다 끝나기 전 "sync 압도(+10)" 주장 금지 — 현재 +10 격차에는 채점기 차이가 섞여 있다.
 

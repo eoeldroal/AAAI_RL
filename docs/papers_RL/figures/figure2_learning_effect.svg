@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="390" viewBox="0 0 640 390" role="img" aria-labelledby="title desc">
+  <title id="title">Windowed learning effect of expert supervision</title>
+  <desc id="desc">A paired dot plot comparing StreamWeave and an RL-only control in an early and a late training window. The gap is small early and larger late.</desc>
+  <metadata>{"figure_id":"figure2_learning_effect","status":"documented_interim","metric":"lenient6_naive_mean_at_8","windows":[{"label":"20-50","streamweave":37,"rl_only":36.6},{"label":"130-160","streamweave":38.6,"rl_only":35.17}],"peak":{"streamweave":40.17,"streamweave_step":170,"rl_only":37.73,"rl_only_step":30},"source":"Ablation_RL.md, Section 14.4","restrictions":["This is a windowed learning-dynamics figure, not a quality-versus-wall-clock curve.","It does not replace the final fixed-checkpoint mean@32 evaluation.","The peak values occur at different steps and are intentionally not rendered in the main panel."]}</metadata>
+  <defs>
+    <style>
+      .t { font-family: "Helvetica Neue", "Source Sans 3", sans-serif; fill: #1C2738; }
+      .panel { font-size: 22px; font-weight: 650; }
+      .stage { font-size: 28px; font-weight: 700; letter-spacing: 0.2px; }
+      .label { font-size: 24px; font-weight: 600; }
+      .small { font-size: 20px; font-weight: 550; }
+      .tiny { font-size: 17px; font-weight: 650; }
+      .micro { font-size: 14px; font-weight: 650; }
+      .value { font-size: 21px; font-weight: 700; }
+      .muted { fill: #637185; }
+      .line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+    <marker id="arrow-ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#1C2738"/></marker>
+    <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#2F63D8"/></marker>
+    <marker id="arrow-orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#D8891C"/></marker>
+    <marker id="arrow-teal" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#138276"/></marker>
+    <pattern id="hatch-coral" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><line x1="0" y1="0" x2="0" y2="9" stroke="#D95F59" stroke-width="3"/></pattern>
+    
+  </defs>
+  <rect width="640" height="390" fill="#FFFFFF"/>
+  
+  <g id="legend">
+    <circle cx="270" cy="39" r="8" fill="#2F63D8"/><text x="288" y="46" class="t small">StreamWeave</text>
+    <path d="M488 31 L496 39 L488 47 L480 39 Z" fill="#FFFFFF" stroke="#4D5B6C" stroke-width="2.2"/><text x="506" y="46" class="t small">RL-only</text>
+  </g>
+  <g id="axis">
+    <line x1="140" y1="78" x2="140" y2="286" stroke="#D7E0EA" stroke-width="1"/>
+<text x="140" y="322" text-anchor="middle" class="t small muted">34</text>
+<line x1="218.33333333333331" y1="78" x2="218.33333333333331" y2="286" stroke="#D7E0EA" stroke-width="1"/>
+<text x="218.33333333333331" y="322" text-anchor="middle" class="t small muted">35</text>
+<line x1="296.66666666666663" y1="78" x2="296.66666666666663" y2="286" stroke="#D7E0EA" stroke-width="1"/>
+<text x="296.66666666666663" y="322" text-anchor="middle" class="t small muted">36</text>
+<line x1="375" y1="78" x2="375" y2="286" stroke="#D7E0EA" stroke-width="1"/>
+<text x="375" y="322" text-anchor="middle" class="t small muted">37</text>
+<line x1="453.3333333333333" y1="78" x2="453.3333333333333" y2="286" stroke="#D7E0EA" stroke-width="1"/>
+<text x="453.3333333333333" y="322" text-anchor="middle" class="t small muted">38</text>
+<line x1="531.6666666666667" y1="78" x2="531.6666666666667" y2="286" stroke="#D7E0EA" stroke-width="1"/>
+<text x="531.6666666666667" y="322" text-anchor="middle" class="t small muted">39</text>
+<line x1="610" y1="78" x2="610" y2="286" stroke="#D7E0EA" stroke-width="1"/>
+<text x="610" y="322" text-anchor="middle" class="t small muted">40</text>
+    <line x1="140" y1="286" x2="610" y2="286" stroke="#1C2738" stroke-width="1.5"/>
+    <text x="375" y="370" text-anchor="middle" class="t label muted">score</text>
+  </g>
+  <g id="windowed-comparison">
+    <g id="window-20-50">
+      <text x="116" y="137" text-anchor="end" class="t label">20-50</text>
+      <line x1="343.66666666666674" y1="130" x2="375" y2="130" stroke="#8B98A8" stroke-width="3"/>
+      <path d="M343.66666666666674 121 L352.66666666666674 130 L343.66666666666674 139 L334.66666666666674 130 Z" fill="#FFFFFF" stroke="#4D5B6C" stroke-width="2.4"/>
+      <circle cx="375" cy="130" r="9" fill="#2F63D8" stroke="#FFFFFF" stroke-width="2"/>
+      <text x="329.66666666666674" y="114" text-anchor="end" class="t value" fill="#4D5B6C">36.6</text>
+      <text x="389" y="114" text-anchor="start" class="t value" fill="#2F63D8">37.0</text>
+    </g>
+<g id="window-130-160">
+      <text x="116" y="232" text-anchor="end" class="t label">130-160</text>
+      <line x1="231.65000000000015" y1="225" x2="500.3333333333335" y2="225" stroke="#8B98A8" stroke-width="3"/>
+      <path d="M231.65000000000015 216 L240.65000000000015 225 L231.65000000000015 234 L222.65000000000015 225 Z" fill="#FFFFFF" stroke="#4D5B6C" stroke-width="2.4"/>
+      <circle cx="500.3333333333335" cy="225" r="9" fill="#2F63D8" stroke="#FFFFFF" stroke-width="2"/>
+      <text x="217.65000000000015" y="209" text-anchor="end" class="t value" fill="#4D5B6C">35.2</text>
+      <text x="514.3333333333335" y="209" text-anchor="start" class="t value" fill="#2F63D8">38.6</text>
+    </g>
+  </g>
+</svg>

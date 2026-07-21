@@ -1,0 +1,29 @@
+{
+  "figure_id": "figure2_quality_wallclock",
+  "status": "blocked_missing_raw_history",
+  "metric": "protocol_matched_quality",
+  "candidate_series": [
+    {
+      "id": "StreamWeave",
+      "run_id": "oki4kv8u",
+      "role": "current_nocispo_main"
+    },
+    {
+      "id": "RL-only",
+      "run_id": "qzsnwc08",
+      "role": "teacher_channel_ablation"
+    }
+  ],
+  "required_raw_fields": [
+    "_runtime",
+    "evaluation_score",
+    "checkpoint_or_step",
+    "grader",
+    "evaluation_multiplicity"
+  ],
+  "blocked_by": [
+    "No local W&B history or run cache was found on 2026-07-20.",
+    "Step summaries are insufficient for a wall-clock curve and must not be interpolated."
+  ],
+  "separate_block": "The synchronous quality series remains inadmissible until its loss scale and grader mismatch are resolved."
+}

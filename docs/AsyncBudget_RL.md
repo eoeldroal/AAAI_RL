@@ -1,6 +1,6 @@
 # Async Queue & HPT Budget Sizing
 
-_Last updated: 2026-07-07_
+_Last updated: 2026-07-21_
 
 How to size the fully-async queue, staleness, and HPT learner-row budgets.
 Environment/log commands: `Readme_RL.md`. Code enforcement: `Codemap_RL.md`. Rules: `../AGENTS.md`.
@@ -42,8 +42,10 @@ These are the headline rules; where the detailed sizing below predates them, the
    row-multiple. Do not grow the batch until it happens to land on a multiple
    (over-collects 2-3x and can fail to converge → crash). Collect the intended
    `required_samples`, trim down to the largest aligned batch, and carry the small
-   residue (< one multiple) to the next step where it trains first. Bounded,
-   zero-waste, crash-free.
+   residue (< one multiple) to the next step where it trains first. Normal
+   collection stays bounded and every deferral is explicit; rare unplaceable
+   carryover or alignment failures remain fail-closed and are accounted for
+   rather than being described as unconditionally zero-waste or crash-free.
 
 **Sizing that follows from these:** bound `max_completed_prompt_groups` to ~2-3×
 the per-step prompt-group batch (e.g. ~384 for a 128-group batch), not thousands;

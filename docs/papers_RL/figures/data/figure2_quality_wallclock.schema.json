@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StreamWeave quality-versus-wall-clock data",
+  "type": "object",
+  "required": ["status", "metric", "series"],
+  "properties": {
+    "status": {
+      "const": "ready"
+    },
+    "metric": {
+      "type": "string"
+    },
+    "series": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": ["id", "checkpoint", "grader", "eval_n", "points"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "checkpoint": {
+            "type": "string"
+          },
+          "grader": {
+            "type": "string"
+          },
+          "eval_n": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "points": {
+            "type": "array",
+            "minItems": 8,
+            "items": {
+              "type": "object",
+              "required": ["runtime_seconds", "score"],
+              "properties": {
+                "runtime_seconds": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "score": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "notes": [
+    "Populate from raw W&B _runtime histories; do not interpolate from step summaries.",
+    "Use the same grader, decoding protocol, and evaluation multiplicity for every series.",
+    "The main-vs-RL-only curve is currently admissible once raw runtime histories are recovered.",
+    "The async-vs-sync quality curve remains blocked until the synchronous arm is rerun or fairly rescored."
+  ]
+}
