@@ -125,10 +125,10 @@ relative signal이 complete group에 의존하는 반면, fully-asynchronous run
 그림 2는 StreamWeave가 완성된 rollout group에서 학습 source와 update rule을 정하고, 이를
 fully-asynchronous pipeline에서 실행하는 전체 과정을 보여준다. 먼저 complete group의 결과에 따라
 policy rollout group이나 이에 대응하는 expert trajectory를 선택한다. 이 선택은 각 sample에 적용할
-reference policy, objective, correction rule도 함께 정한다. Execution architecture는 각 trajectory
+reference policy, objective, correction rule도 함께 정한다. Execution architecture에서는 각 trajectory
 attempt를 독립적으로 생성하고, source를 선택하기 직전에 complete group을 복원한다. 선택된 data는
-source와 생성 policy에 관한 정보와 함께 bounded queue를 거쳐 trainer로 전달된다. Source selection만
-group completion을 기다리고, 다른 trajectory의 generation과 learner update는 계속 진행된다.
+source와 생성 policy에 관한 정보와 함께 bounded queue를 거쳐 trainer로 전달된다. Source를 선택하는
+단계만 해당 group이 완성되기를 기다리고, 다른 trajectory의 generation과 learner update는 계속 진행된다.
 §3.1은 complete group을 learner update로 바꾸는 규칙을 정의하고, §3.2는 그 규칙을 global
 synchronization barrier 없이 실행하는 방법을 설명한다.
 
@@ -190,10 +190,10 @@ $g_{\mathrm{expert}}$는 expert trajectory에서 계산되는 supervised gradien
 
 **Where asynchronous correction applies.** Policy rollout에는 각 token을 생성한 behavior policy의
 확률이 기록되어 있으므로, rollout과 learner policy의 차이를 측정하고 importance weighting으로
-보정할 수 있다. Expert trajectory는 현재 policy 밖에서 주어지지만, 이 보정에 사용할 recorded
-behavior-policy probability가 없다. 따라서 expert sample은 더 오래된 rollout이 아니며, rollout용
-importance weighting을 적용할 대상도 아니다. 임의의 dummy probability를 대신 사용하면 expert
-gradient가 그 값에 따라 달라진다.
+보정할 수 있다. Expert trajectory에는 이 보정에 필요한 생성 당시의 policy probability가 기록되어
+있지 않다. 따라서 expert sample은 더 오래된 rollout이 아니며, rollout용 importance weighting을
+적용할 대상도 아니다. 임의의 dummy probability를 대신 사용하면 expert gradient가 그 값에 따라
+달라진다.
 
 현재 구현에서 policy branch는 $G_x$로부터 group-relative advantage를 계산하고 vanilla clipped
 PPO로 학습한다. PPO reference는 batch가 learner update에 들어올 때의 policy snapshot이다. Rollout을
