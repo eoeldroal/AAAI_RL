@@ -2,6 +2,11 @@
 
 _Last updated: 2026-07-10_
 
+> **Paper-use status (2026-07-22).** The current main uses vanilla clipped PPO; CISPO is a
+> rejected ablation. This file preserves the objective-family analysis and experiment
+> history, while public Method claims and terminology follow
+> `papers_RL/Full_Paper_Draft_ko.md`.
+
 Status: **방향 문서** · C2 upper-only CISPO config+loss 구현 완료(2026-07-04) · M-first ablation에서는 C2=CISPO로 채택 · 기본값은 여전히 `rollout` anchor(D0 불변)
 
 > **★실증 결과 노트 (2026-07-10, Ablation_RL.md §14 / Improvement_RL.md §5.13)★**

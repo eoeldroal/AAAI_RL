@@ -2,6 +2,11 @@
 
 _Last updated: 2026-07-10_
 
+> **Paper-use status (2026-07-22).** This file is the run and ablation ledger. Section 14
+> remains the canonical main-run record, but public claims, terminology, benchmark values,
+> and evidence status are controlled by `papers_RL/Full_Paper_Draft_ko.md`. Earlier
+> M/CISPO-first instructions are historical experiment design, not the current paper plan.
+
 Status: 설계 확정(M-앵커 2×2로 재배향, 2026-07-04) · D0 런처 반영·run 완료 · C1 decoupling / C2 CISPO config+loss+routing 구현 완료(런처/run은 별도) · A1은 config-only · 라벨 대응: 구 A5≡M−cispo, 구 A6c≡M(§3) · 2026-07-09 1차 재앵커링(§13): 격자 기준점을 M5로 이설 · **2026-07-10 2차 재앵커링(§14): C2 ablation(M5abl_nocispo)이 main을 탈환 — 신 main = decoupled+vanilla(`oki4kv8u`, 정점 40.17>LUFFY-local 39.58), CISPO는 "outcome 열위+폭풍 유발" 판정으로 격하, "구조적 폭풍 벽" 가설 반증(벽=CISPO 귀인), C1은 w-통계로 무런 폐쇄, 신규 축 H(교사 채널)=RLonly **완료**(조기절단@162 — 교사 채널 기여 후반 +3.4 실증, §14.4). 현행 격자·규율은 §14가 최우선.**
 범위: DR-001~005가 내린 **결정 요소를 D0 기준으로 하나씩 뒤집어** 각 결정의 기여를 격리하는 ablation. 결정의 근거·이론은 각 DR 소관이며, 이 문서는 그 결정들을 **실행 가능한 실험**으로 배치한다.
 관련 문서: `DR-001-loss-normalization_1.md`(집계) · `DR-002-auxiliary-terms_1.md`(aux) · `DR-003-offpolicy-supervised-branch_1.md`(SFT branch) · `DR-004-offpolicy-rl-branch_1.md`(decoupling) · `DR-005-rl-objective-composition_1.md`(결합 문법) · `Codemap_RL.md`(코드 위치)

@@ -1,6 +1,11 @@
 # Async-HPT: What This Fork Is
 
-_Last updated: 2026-07-21_
+_Last updated: 2026-07-22_
+
+> **Paper-facing status (2026-07-22).** `Async-HPT` is the implementation and run-lineage
+> name used inside this fork. The public paper method is **StreamWeave**, and its current
+> thesis, claims, terminology, and evidence are owned by
+> `papers_RL/Full_Paper_Draft_ko.md`. This document remains the codebase overview.
 
 Upstream `verl` (RL for LLMs) plus one research line: **HPT (Hybrid
 Post-Training)** as a first-class objective on the **fully-asynchronous** RL runtime
@@ -72,4 +77,6 @@ queue put, completed-budget pressure, trainer-visible sample throughput.
 - Ablation design and analysis procedure: `Ablation_RL.md`.
 - Run pathology case studies and improvements: `Improvement_RL.md`.
 - Decisions' rationale and theory: design records `DR-001` to `DR-005`.
-- Paper draft and slide generator: `papers_RL/Draft.tex`, `papers_RL/make_asynchpt_slides.py`.
+- Current paper draft: `papers_RL/Full_Paper_Draft_ko.md`.
+- Legacy implementation Appendix and slide generator: `papers_RL/Draft.tex`,
+  `papers_RL/make_asynchpt_slides.py`.

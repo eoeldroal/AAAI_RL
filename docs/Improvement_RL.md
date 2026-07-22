@@ -2,6 +2,11 @@
 
 _Last updated: 2026-07-10_
 
+> **Paper-use status (2026-07-22).** This is a historical pathology/debugging record, not
+> the current paper narrative or evidence hierarchy. Use it only for Appendix-level cost,
+> limitation, and implementation context after applying the claim boundary in
+> `papers_RL/Full_Paper_Draft_ko.md`.
+
 Status: 분석 확정(2026-07-06) · 개선 결정 P0/P1 합의 · P0+관측성 구현(§5.6) · **★M′ 런 순수-SFT 붕괴 사후분석 완료(§5.7): 근본원인=라우팅 `rm_scores[-1]` 위치버그(P0-1이 노출), 수정 적용·테스트 통과★** · 라우팅 수정 후 재시작 완료 · **★2026-07-07: P0 런(Mprime2/3) 실측 = 정직·안정하나 val ~30% 천장 · 병리 M은 신기루로 33.76+ 지속 상승 → 성능-최우선 M 궤적 회귀(resume40) · 신규 async 배치 폭발 진단·유계화 처방 · §11 진단 DP-집계 버그 수정 · **유계 leg 수집-정렬 크래시 근본수정(§5.8.6: 성장루프→trim+carryover, 낭비0·crash제거, 68 tests green)**(§5.8)★** · **★2026-07-08: 전 run dump 전수 감사(§5.9) — mirage=단일근원 확정(M2 래칫 85% 실측·D0 "길이안정"은 로깅 세대왜곡으로 철회·C1/C2 증폭기 가설 기각) · Mprime2/3=leninv였음(§5.8.1 정정) · 정직 arm 절단 45–55% 고원("하강" 관측은 윈도우 요행) · 로깅 왜곡 카탈로그+코드 4세대 지도 → **M3(=M2+P0 단일델타, β1.0 leninv, val JSONL 덤프, 500스텝 완주 서약) 결정·실행★** · **★목표 재정의(관대-val6 무조건 극대화, §5.10): 지표 이중성 발견(val6=관대 acc; M3 관대31.2/정직28.0) → 관대+CISPO 죽은칸 판정 정정(M 33.76·resume40b 34.00) → **M4 설계·구현 완료**(P0 제거·β0.3const·adv-std ON(게이트 완화+계약테스트 42passed)·큐768 staleness다이얼·packing 65536) — M3 완주 후 사용자 직접 발사★**
 범위: M run(`M_decoupled_cispo`)에서 관측된 응답길이·entropy 폭발 병리의 (1) 실험 기록, (2) 분석 방법과 결과, (3) 진단, (4) 개선 결정, (5) 재사용 가능한 분석 방법론(Best Practice). 설계 결정의 근거·이론은 DR-001~005 소관이며 여기서 재서술하지 않는다.
 관련 문서: `Ablation_RL.md`(격자 설계 — 이 문서의 개선이 공통 기반을 바꾸므로 §5.4 참조) · `DR-002`(entropy 결정 — 본 문서가 개정 사유 제공) · `DR-003`(§5 drift-pacing — 본 문서 §4.2가 사전 관문 측정치에 해당)

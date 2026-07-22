@@ -1,6 +1,6 @@
 # RL Code Map
 
-_Last updated: 2026-07-21_
+_Last updated: 2026-07-22_
 
 Navigation and debugging map for this async-HPT `verl` fork. Use it to find
 where code lives, how a rollout sample becomes a learner update, and — when a
@@ -9,6 +9,8 @@ run breaks — which file/symbol to open first.
 Companion docs (single source of truth, do not duplicate them here):
 
 - `../AGENTS.md` — durable rules and contracts (what you may/may not change).
+- `papers_RL/Full_Paper_Draft_ko.md` — current paper thesis, terminology, claim boundaries,
+  and evidence ledger.
 - `Overview_RL.md` — what this fork is and why (identity, guarantees).
 - `Readme_RL.md` — environment setup, launching, and log triage.
 - `AsyncBudget_RL.md` — queue/staleness/HPT-routing budget sizing.
@@ -173,7 +175,9 @@ aligned batch and defers the residue (< one multiple) to the next step via
 
 - **Route** (`hpt_gate.py`): `route_to_sft = success_prob <= gamma and not missing_tau`,
   where `success_prob` = fraction of a group's rollouts scoring `> success_threshold`.
-  Failing prompts with an expert answer -> supervised; the rest stay on-policy RL.
+  Failing prompts with an expert answer -> supervised; the generic fallback is RL when tau is
+  absent. The current paper main sets `fail_on_missing_tau=True`, so a prompt selected for expert
+  supervision without a matched tau raises instead of taking that fallback.
 - **tau** = expert trajectory keyed by `prompt_uid`, column `tau_messages`
   (`hpt_payload.HptTauStore` / `HptSftPayload` / `HptTauToAgentLoopOutputAdapter`).
 - **Deferred materialization**: RL and SFT routes converge through the same

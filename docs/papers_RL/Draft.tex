@@ -1,3 +1,8 @@
+% PAPER STATUS (2026-07-22): legacy implementation/Appendix source.
+% The public method name, thesis, claims, and main-run evidence are owned by
+% Full_Paper_Draft_ko.md. "Async-HPT" and the computer-use framing below record
+% an earlier implementation narrative and must not be copied into the main paper verbatim.
+
 Appendix A. Async-HPT: 비동기 experience stream 위의 의미 보존형 Hybrid Post-Training
 
 Async-HPT는 computer-use agent의 post-training을 하나의 비동기 experience stream으로 본다. Rollouter는 환경과 상호작용하며 prompt 단위의 experience를 생성하고, trainer는 이 experience를 받아 policy를 갱신한다. 이 stream은 두 개의 설계 축 위에서 움직인다. 하나는 학습을 효율적으로 진행하기 위한 실행의 축이고, 다른 하나는 유효한 학습 신호를 확보하기 위한 estimator의 축이다. Async-HPT는 두 축을 각각 다룬 뒤 둘을 하나의 learner 안에서 정합적으로 결합한다.
