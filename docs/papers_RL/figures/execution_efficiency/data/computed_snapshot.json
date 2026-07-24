@@ -1,0 +1,613 @@
+{
+  "schema_version": 1,
+  "manifest": "manifest.json",
+  "headline": {
+    "sync": {
+      "run_alias": "sync",
+      "run_id": "v96fvd0p",
+      "cycles": 104,
+      "groups": 13312.0,
+      "training_time_s": 4780.190194002353,
+      "throughput_groups_per_s": 2.784826431530362,
+      "seconds_per_128_groups": 45.96336725002262,
+      "relative_throughput": 1.0
+    },
+    "streamweave": {
+      "run_alias": "streamweave",
+      "run_id": "oki4kv8u",
+      "cycles": 190,
+      "groups": 86174.0,
+      "training_time_s": 18828.415748043917,
+      "throughput_groups_per_s": 4.5768056725087245,
+      "seconds_per_128_groups": 27.967103949562762,
+      "relative_throughput": 1.64347968716801
+    },
+    "throughput_ratio": 1.64347968716801
+  },
+  "critical_path": {
+    "sync_generation_time_s": 2613.778943790123,
+    "sync_generation_share": 0.5467939219384199,
+    "sync_generation_seconds_per_128_groups": 25.132489844135797,
+    "streamweave_total_seconds_per_128_groups": 27.967103949562762,
+    "difference_from_sync_generation_only_s": 2.834614105426965
+  },
+  "equal_work": {
+    "sync": {
+      "groups": 13312.0,
+      "time_s": 4780.190194002353,
+      "throughput_groups_per_s": 2.784826431530362,
+      "relative_to_sync": 1.0
+    },
+    "streamweave_first": {
+      "groups": 13312.0,
+      "time_s": 2856.269605503472,
+      "throughput_groups_per_s": 4.660624464283898,
+      "relative_to_sync": 1.6735780770806308
+    },
+    "streamweave_last": {
+      "groups": 13312.0,
+      "time_s": 2715.9558097717695,
+      "throughput_groups_per_s": 4.9014052261471255,
+      "relative_to_sync": 1.7600397535201602
+    }
+  },
+  "block_stability": [
+    {
+      "groups": 13312.0,
+      "time_s": 2856.269605503472,
+      "throughput_groups_per_s": 4.660624464283898,
+      "run_alias": "streamweave",
+      "block_index": 1,
+      "block_size_groups": 13312,
+      "relative_to_sync": 1.6735780770806308
+    },
+    {
+      "groups": 13312.0,
+      "time_s": 2848.9250659968548,
+      "throughput_groups_per_s": 4.672639571635085,
+      "run_alias": "streamweave",
+      "block_index": 2,
+      "block_size_groups": 13312,
+      "relative_to_sync": 1.6778925676410297
+    },
+    {
+      "groups": 13312.0,
+      "time_s": 3820.899201932862,
+      "throughput_groups_per_s": 3.483996644890793,
+      "run_alias": "streamweave",
+      "block_index": 3,
+      "block_size_groups": 13312,
+      "relative_to_sync": 1.251064197554392
+    },
+    {
+      "groups": 13312.0,
+      "time_s": 2745.816166354017,
+      "throughput_groups_per_s": 4.84810314802542,
+      "run_alias": "streamweave",
+      "block_index": 4,
+      "block_size_groups": 13312,
+      "relative_to_sync": 1.7408995738959623
+    },
+    {
+      "groups": 13312.0,
+      "time_s": 2579.5376445049915,
+      "throughput_groups_per_s": 5.160614743637342,
+      "run_alias": "streamweave",
+      "block_index": 5,
+      "block_size_groups": 13312,
+      "relative_to_sync": 1.85311898982566
+    },
+    {
+      "groups": 13312.0,
+      "time_s": 2674.742121612548,
+      "throughput_groups_per_s": 4.976928389632741,
+      "run_alias": "streamweave",
+      "block_index": 6,
+      "block_size_groups": 13312,
+      "relative_to_sync": 1.7871592761699482
+    }
+  ],
+  "gpu_activity": {
+    "metric": "count of GPUs with system.gpu.<i>.smActive above threshold",
+    "sample_interval_seconds": 15,
+    "interval_definition": "[history._timestamp - timing_s/step, history._timestamp], excluding cycles with a validation timer",
+    "training_cycles": {
+      "sync": 94,
+      "streamweave": 152
+    },
+    "excluded_validation_cycles": {
+      "sync": 10,
+      "streamweave": 38
+    },
+    "figure_threshold_percent": 20,
+    "runs": {
+      "sync": {
+        "threshold_percent": 20,
+        "samples": 287,
+        "zero_active_share": 0.2787456445993031,
+        "mean_active_gpus": 5.400696864111498,
+        "histogram": [
+          {
+            "active_gpu_count": 0,
+            "samples": 80,
+            "share": 0.2787456445993031
+          },
+          {
+            "active_gpu_count": 1,
+            "samples": 6,
+            "share": 0.020905923344947737
+          },
+          {
+            "active_gpu_count": 2,
+            "samples": 4,
+            "share": 0.013937282229965157
+          },
+          {
+            "active_gpu_count": 3,
+            "samples": 2,
+            "share": 0.006968641114982578
+          },
+          {
+            "active_gpu_count": 4,
+            "samples": 3,
+            "share": 0.010452961672473868
+          },
+          {
+            "active_gpu_count": 5,
+            "samples": 2,
+            "share": 0.006968641114982578
+          },
+          {
+            "active_gpu_count": 6,
+            "samples": 2,
+            "share": 0.006968641114982578
+          },
+          {
+            "active_gpu_count": 7,
+            "samples": 8,
+            "share": 0.027874564459930314
+          },
+          {
+            "active_gpu_count": 8,
+            "samples": 180,
+            "share": 0.627177700348432
+          }
+        ]
+      },
+      "streamweave": {
+        "threshold_percent": 20,
+        "samples": 974,
+        "zero_active_share": 0.04722792607802875,
+        "mean_active_gpus": 6.922997946611909,
+        "histogram": [
+          {
+            "active_gpu_count": 0,
+            "samples": 46,
+            "share": 0.04722792607802875
+          },
+          {
+            "active_gpu_count": 1,
+            "samples": 11,
+            "share": 0.011293634496919919
+          },
+          {
+            "active_gpu_count": 2,
+            "samples": 21,
+            "share": 0.021560574948665298
+          },
+          {
+            "active_gpu_count": 3,
+            "samples": 13,
+            "share": 0.013347022587268994
+          },
+          {
+            "active_gpu_count": 4,
+            "samples": 13,
+            "share": 0.013347022587268994
+          },
+          {
+            "active_gpu_count": 5,
+            "samples": 20,
+            "share": 0.02053388090349076
+          },
+          {
+            "active_gpu_count": 6,
+            "samples": 123,
+            "share": 0.12628336755646818
+          },
+          {
+            "active_gpu_count": 7,
+            "samples": 55,
+            "share": 0.05646817248459959
+          },
+          {
+            "active_gpu_count": 8,
+            "samples": 672,
+            "share": 0.6899383983572895
+          }
+        ]
+      }
+    },
+    "startup_excluded": {
+      "sync": {
+        "threshold_percent": 20,
+        "samples": 273,
+        "zero_active_share": 0.2490842490842491,
+        "mean_active_gpus": 5.626373626373627,
+        "histogram": [
+          {
+            "active_gpu_count": 0,
+            "samples": 68,
+            "share": 0.2490842490842491
+          },
+          {
+            "active_gpu_count": 1,
+            "samples": 6,
+            "share": 0.02197802197802198
+          },
+          {
+            "active_gpu_count": 2,
+            "samples": 4,
+            "share": 0.014652014652014652
+          },
+          {
+            "active_gpu_count": 3,
+            "samples": 2,
+            "share": 0.007326007326007326
+          },
+          {
+            "active_gpu_count": 4,
+            "samples": 3,
+            "share": 0.01098901098901099
+          },
+          {
+            "active_gpu_count": 5,
+            "samples": 2,
+            "share": 0.007326007326007326
+          },
+          {
+            "active_gpu_count": 6,
+            "samples": 1,
+            "share": 0.003663003663003663
+          },
+          {
+            "active_gpu_count": 7,
+            "samples": 8,
+            "share": 0.029304029304029304
+          },
+          {
+            "active_gpu_count": 8,
+            "samples": 179,
+            "share": 0.6556776556776557
+          }
+        ]
+      },
+      "streamweave": {
+        "threshold_percent": 20,
+        "samples": 970,
+        "zero_active_share": 0.04742268041237113,
+        "mean_active_gpus": 6.9268041237113405,
+        "histogram": [
+          {
+            "active_gpu_count": 0,
+            "samples": 46,
+            "share": 0.04742268041237113
+          },
+          {
+            "active_gpu_count": 1,
+            "samples": 11,
+            "share": 0.01134020618556701
+          },
+          {
+            "active_gpu_count": 2,
+            "samples": 21,
+            "share": 0.021649484536082474
+          },
+          {
+            "active_gpu_count": 3,
+            "samples": 13,
+            "share": 0.013402061855670102
+          },
+          {
+            "active_gpu_count": 4,
+            "samples": 13,
+            "share": 0.013402061855670102
+          },
+          {
+            "active_gpu_count": 5,
+            "samples": 20,
+            "share": 0.020618556701030927
+          },
+          {
+            "active_gpu_count": 6,
+            "samples": 119,
+            "share": 0.12268041237113401
+          },
+          {
+            "active_gpu_count": 7,
+            "samples": 55,
+            "share": 0.05670103092783505
+          },
+          {
+            "active_gpu_count": 8,
+            "samples": 672,
+            "share": 0.6927835051546392
+          }
+        ]
+      }
+    },
+    "equal_non_validation_work": {
+      "budget_groups": 12032.0,
+      "sync_full": {
+        "threshold_percent": 20,
+        "samples": 287,
+        "zero_active_share": 0.2787456445993031,
+        "mean_active_gpus": 5.400696864111498,
+        "histogram": [
+          {
+            "active_gpu_count": 0,
+            "samples": 80,
+            "share": 0.2787456445993031
+          },
+          {
+            "active_gpu_count": 1,
+            "samples": 6,
+            "share": 0.020905923344947737
+          },
+          {
+            "active_gpu_count": 2,
+            "samples": 4,
+            "share": 0.013937282229965157
+          },
+          {
+            "active_gpu_count": 3,
+            "samples": 2,
+            "share": 0.006968641114982578
+          },
+          {
+            "active_gpu_count": 4,
+            "samples": 3,
+            "share": 0.010452961672473868
+          },
+          {
+            "active_gpu_count": 5,
+            "samples": 2,
+            "share": 0.006968641114982578
+          },
+          {
+            "active_gpu_count": 6,
+            "samples": 2,
+            "share": 0.006968641114982578
+          },
+          {
+            "active_gpu_count": 7,
+            "samples": 8,
+            "share": 0.027874564459930314
+          },
+          {
+            "active_gpu_count": 8,
+            "samples": 180,
+            "share": 0.627177700348432
+          }
+        ]
+      },
+      "streamweave_first": {
+        "threshold_percent": 20,
+        "samples": 171,
+        "zero_active_share": 0.03508771929824561,
+        "mean_active_gpus": 7.146198830409356,
+        "histogram": [
+          {
+            "active_gpu_count": 0,
+            "samples": 6,
+            "share": 0.03508771929824561
+          },
+          {
+            "active_gpu_count": 1,
+            "samples": 2,
+            "share": 0.011695906432748537
+          },
+          {
+            "active_gpu_count": 2,
+            "samples": 3,
+            "share": 0.017543859649122806
+          },
+          {
+            "active_gpu_count": 3,
+            "samples": 0,
+            "share": 0.0
+          },
+          {
+            "active_gpu_count": 4,
+            "samples": 1,
+            "share": 0.005847953216374269
+          },
+          {
+            "active_gpu_count": 5,
+            "samples": 0,
+            "share": 0.0
+          },
+          {
+            "active_gpu_count": 6,
+            "samples": 30,
+            "share": 0.17543859649122806
+          },
+          {
+            "active_gpu_count": 7,
+            "samples": 2,
+            "share": 0.011695906432748537
+          },
+          {
+            "active_gpu_count": 8,
+            "samples": 127,
+            "share": 0.7426900584795322
+          }
+        ]
+      },
+      "streamweave_last": {
+        "threshold_percent": 20,
+        "samples": 160,
+        "zero_active_share": 0.03125,
+        "mean_active_gpus": 6.93125,
+        "histogram": [
+          {
+            "active_gpu_count": 0,
+            "samples": 5,
+            "share": 0.03125
+          },
+          {
+            "active_gpu_count": 1,
+            "samples": 2,
+            "share": 0.0125
+          },
+          {
+            "active_gpu_count": 2,
+            "samples": 4,
+            "share": 0.025
+          },
+          {
+            "active_gpu_count": 3,
+            "samples": 5,
+            "share": 0.03125
+          },
+          {
+            "active_gpu_count": 4,
+            "samples": 2,
+            "share": 0.0125
+          },
+          {
+            "active_gpu_count": 5,
+            "samples": 4,
+            "share": 0.025
+          },
+          {
+            "active_gpu_count": 6,
+            "samples": 16,
+            "share": 0.1
+          },
+          {
+            "active_gpu_count": 7,
+            "samples": 16,
+            "share": 0.1
+          },
+          {
+            "active_gpu_count": 8,
+            "samples": 106,
+            "share": 0.6625
+          }
+        ]
+      }
+    },
+    "threshold_sensitivity": [
+      {
+        "threshold_percent": 10,
+        "sync_zero_active_share": 0.26480836236933797,
+        "streamweave_zero_active_share": 0.044147843942505136,
+        "sync_mean_active_gpus": 5.466898954703833,
+        "streamweave_mean_active_gpus": 6.952772073921971
+      },
+      {
+        "threshold_percent": 20,
+        "sync_zero_active_share": 0.2787456445993031,
+        "streamweave_zero_active_share": 0.04722792607802875,
+        "sync_mean_active_gpus": 5.400696864111498,
+        "streamweave_mean_active_gpus": 6.922997946611909
+      },
+      {
+        "threshold_percent": 30,
+        "sync_zero_active_share": 0.289198606271777,
+        "streamweave_zero_active_share": 0.053388090349075976,
+        "sync_mean_active_gpus": 5.355400696864112,
+        "streamweave_mean_active_gpus": 6.87782340862423
+      },
+      {
+        "threshold_percent": 40,
+        "sync_zero_active_share": 0.289198606271777,
+        "streamweave_zero_active_share": 0.054414784394250515,
+        "sync_mean_active_gpus": 5.2543554006968645,
+        "streamweave_mean_active_gpus": 6.850102669404517
+      },
+      {
+        "threshold_percent": 50,
+        "sync_zero_active_share": 0.29965156794425085,
+        "streamweave_zero_active_share": 0.058521560574948665,
+        "sync_mean_active_gpus": 5.020905923344948,
+        "streamweave_mean_active_gpus": 6.795687885010267
+      }
+    ]
+  },
+  "gpu_energy": {
+    "metric": "sample-based eight-GPU energy estimate per consumed prompt group",
+    "sample_interval_seconds": 15,
+    "population": "fully observed non-validation training cycles",
+    "estimator": "cycle mean of total gpu power multiplied by cycle training duration, divided by consumed prompt groups",
+    "runs": {
+      "sync": {
+        "cycles": 94,
+        "telemetry_samples": 287,
+        "groups": 12032.0,
+        "training_time_s": 4333.087746166624,
+        "pooled_mean_power_watts": 4165.004724738676,
+        "pooled_energy_per_group_joules": 1499.9443929098445,
+        "cycle_weighted_energy_per_group_joules": 1503.6399071476667,
+        "edge_trimmed_energy_per_group_joules": 1408.3004343119621,
+        "startup_excluded_energy_per_group_joules": 1480.736716414634,
+        "groups_per_kwh_cycle_weighted": 2394.1902465391654
+      },
+      "streamweave": {
+        "cycles": 152,
+        "telemetry_samples": 974,
+        "groups": 68963.0,
+        "training_time_s": 14908.5891810311,
+        "pooled_mean_power_watts": 4941.40120020534,
+        "pooled_energy_per_group_joules": 1068.2441377625019,
+        "cycle_weighted_energy_per_group_joules": 1066.1426732183534,
+        "edge_trimmed_energy_per_group_joules": 1076.905316768876,
+        "startup_excluded_energy_per_group_joules": 1066.1765362019141,
+        "groups_per_kwh_cycle_weighted": 3376.6587628771285
+      }
+    },
+    "validation_shifted_full_coverage": {
+      "sync": {
+        "cycles": 104,
+        "telemetry_samples": 318,
+        "groups": 13312.0,
+        "validation_shifted_energy_per_group_joules": 1511.4788971815397
+      },
+      "streamweave": {
+        "cycles": 190,
+        "telemetry_samples": 1235,
+        "groups": 86174.0,
+        "validation_shifted_energy_per_group_joules": 1073.45363976873
+      }
+    },
+    "relative_reduction": {
+      "pooled_energy_per_group_joules": 0.2878108396471004,
+      "cycle_weighted_energy_per_group_joules": 0.2909587806559516,
+      "edge_trimmed_energy_per_group_joules": 0.2353156396667535,
+      "startup_excluded_energy_per_group_joules": 0.2799688665899436
+    },
+    "validation_shifted_full_coverage_reduction": 0.2897991220582682,
+    "equal_non_validation_work": {
+      "budget_groups": 12032.0,
+      "sync_full": {
+        "groups": 12032.0,
+        "energy_per_group_joules": 1503.6399071476671
+      },
+      "streamweave_first": {
+        "groups": 12032.0,
+        "energy_per_group_joules": 1086.0433309716307,
+        "relative_reduction": 0.2777237915746711
+      },
+      "streamweave_last": {
+        "groups": 12032.0,
+        "energy_per_group_joules": 1000.9764863540232,
+        "relative_reduction": 0.33429773871004287
+      }
+    },
+    "reduction_range": [
+      0.2353156396667535,
+      0.2909587806559516
+    ]
+  }
+}

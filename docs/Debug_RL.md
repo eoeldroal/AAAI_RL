@@ -2,6 +2,9 @@
 
 _Last updated: 2026-07-10_
 
+> **REFERENCE ONLY — debugging.** 이 문서는 코드 진단과 성능 프로파일링의 운영 기록이다.
+> 관측된 병리나 임시 처방을 현재 논문의 문제 정의·기여로 직접 사용하지 않는다.
+
 How we keep this fork's code clean and diagnose performance in the async
 RL + HPT stack. This is not a replacement for upstream tool docs (`ruff`,
 `py-spy`, `line_profiler`, `pyinstrument`) — it records the project- and

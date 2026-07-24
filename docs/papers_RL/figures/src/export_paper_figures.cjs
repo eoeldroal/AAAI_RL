@@ -4,12 +4,12 @@ const { pathToFileURL } = require('url');
 const { chromium } = require('playwright');
 
 const figureDir = path.resolve(__dirname, '..');
-const availableFigures = [
-  'figure1_streamweave_overview',
-  'figure2_training_pipeline',
-  'figure2_learning_effect',
-  'figure3_execution_efficiency'
-];
+const figurePaths = {
+  figure1_streamweave_overview: 'figure1_streamweave_overview',
+  figure2_training_pipeline: 'figure2_training_pipeline',
+  figure2_learning_effect: 'figure2_learning_effect'
+};
+const availableFigures = Object.keys(figurePaths);
 const requested = new Set(process.argv.slice(2).map((file) => path.basename(file, path.extname(file))));
 const figures = requested.size === 0
   ? availableFigures
@@ -39,17 +39,18 @@ function dimensions(svgPath) {
   const page = await context.newPage();
   try {
     for (const figure of figures) {
-      const svgPath = path.join(figureDir, `${figure}.svg`);
+      const outputBase = path.join(figureDir, figurePaths[figure]);
+      const svgPath = `${outputBase}.svg`;
       const { width, height } = dimensions(svgPath);
       await page.setViewportSize({ width, height });
       await page.goto(pathToFileURL(svgPath).href, { waitUntil: 'load' });
       await page.screenshot({
-        path: path.join(figureDir, `${figure}.png`),
+        path: `${outputBase}.png`,
         clip: { x: 0, y: 0, width, height },
         omitBackground: false
       });
       await page.pdf({
-        path: path.join(figureDir, `${figure}.pdf`),
+        path: `${outputBase}.pdf`,
         width: `${width}px`,
         height: `${height}px`,
         printBackground: true,

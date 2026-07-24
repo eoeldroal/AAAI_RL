@@ -1,0 +1,5 @@
+population,sync_samples,streamweave_samples,sync_zero_active_share_percent,streamweave_zero_active_share_percent,sync_mean_active_gpus,streamweave_mean_active_gpus
+all_non_validation_training_intervals,287,974,27.874564,4.722793,5.400697,6.922998
+first_training_cycle_excluded,273,970,24.908425,4.742268,5.626374,6.926804
+equal_non_validation_work_first,287,171,27.874564,3.508772,5.400697,7.146199
+equal_non_validation_work_last,287,160,27.874564,3.125000,5.400697,6.931250

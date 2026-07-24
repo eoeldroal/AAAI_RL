@@ -1,0 +1,3 @@
+run_alias,run_id,cycles,groups,training_time_s,throughput_groups_per_s,seconds_per_128_groups,relative_throughput
+sync,v96fvd0p,104,13312,4780.190194,2.784826,45.963367,1.000000
+streamweave,oki4kv8u,190,86174,18828.415748,4.576806,27.967104,1.643480

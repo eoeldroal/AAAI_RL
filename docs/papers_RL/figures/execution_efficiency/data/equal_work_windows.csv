@@ -1,0 +1,4 @@
+run_alias,window,budget_groups,time_s,throughput_groups_per_s,relative_to_sync,boundary_allocation
+sync,full,13312,4780.190194,2.784826,1.000000,exact
+streamweave,first,13312,2856.269606,4.660624,1.673578,linear_in_group_fraction
+streamweave,last,13312,2715.955810,4.901405,1.760040,linear_in_group_fraction

@@ -1,0 +1,255 @@
+{
+  "schema_version": 2,
+  "verified_at": "2026-07-24",
+  "source": "Logged-in W&B full-history API analysis; no UI downsampling.",
+  "headline": {
+    "sync": {
+      "run_id": "v96fvd0p",
+      "cycles": 104,
+      "groups": 13312,
+      "training_time_s": 4780.190194,
+      "throughput_groups_per_s": 2.784826,
+      "seconds_per_128_groups": 45.963367
+    },
+    "streamweave": {
+      "run_id": "oki4kv8u",
+      "cycles": 190,
+      "groups": 86174,
+      "training_time_s": 18828.415748,
+      "throughput_groups_per_s": 4.576806,
+      "seconds_per_128_groups": 27.967104
+    },
+    "throughput_ratio": 1.64348,
+    "public_rounding": {
+      "sync_groups_per_s": 2.78,
+      "streamweave_groups_per_s": 4.58,
+      "sync_seconds_per_128_groups": 46.0,
+      "streamweave_seconds_per_128_groups": 28.0,
+      "throughput_ratio": 1.64
+    }
+  },
+  "critical_path": {
+    "sync_generation_time_s": 2613.778944,
+    "sync_generation_share": 0.546794,
+    "sync_generation_seconds_per_128_groups": 25.13249,
+    "streamweave_total_seconds_per_128_groups": 27.967104,
+    "difference_from_sync_generation_only_s": 2.834614,
+    "interpretation": "StreamWeave combines generation-training overlap with higher effective rollout capacity under attempt-level scheduling.",
+    "resource_normalized_consistency_check": {
+      "sync_effective_groups_per_gpu_s": 0.636626,
+      "streamweave_required_groups_per_rollout_gpu_s_lower_bound": 0.762801,
+      "effective_rate_ratio_lower_bound": 1.198193,
+      "same_rate_streamweave_generation_time_s": 33.509987,
+      "queue_cap_corrected_rate_ratio_lower_bound": 1.192854,
+      "interpretation": "Overlap alone does not close the critical-path arithmetic; the observed result is consistent with recovering rollout-side capacity otherwise lost to complete-group tail waiting.",
+      "scope_warning": "This is a derived consistency check, not a token-normalized causal decomposition or an independent speedup result."
+    },
+    "incompatible_metric": {
+      "name": "streamweave_learner_acquisition_and_assembly_share_startup_excluded",
+      "value": 0.032478,
+      "full_history_value": 0.033717,
+      "warning": "Do not subtract this from synchronous generation share or label the pair as a stall reduction."
+    }
+  },
+  "equal_work": {
+    "budget_groups": 13312,
+    "sync": {
+      "window": "full",
+      "time_s": 4780.190194,
+      "throughput_groups_per_s": 2.784826,
+      "relative_throughput": 1.0
+    },
+    "streamweave_first": {
+      "time_s": 2856.2696,
+      "throughput_groups_per_s": 4.660624,
+      "relative_throughput": 1.67358
+    },
+    "streamweave_last": {
+      "time_s": 2715.956,
+      "throughput_groups_per_s": 4.9014,
+      "relative_throughput": 1.76
+    },
+    "boundary_cycle_allocation": "linear_in_group_fraction"
+  },
+  "block_stability": {
+    "block_size_groups": 13312,
+    "streamweave_full_block_throughputs": [
+      4.66,
+      4.67,
+      3.48,
+      4.85,
+      5.16,
+      4.98
+    ],
+    "slowest_block_relative_to_sync": 1.25,
+    "role": "Appendix robustness only"
+  },
+  "robustness": {
+    "both_first_cycles_excluded_ratio": 1.5874,
+    "known_transients_excluded_ratio": 1.648,
+    "streamweave_last_quarter_groups_per_s": 4.95,
+    "role": "Appendix robustness only"
+  },
+  "boundedness_and_cost": {
+    "parameter_sync_s": {
+      "median": 2.15,
+      "p95": 2.79,
+      "known_transients_s": [
+        46,
+        104,
+        200
+      ],
+      "headline_includes_transients": true
+    },
+    "queue": {
+      "cap_groups": 384,
+      "post_startup_collection_boundary_occupancy_percent": {
+        "range": [
+          58,
+          75
+        ],
+        "median": 70
+      },
+      "scope_warning": "Observed at collection boundaries, not a claim about every instant."
+    },
+    "carryover_discarded_groups": 0,
+    "carryover_warning": "Does not imply zero producer-side drops or universal zero-waste.",
+    "partial_rollouts": {
+      "total": 11731,
+      "median_fraction": 0.0119,
+      "p95_fraction": 0.0849,
+      "max_version_span": 1
+    }
+  },
+  "source_mix": {
+    "sync_rl_group_fraction": 0.524,
+    "streamweave_rl_group_fraction": 0.773,
+    "sync_rows_per_group": 4.67,
+    "streamweave_rows_per_group": 6.41,
+    "interpretation": "The speedup is not explained by a larger fraction of singleton expert rows.",
+    "scope_warning": "Protocols differ; use as directional Appendix evidence, not a normalized fairness proof."
+  },
+  "gpu_telemetry": {
+    "sync_training_interval_gpu_busy": 0.655,
+    "streamweave_training_interval_gpu_busy": 0.846,
+    "trainer_and_rollouter_both_above_50_percent_fraction": 0.763,
+    "active_gpu_distribution": {
+      "metric": "number of GPUs with system.gpu.<i>.smActive > 20%",
+      "sampling_interval_seconds": 15,
+      "population": "complete eight-GPU telemetry rows inside non-validation timing_s/step intervals",
+      "sync": {
+        "training_cycles": 94,
+        "samples": 287,
+        "histogram_samples_for_0_to_8_active_gpus": [
+          80,
+          6,
+          4,
+          2,
+          3,
+          2,
+          2,
+          8,
+          180
+        ],
+        "zero_active_share": 0.2787456445993031,
+        "mean_active_gpus": 5.400696864111498
+      },
+      "streamweave": {
+        "training_cycles": 152,
+        "samples": 974,
+        "histogram_samples_for_0_to_8_active_gpus": [
+          46,
+          11,
+          21,
+          13,
+          13,
+          20,
+          123,
+          55,
+          672
+        ],
+        "zero_active_share": 0.04722792607802875,
+        "mean_active_gpus": 6.922997946611909
+      },
+      "threshold_sensitivity": {
+        "thresholds_percent": [
+          10,
+          20,
+          30,
+          40,
+          50
+        ],
+        "sync_zero_active_share_range": [
+          0.26480836236933797,
+          0.29965156794425084
+        ],
+        "streamweave_zero_active_share_range": [
+          0.04414784394250513,
+          0.05852156057494867
+        ],
+        "sync_mean_active_gpus_range": [
+          5.020905923344948,
+          5.466898954703833
+        ],
+        "streamweave_mean_active_gpus_range": [
+          6.795687885010267,
+          6.952772073921971
+        ]
+      },
+      "first_training_cycle_excluded": {
+        "sync": {
+          "samples": 273,
+          "zero_active_share": 0.2490842490842491,
+          "mean_active_gpus": 5.626373626373627
+        },
+        "streamweave": {
+          "samples": 970,
+          "zero_active_share": 0.04742268041237113,
+          "mean_active_gpus": 6.9268041237113405
+        },
+        "interpretation": "The distribution shift is not driven by the long synchronous startup cycle."
+      },
+      "allowed_interpretation": "StreamWeave shifts training telemetry away from globally low SM activity and toward more concurrent GPU work.",
+      "scope_warning": "This is utilization-signature evidence. It is not an iid significance test, an exact idle/stall metric, or a causal decomposition of the 1.64x throughput."
+    },
+    "estimated_energy_per_prompt_group": {
+      "metric": "Sample-based estimate of eight-GPU energy per consumed prompt group.",
+      "sampling_interval_seconds": 15,
+      "population": "Complete power-telemetry rows inside fully observed non-validation training cycles.",
+      "sync": {
+        "cycles": 94,
+        "telemetry_samples": 287,
+        "cycle_weighted_energy_per_group_joules": 1503.6399071476667,
+        "pooled_energy_per_group_joules": 1499.9443929098445,
+        "edge_trimmed_energy_per_group_joules": 1408.3004343119621,
+        "startup_excluded_energy_per_group_joules": 1480.7367164723498,
+        "validation_shifted_full_coverage_energy_per_group_joules": 1511.4788971815399
+      },
+      "streamweave": {
+        "cycles": 152,
+        "telemetry_samples": 974,
+        "cycle_weighted_energy_per_group_joules": 1066.1426732183534,
+        "pooled_energy_per_group_joules": 1068.2441377625019,
+        "edge_trimmed_energy_per_group_joules": 1076.905316768876,
+        "startup_excluded_energy_per_group_joules": 1066.176536199936,
+        "validation_shifted_full_coverage_energy_per_group_joules": 1073.45363976873
+      },
+      "relative_reduction_range": [
+        0.2353156396667535,
+        0.2909587806559516
+      ],
+      "allowed_interpretation": "StreamWeave converts higher observed GPU activity into enough additional prompt-group work to reduce estimated GPU energy per consumed group by approximately 24--29%.",
+      "scope_warning": "This is not node-total energy, token-normalized energy, an external power-meter reading, or an architecture-isolated causal energy saving."
+    },
+    "role": "The active-GPU distribution and work-normalized GPU-energy estimate are main-text mechanism/payoff candidates; aggregate busy and role-concurrency diagnostics remain Appendix-only."
+  },
+  "retired_metrics": [
+    "former CISPO-arm 1.54x",
+    "54% to 4.6% trainer idle",
+    "70% tail wait",
+    "82% rollouter utilization",
+    "MFU headline",
+    "response-length-conditioned 41% increase",
+    "54.7% to 3.25% stall removal"
+  ]
+}

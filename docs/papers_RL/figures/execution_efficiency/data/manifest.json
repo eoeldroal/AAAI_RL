@@ -1,0 +1,146 @@
+{
+  "schema_version": 3,
+  "snapshot_date": "2026-07-24",
+  "entity": "eoeldroal-sogang-university",
+  "project": "async-hpt-openr1",
+  "run_urls": {
+    "sync": "https://wandb.ai/eoeldroal-sogang-university/async-hpt-openr1/runs/v96fvd0p",
+    "streamweave": "https://wandb.ai/eoeldroal-sogang-university/async-hpt-openr1/runs/oki4kv8u"
+  },
+  "work_unit": {
+    "name": "prompt_group",
+    "headline_equivalent_groups": 128,
+    "definition": "A unique consumed prompt group, deduplicated by group_uid before source-dependent row expansion.",
+    "estimator": "sum(groups) / sum(non_evaluation_training_loop_seconds)"
+  },
+  "runs": {
+    "sync": {
+      "run_id": "v96fvd0p",
+      "role": "synchronous_counterpart",
+      "expected_cycles": 104,
+      "expected_system_rows": 897,
+      "expected_complete_power_rows": 447,
+      "metric_keys": {
+        "groups": "hpt/onpolicy_num_groups",
+        "training_time_s": "timing_s/step",
+        "generation_or_interface_time_s": "timing_s/gen",
+        "parameter_sync_time_s": "timing_s/update_weights",
+        "rl_groups": "hpt/num_rl_groups",
+        "expert_groups": "hpt/num_sft",
+        "validation_time_s": "timing_s/testing"
+      }
+    },
+    "streamweave": {
+      "run_id": "oki4kv8u",
+      "role": "fully_asynchronous_main",
+      "expected_cycles": 190,
+      "expected_system_rows": 3475,
+      "expected_complete_power_rows": 1729,
+      "metric_keys": {
+        "groups": "hpt/onpolicy_num_groups",
+        "training_time_s": "timing_s/step",
+        "generation_or_interface_time_s": "timing_s/gen",
+        "parameter_sync_time_s": "timing_s/param_sync",
+        "rl_groups": "hpt/num_rl_groups",
+        "expert_groups": "hpt/num_sft",
+        "carryover_discarded_groups": "fully_async/hpt_carryover_discarded_groups",
+        "queue_size": "fully_async/mq_len",
+        "partial_rollouts": "fully_async/partial/total_partial_num",
+        "validation_time_s": "rollouter/validate_time"
+      }
+    }
+  },
+  "metric_semantics": {
+    "sync.timing_s/gen": "Inline rollout generation inside the synchronous serialized training loop.",
+    "streamweave.timing_s/gen": "Learner-side queue acquisition, deserialization, materialization, alignment, and assembly. It is not the same low-level operation as synchronous generation.",
+    "timing_s/step": "Non-evaluation training-loop wall-clock time logged for the cycle.",
+    "hpt/onpolicy_num_groups": "Unique prompt groups consumed by the learner in the cycle.",
+    "system.gpu.<i>.smActive": "W&B 15-second system telemetry. Figure 3 counts how many of the eight GPUs exceed the declared SM-activity threshold in each selected training interval.",
+    "system.gpu.<i>.powerWatts": "W&B 15-second device-power telemetry in watts. The energy estimate sums all eight GPUs and normalizes by consumed prompt groups.",
+    "gpu_activity_population": "System rows with all eight SM-active values that fall inside [history timestamp - timing_s/step, history timestamp] for cycles without a validation timer.",
+    "gpu_energy_population": "System rows with all eight power values in the same fully observed non-validation training cycles; every telemetry row is assigned to at most one cycle."
+  },
+  "aggregation_rules": {
+    "headline": "ratio_of_sums",
+    "cycle_mean_forbidden": true,
+    "equal_work_budget_groups": 13312,
+    "equal_work_boundary_allocation": "linear_in_group_fraction",
+    "gpu_activity_threshold_percent": 20,
+    "gpu_activity_threshold_sensitivity_percent": [
+      10,
+      20,
+      30,
+      40,
+      50
+    ],
+    "gpu_activity_validation_cycles_excluded": true,
+    "gpu_energy_primary_estimator": "sum(cycle_mean_total_gpu_power_watts * cycle_training_seconds) / sum(consumed_prompt_groups)",
+    "gpu_energy_sensitivity": [
+      "pooled_power_samples",
+      "cycle_edge_trimmed",
+      "first_training_cycle_excluded",
+      "validation_shifted_full_coverage"
+    ],
+    "cycles_are_iid": false
+  },
+  "code_references": [
+    {
+      "path": "verl/trainer/ppo/metric_utils.py",
+      "purpose": "Deduplicates group_uid and emits hpt/onpolicy_num_groups."
+    },
+    {
+      "path": "verl/experimental/fully_async_policy/detach_utils.py",
+      "purpose": "Defines sum/time_sum aggregation across fit steps and the learner-side timing ratio."
+    },
+    {
+      "path": "verl/experimental/fully_async_policy/fully_async_trainer.py",
+      "purpose": "Defines timing_s/gen as queue acquisition and assembly in the async learner, timing_s/step, parameter sync, queue depth, and carryover metrics."
+    },
+    {
+      "path": "main_scripts/run_fully_async_policy_openr1_hpt_qwen25_math_1_5b_M5abl_nocispo.sh",
+      "purpose": "Canonical StreamWeave main launcher."
+    },
+    {
+      "path": "recipe/paper_hpt/run_paper_hpt_qwen25_math_1_5b.sh",
+      "purpose": "Synchronous counterpart launcher."
+    },
+    {
+      "path": "docs/papers_RL/Efficiency.tex",
+      "purpose": "Authoritative prose ledger and public claim boundary."
+    }
+  ],
+  "public_claim_boundary": {
+    "allowed": [
+      "resource-matched end-to-end prompt-group throughput",
+      "2.78 to 4.58 groups/s",
+      "46.0 to 28.0 seconds per 128 groups",
+      "1.64x throughput",
+      "distribution of the number of GPUs with SM activity above 20% during training intervals",
+      "27.9% to 4.7% of telemetry intervals with no GPU above the threshold",
+      "5.40 to 6.92 mean GPUs above the threshold",
+      "sample-based eight-GPU energy estimate per consumed prompt group",
+      "approximately 24 to 29 percent lower estimated GPU energy per consumed prompt group"
+    ],
+    "appendix_only": [
+      "exact accelerator model and trainer/rollouter topology",
+      "resource-normalized effective rollout-rate consistency check",
+      "equal-work sensitivity",
+      "parameter-sync, queue, carryover, and source-mix diagnostics",
+      "per-GPU heatmaps and raw utilization traces",
+      "GPU-activity threshold sensitivity"
+      ,
+      "memory-allocation churn and SM-NVLink joint-state diagnostics"
+    ],
+    "forbidden": [
+      "54.7% to 3.25% stall reduction",
+      "assigning the exact 19.8% effective-rate residual causally to barrier removal",
+      "architecture-isolated speedup",
+      "time-to-quality",
+      "cycle-level iid significance tests",
+      "calling a zero-above-threshold telemetry interval idle, stall, or zero GPU utilization",
+      "treating 15-second telemetry rows as independent experimental trials"
+      ,
+      "calling the GPU-energy estimate node-total, token-normalized, externally metered, or architecture-isolated energy saving"
+    ]
+  }
+}

@@ -2,6 +2,10 @@
 
 _Last updated: 2026-07-07_
 
+> **REFERENCE ONLY — implementation decision record.** 이 문서는 auxiliary-term 구현의
+> 근거와 역사를 보존한다. 현재 StreamWeave Method의 주장과 용어는
+> `papers_RL/Full_Paper_Draft_ko.md`가 소유한다.
+
 Status: 확정 (phase-1) · 구현됨 (`feat/async-hpt-branch-blind-loss`) · CPU 계약 테스트 통과
 범위: Async-HPT actor loss의 auxiliary 정칙화 항(entropy, KL)이 branch별로 어떻게 적용되는가. off-policy 보정/trust region은 DR-003 소관.
 관련 코드: `verl/workers/utils/losses.py::ppo_loss`, `verl/experimental/fully_async_policy/hpt_config.py`

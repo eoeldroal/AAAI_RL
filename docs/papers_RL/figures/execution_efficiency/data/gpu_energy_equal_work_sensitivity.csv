@@ -1,0 +1,4 @@
+run_alias,window,budget_groups,energy_per_group_joules,relative_reduction_vs_sync_percent,boundary_allocation
+sync,full_non_validation,12032,1503.639907,0.000000,exact
+streamweave,first,12032,1086.043331,27.772379,linear_in_group_fraction
+streamweave,last,12032,1000.976486,33.429774,linear_in_group_fraction

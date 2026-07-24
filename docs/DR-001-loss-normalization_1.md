@@ -2,6 +2,10 @@
 
 _Last updated: 2026-07-07_
 
+> **REFERENCE ONLY — implementation decision record.** 이 문서는 loss-reduction 구현의
+> 근거와 역사를 보존한다. 현재 StreamWeave Method의 주장과 용어는
+> `papers_RL/Full_Paper_Draft_ko.md`가 소유한다.
+
 Status: 확정 (phase-1) · 구현됨 (`feat/async-hpt-branch-blind-loss`) · CPU 계약 테스트 통과
 범위: Async-HPT actor loss의 reduction 계층. routing / learner contract / reference 계약은 불변.
 관련 코드: `verl/workers/utils/losses.py`, `verl/experimental/fully_async_policy/hpt_assembler.py`, `verl/trainer/ppo/core_algos.py`, `verl/workers/engine/*/transformer_impl.py`

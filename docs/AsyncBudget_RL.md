@@ -2,6 +2,10 @@
 
 _Last updated: 2026-07-21_
 
+> **REFERENCE ONLY — runtime operations.** 이 문서는 queue, staleness와 learner-row budget의
+> 구현·운용 기록이다. Framework-specific 조치를 논문 기여로 직접 승격하지 않으며, 공개 claim은
+> `papers_RL/Full_Paper_Draft_ko.md`를 따른다.
+
 How to size the fully-async queue, staleness, and HPT learner-row budgets.
 Environment/log commands: `Readme_RL.md`. Code enforcement: `Codemap_RL.md`. Rules: `../AGENTS.md`.
 

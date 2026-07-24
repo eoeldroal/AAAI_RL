@@ -1,5 +1,11 @@
 # verl documentations
 
+> **Project note.** This directory primarily contains upstream and code-facing
+> documentation. StreamWeave paper work starts at
+> [`papers_RL/README.md`](papers_RL/README.md). Project-specific `*_RL.md` and
+> `DR-*.md` files are reference-only implementation, operation, and experiment
+> records; they do not own the paper's current claims or terminology.
+
 ## Build the docs
 
 ```bash

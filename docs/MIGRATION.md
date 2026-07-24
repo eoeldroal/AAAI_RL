@@ -1,5 +1,8 @@
 # 새 서버 마이그레이션
 
+> **REFERENCE ONLY — artifact migration.** 이 문서는 코드 밖 평가 자산의 이전·복원 기록이다.
+> 현재 논문의 주장, 실험 우선순위나 제출 계획을 소유하지 않는다.
+
 이 문서는 git clone으로 복원되지 않는 평가 자산의 이전 범위를 고정한다. 먼저 현재 작업을 commit/push하고 새 서버에서 같은 origin HEAD를 checkout한다. 생성 결과의 파일 수와 크기가 이 문서와 다르면 각 결과 디렉터리의 generated manifest를 최종 근거(source of truth)로 사용하며 추정값으로 보정하지 않는다.
 
 ## 이전 범위

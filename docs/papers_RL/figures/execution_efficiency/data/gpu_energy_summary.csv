@@ -1,0 +1,3 @@
+run_alias,cycles,telemetry_samples,groups,training_time_s,pooled_mean_power_watts,pooled_energy_per_group_joules,cycle_weighted_energy_per_group_joules,edge_trimmed_energy_per_group_joules,startup_excluded_energy_per_group_joules,groups_per_kwh_cycle_weighted
+sync,94,287,12032.000000,4333.087746,4165.004725,1499.944393,1503.639907,1408.300434,1480.736716,2394.190247
+streamweave,152,974,68963.000000,14908.589181,4941.401200,1068.244138,1066.142673,1076.905317,1066.176536,3376.658763

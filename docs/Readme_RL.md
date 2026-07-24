@@ -2,6 +2,10 @@
 
 _Last updated: 2026-07-07_
 
+> **REFERENCE ONLY — run operations.** 이 문서는 환경·launcher·로그 점검을 위한 코드 운영
+> 자료다. 현재 논문 주장과 용어는 `papers_RL/Full_Paper_Draft_ko.md`가 소유하며, 논문 작업은
+> `papers_RL/README.md`에서 시작한다.
+
 This document records environment and launch practice for the clean
 RL-focused `verl` fork. It is not a replacement for the upstream docs. For
 queue/staleness/HPT budget sizing, see `AsyncBudget_RL.md`. For what this

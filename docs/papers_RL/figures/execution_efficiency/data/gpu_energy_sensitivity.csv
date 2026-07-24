@@ -1,0 +1,6 @@
+estimator,sync_energy_per_group_joules,streamweave_energy_per_group_joules,relative_reduction_percent
+pooled,1499.944393,1068.244138,28.781084
+cycle_weighted,1503.639907,1066.142673,29.095878
+edge_trimmed,1408.300434,1076.905317,23.531564
+startup_excluded,1480.736716,1066.176536,27.996887
+validation_shifted_full_coverage,1511.478897,1073.453640,28.979912

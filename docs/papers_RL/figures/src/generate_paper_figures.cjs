@@ -394,13 +394,18 @@ function figure2(data) {
     const xSw = mapX(window.streamweave);
     const rlLabel = window.rl_only.toFixed(1);
     const swLabel = window.streamweave.toFixed(1);
+    const rlIsLeft = xRl <= xSw;
+    const rlLabelX = xRl + (rlIsLeft ? -14 : 14);
+    const swLabelX = xSw + (rlIsLeft ? 14 : -14);
+    const rlAnchor = rlIsLeft ? 'end' : 'start';
+    const swAnchor = rlIsLeft ? 'start' : 'end';
     return `<g id="window-${window.label}">
       <text x="116" y="${y + 7}" text-anchor="end" class="t label">${window.label}</text>
       <line x1="${xRl}" y1="${y}" x2="${xSw}" y2="${y}" stroke="${palette.gray}" stroke-width="3"/>
       <path d="M${xRl} ${y - 9} L${xRl + 9} ${y} L${xRl} ${y + 9} L${xRl - 9} ${y} Z" fill="${palette.white}" stroke="${palette.darkGray}" stroke-width="2.4"/>
       <circle cx="${xSw}" cy="${y}" r="9" fill="${palette.blue}" stroke="${palette.white}" stroke-width="2"/>
-      <text x="${xRl - 14}" y="${y - 16}" text-anchor="end" class="t value dark-text">${rlLabel}</text>
-      <text x="${xSw + 14}" y="${y - 16}" text-anchor="start" class="t value blue-text">${swLabel}</text>
+      <text x="${rlLabelX}" y="${y - 16}" text-anchor="${rlAnchor}" class="t value dark-text">${rlLabel}</text>
+      <text x="${swLabelX}" y="${y - 16}" text-anchor="${swAnchor}" class="t value blue-text">${swLabel}</text>
     </g>`;
   }).join('\n');
 
@@ -430,90 +435,134 @@ function figure2(data) {
 
 function figure3(data) {
   const width = 1500;
-  const height = 600;
-  const timelineX = 205;
-  const timelineW = 590;
-  const timelineMax = 50;
-  const mapTime = (seconds) => timelineX + (seconds / timelineMax) * timelineW;
-  const sync = data.timeline_seconds.sync;
-  const async = data.timeline_seconds.streamweave;
-  const generationEnd = mapTime(sync.generation);
-  const activeGenerationEnd = mapTime(sync.generation - sync.generation_tail_wait);
-  const learningEnd = mapTime(sync.generation + sync.learning);
-  const syncEnd = mapTime(sync.total);
-  const asyncEnd = mapTime(async.total);
-
-  const timeTicks = [];
-  for (let value = 0; value <= timelineMax; value += 10) {
-    const x = mapTime(value);
-    timeTicks.push(`<line x1="${x}" y1="126" x2="${x}" y2="420" stroke="${palette.grid}" stroke-width="1"/>`);
-    timeTicks.push(`<text x="${x}" y="452" text-anchor="middle" class="t small muted">${value}</text>`);
-  }
-
-  const metricLeft = 1005;
-  const metricRight = 1430;
-  const metricRows = [160, 300, 440];
-  const metricSvg = data.metrics.map((metric, index) => {
-    const y = metricRows[index];
-    const mapMetric = (value) => metricLeft + (value / metric.max) * (metricRight - metricLeft);
-    const xSync = mapMetric(metric.sync);
-    const xSw = mapMetric(metric.streamweave);
-    const syncText = metric.sync.toFixed(metric.decimals);
-    const swText = metric.streamweave.toFixed(metric.decimals);
-    return `<g id="metric-${index + 1}">
-      <text x="965" y="${y + 6}" text-anchor="end" class="t label">${metric.label}</text>
-      <line x1="${metricLeft}" y1="${y}" x2="${metricRight}" y2="${y}" stroke="${palette.grid}" stroke-width="2"/>
-      <line x1="${Math.min(xSync, xSw)}" y1="${y}" x2="${Math.max(xSync, xSw)}" y2="${y}" stroke="${palette.teal}" stroke-width="3"/>
-      <path d="M${xSync} ${y - 9} L${xSync + 9} ${y} L${xSync} ${y + 9} L${xSync - 9} ${y} Z" fill="${palette.white}" stroke="${palette.darkGray}" stroke-width="2.3"/>
-      <circle cx="${xSw}" cy="${y}" r="9" fill="${palette.teal}" stroke="${palette.white}" stroke-width="2"/>
-      <text x="${xSync}" y="${y - 20}" text-anchor="middle" class="t value dark-text">${syncText}</text>
-      <text x="${xSw}" y="${y + 29}" text-anchor="middle" class="t value teal-text">${swText}</text>
+  const height = 650;
+  const activityChart = { left: 112, right: 700, top: 118, bottom: 520 };
+  const energyChart = { left: 850, right: 1450, top: 118, bottom: 520 };
+  const maxShare = 75;
+  const mapActivityY = (value) => activityChart.bottom
+    - (value / maxShare) * (activityChart.bottom - activityChart.top);
+  const groupWidth = (activityChart.right - activityChart.left) / 9;
+  const barWidth = 20;
+  const bars = data.gpu_activity.distribution.map((item, index) => {
+    const center = activityChart.left + groupWidth * (index + 0.5);
+    const syncX = center - barWidth - 3;
+    const streamweaveX = center + 3;
+    const syncY = mapActivityY(item.sync_share_percent);
+    const streamweaveY = mapActivityY(item.streamweave_share_percent);
+    return `<g id="active-gpu-bin-${item.active_gpu_count}">
+      <rect x="${syncX}" y="${syncY}" width="${barWidth}" height="${activityChart.bottom - syncY}" fill="${palette.soft}" stroke="${palette.gray}" stroke-width="2"/>
+      <rect x="${streamweaveX}" y="${streamweaveY}" width="${barWidth}" height="${activityChart.bottom - streamweaveY}" fill="${palette.tealSoft}" stroke="${palette.teal}" stroke-width="2"/>
+      <text x="${center}" y="${activityChart.bottom + 34}" text-anchor="middle" class="t small">${item.active_gpu_count}</text>
     </g>`;
   }).join('\n');
 
+  const activityYTicks = [0, 20, 40, 60].map((value) => {
+    const y = mapActivityY(value);
+    return `<g>
+      <line x1="${activityChart.left}" y1="${y}" x2="${activityChart.right}" y2="${y}" stroke="${palette.grid}" stroke-width="1"/>
+      <text x="${activityChart.left - 18}" y="${y + 7}" text-anchor="end" class="t small muted">${value}</text>
+    </g>`;
+  }).join('\n');
+
+  const gpu = data.gpu_activity;
+  const zeroSync = gpu.zero_active_share_percent.sync.toFixed(1);
+  const zeroStreamweave = gpu.zero_active_share_percent.streamweave.toFixed(1);
+  const meanSync = gpu.mean_active_gpus.sync.toFixed(2);
+  const meanStreamweave = gpu.mean_active_gpus.streamweave.toFixed(2);
+
+  const energy = data.gpu_energy;
+  const energyMin = 0.5;
+  const energyMax = energy.ecdf.x_cap_kilojoules;
+  const mapEnergyX = (value) => energyChart.left
+    + ((value - energyMin) / (energyMax - energyMin))
+      * (energyChart.right - energyChart.left);
+  const mapEnergyY = (value) => energyChart.bottom
+    - (value / 100) * (energyChart.bottom - energyChart.top);
+  const stepPath = (points) => {
+    if (!points.length) return '';
+    let pathData = `M${mapEnergyX(points[0].energy_kilojoules)} ${mapEnergyY(0)}`;
+    for (const point of points) {
+      pathData += ` H${mapEnergyX(point.energy_kilojoules)} V${mapEnergyY(point.cumulative_group_share_percent)}`;
+    }
+    return pathData;
+  };
+  const energyXTicks = [0.5, 1.0, 1.5, 2.0, 2.5].map((value) => {
+    const x = mapEnergyX(value);
+    const label = value === energyMax ? `≥${value.toFixed(1)}` : value.toFixed(1);
+    return `<g>
+      <line x1="${x}" y1="${energyChart.top}" x2="${x}" y2="${energyChart.bottom}" stroke="${palette.grid}" stroke-width="1"/>
+      <text x="${x}" y="${energyChart.bottom + 34}" text-anchor="middle" class="t small muted">${label}</text>
+    </g>`;
+  }).join('\n');
+  const energyYTicks = [0, 20, 40, 60, 80, 100].map((value) => {
+    const y = mapEnergyY(value);
+    return `<g>
+      <line x1="${energyChart.left}" y1="${y}" x2="${energyChart.right}" y2="${y}" stroke="${palette.grid}" stroke-width="1"/>
+      <text x="${energyChart.left - 18}" y="${y + 7}" text-anchor="end" class="t small muted">${value}</text>
+    </g>`;
+  }).join('\n');
+  const syncEnergy = energy.sync_energy_per_group_joules / 1000;
+  const streamweaveEnergy = energy.streamweave_energy_per_group_joules / 1000;
+  const syncEnergyX = mapEnergyX(syncEnergy);
+  const streamweaveEnergyX = mapEnergyX(streamweaveEnergy);
+  const reductionLow = Math.round(Math.min(...energy.sensitivity_reduction_percent));
+  const reductionHigh = Math.round(Math.max(...energy.sensitivity_reduction_percent));
+
   const body = `
-  <g id="timeline-panel">
-    <text x="34" y="50" class="t panel muted">(a)</text>
-    ${timeTicks.join('\n')}
-    <line x1="${timelineX}" y1="420" x2="${mapTime(timelineMax)}" y2="420" stroke="${palette.ink}" stroke-width="1.5"/>
-    <text x="${mapTime(timelineMax) + 18}" y="425" class="t small muted">s</text>
-
-    <text x="175" y="190" text-anchor="end" class="t label">Sync</text>
-    <rect x="${timelineX}" y="160" width="${generationEnd - timelineX}" height="48" rx="8" fill="${palette.orange}"/>
-    <rect x="${activeGenerationEnd}" y="160" width="${generationEnd - activeGenerationEnd}" height="48" fill="url(#hatch-coral)" opacity="0.95"/>
-    <rect x="${generationEnd}" y="160" width="${learningEnd - generationEnd}" height="48" fill="${palette.blue}"/>
-    <rect x="${learningEnd}" y="160" width="${syncEnd - learningEnd}" height="48" rx="0 8 8 0" fill="${palette.gray}"/>
-    <text x="${syncEnd + 14}" y="191" class="t value">46</text>
-
-    <text x="175" y="327" text-anchor="end" class="t label">StreamWeave</text>
-    <rect x="${timelineX}" y="286" width="${asyncEnd - timelineX}" height="34" rx="8" fill="${palette.orange}" opacity="0.9"/>
-    <rect x="${timelineX}" y="330" width="${asyncEnd - timelineX}" height="34" rx="8" fill="${palette.blue}" opacity="0.9"/>
-    <text x="${asyncEnd + 14}" y="334" class="t value">30</text>
-
-    <g id="timeline-legend">
-      <rect x="205" y="512" width="16" height="16" rx="3" fill="${palette.orange}"/><text x="230" y="525" class="t small muted">generation</text>
-      <rect x="345" y="512" width="16" height="16" rx="3" fill="${palette.blue}"/><text x="370" y="525" class="t small muted">learning</text>
-      <rect x="470" y="512" width="16" height="16" rx="3" fill="${palette.gray}"/><text x="495" y="525" class="t small muted">sync</text>
-      <rect x="558" y="512" width="16" height="16" fill="url(#hatch-coral)" stroke="${palette.coral}" stroke-width="1"/><text x="583" y="525" class="t small muted">tail wait</text>
+  <g id="gpu-activity-distribution">
+    <text x="42" y="54" class="t panel muted">(a)</text>
+    <text x="82" y="56" class="t stage">Concurrent GPU activity</text>
+    <g id="legend">
+      <rect x="300" y="78" width="24" height="18" fill="${palette.soft}" stroke="${palette.gray}" stroke-width="2"/>
+      <text x="336" y="94" class="t small">Synchronous</text>
+      <rect x="494" y="78" width="24" height="18" fill="${palette.tealSoft}" stroke="${palette.teal}" stroke-width="2"/>
+      <text x="530" y="94" class="t small">StreamWeave</text>
     </g>
+    ${activityYTicks}
+    <line x1="${activityChart.left}" y1="${activityChart.top}" x2="${activityChart.left}" y2="${activityChart.bottom}" stroke="${palette.ink}" stroke-width="1.5"/>
+    <line x1="${activityChart.left}" y1="${activityChart.bottom}" x2="${activityChart.right}" y2="${activityChart.bottom}" stroke="${palette.ink}" stroke-width="1.5"/>
+    ${bars}
+    <text x="${(activityChart.left + activityChart.right) / 2}" y="610" text-anchor="middle" class="t label muted">GPUs with SM activity &gt; ${gpu.threshold_percent}%</text>
+    <text x="35" y="${(activityChart.top + activityChart.bottom) / 2}" text-anchor="middle" class="t label muted" transform="rotate(-90 35 ${(activityChart.top + activityChart.bottom) / 2})">Training telemetry (%)</text>
+    <text x="178" y="236" class="t value">${zeroSync}% → ${zeroStreamweave}%</text>
+    <text x="178" y="266" class="t tiny muted">no GPU above threshold</text>
+    <path d="M250 280 L142 398" class="line" stroke="${palette.muted}" stroke-width="2"/>
+    <text x="444" y="158" class="t tiny muted">Mean active GPUs</text>
+    <text x="444" y="190" class="t value teal-text">${meanSync} → ${meanStreamweave}</text>
   </g>
 
-  <line x1="875" y1="32" x2="875" y2="568" stroke="${palette.grid}" stroke-width="1.2"/>
+  <line x1="770" y1="32" x2="770" y2="618" stroke="${palette.grid}" stroke-width="1.3"/>
 
-  <g id="metric-panel">
-    <text x="906" y="50" class="t panel muted">(b)</text>
-    <g id="metric-legend">
-      <path d="M1192 38 L1200 46 L1192 54 L1184 46 Z" fill="${palette.white}" stroke="${palette.darkGray}" stroke-width="2.1"/><text x="1210" y="52" class="t small">Sync</text>
-      <circle cx="1290" cy="46" r="8" fill="${palette.teal}"/><text x="1307" y="52" class="t small">StreamWeave</text>
+  <g id="gpu-energy-distribution">
+    <text x="800" y="54" class="t panel muted">(b)</text>
+    <text x="840" y="56" class="t stage">Work-normalized GPU energy</text>
+    ${energyXTicks}
+    ${energyYTicks}
+    <line x1="${energyChart.left}" y1="${energyChart.top}" x2="${energyChart.left}" y2="${energyChart.bottom}" stroke="${palette.ink}" stroke-width="1.5"/>
+    <line x1="${energyChart.left}" y1="${energyChart.bottom}" x2="${energyChart.right}" y2="${energyChart.bottom}" stroke="${palette.ink}" stroke-width="1.5"/>
+    <path d="${stepPath(energy.ecdf.sync)}" class="line" stroke="${palette.gray}" stroke-width="4" stroke-dasharray="11 8"/>
+    <path d="${stepPath(energy.ecdf.streamweave)}" class="line" stroke="${palette.teal}" stroke-width="5"/>
+    <line x1="${syncEnergyX}" y1="${energyChart.top}" x2="${syncEnergyX}" y2="${energyChart.bottom}" stroke="${palette.gray}" stroke-width="2" stroke-dasharray="5 6"/>
+    <line x1="${streamweaveEnergyX}" y1="${energyChart.top}" x2="${streamweaveEnergyX}" y2="${energyChart.bottom}" stroke="${palette.teal}" stroke-width="2" stroke-dasharray="5 6"/>
+    <text x="${streamweaveEnergyX + 12}" y="456" class="t value teal-text">${streamweaveEnergy.toFixed(2)}</text>
+    <text x="${syncEnergyX + 12}" y="456" class="t value dark-text">${syncEnergy.toFixed(2)}</text>
+    <text x="${(energyChart.left + energyChart.right) / 2}" y="610" text-anchor="middle" class="t label muted">Estimated GPU energy / prompt group (kJ)</text>
+    <text x="790" y="${(energyChart.top + energyChart.bottom) / 2}" text-anchor="middle" class="t label muted" transform="rotate(-90 790 ${(energyChart.top + energyChart.bottom) / 2})">Consumed prompt groups (%)</text>
+    <g id="energy-legend">
+      <line x1="1178" y1="474" x2="1222" y2="474" stroke="${palette.gray}" stroke-width="4" stroke-dasharray="11 8"/>
+      <text x="1236" y="481" class="t small">Synchronous</text>
+      <line x1="1178" y1="510" x2="1222" y2="510" stroke="${palette.teal}" stroke-width="5"/>
+      <text x="1236" y="517" class="t small">StreamWeave</text>
     </g>
-    ${metricSvg}
+    <text x="884" y="157" class="t tiny muted">Lower is better</text>
+    <text x="884" y="191" class="t value teal-text">≈${reductionLow}–${reductionHigh}% lower</text>
   </g>`;
 
   return svgShell({
     width,
     height,
-    title: 'Matched execution efficiency',
-    desc: 'A same-hardware comparison showing serial synchronous phases versus overlapped StreamWeave execution for 128 prompt groups, alongside throughput, trainer idle, and actor MFU.',
+    title: 'Concurrent GPU activity and work-normalized GPU energy',
+    desc: 'A grouped histogram compares the number of GPUs with SM activity above 20 percent. A work-weighted empirical cumulative distribution compares the estimated eight-GPU energy used per consumed prompt group.',
     meta: data,
     body
   });
@@ -522,8 +571,7 @@ function figure3(data) {
 const outputs = [
   ['figure1_streamweave_overview.svg', figure1()],
   ['figure2_training_pipeline.svg', figure2TrainingPipeline()],
-  ['figure2_learning_effect.svg', figure2(readJson('figure2_learning_effect.json'))],
-  ['figure3_execution_efficiency.svg', figure3(readJson('figure3_execution_efficiency.json'))]
+  ['figure2_learning_effect.svg', figure2(readJson('figure2_learning_effect.json'))]
 ];
 
 const requested = new Set(process.argv.slice(2).map((file) => path.basename(file, path.extname(file))));
@@ -537,6 +585,8 @@ if (requested.size > 0 && selectedOutputs.length !== requested.size) {
 }
 
 for (const [file, content] of selectedOutputs) {
-  fs.writeFileSync(path.join(figureDir, file), content, 'utf8');
+  const outputPath = path.join(figureDir, file);
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, content, 'utf8');
   process.stdout.write(`wrote ${file}\n`);
 }

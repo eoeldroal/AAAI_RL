@@ -1,0 +1,22 @@
+metric,value,unit,public_scope,compatibility_note
+sync_generation_share,54.6794,percent,main_mechanism,Share of synchronous non-evaluation training-loop time
+sync_generation_per_128_groups,25.13249,seconds,main_mechanism,Synchronous generation phase only
+streamweave_total_per_128_groups,27.967104,seconds,main_mechanism,Full generation-and-training pipeline
+streamweave_interface_share_startup_excluded,3.2478,percent,appendix_only,Not directly comparable to sync_generation_share
+startup_excluded_speedup,1.5874,ratio,appendix_only,Remove first cycle from both runs
+known_transients_excluded_speedup,1.6480,ratio,appendix_only,Known parameter-sync transients excluded
+streamweave_last_quarter_throughput,4.95,groups_per_second,appendix_only,Sustained-throughput check
+parameter_sync_median,2.15,seconds,appendix_only,StreamWeave cycles
+parameter_sync_p95,2.79,seconds,appendix_only,StreamWeave cycles
+queue_cap,384,prompt_groups,appendix_only,Exact topology and configuration remain Appendix-only
+queue_occupancy_boundary_median,70,percent,appendix_only,Observed only at post-startup collection boundaries
+carryover_discarded_groups,0,prompt_groups,appendix_only,Does not imply universal zero-waste
+sync_rl_group_fraction,52.4,percent,appendix_only,Directional source-mix evidence
+streamweave_rl_group_fraction,77.3,percent,appendix_only,Speedup is not due to more singleton expert rows
+sync_zero_gpu_above_20pct_sm_active,27.874564,percent,main_mechanism,No GPU exceeded the threshold in 80 of 287 selected training telemetry rows
+streamweave_zero_gpu_above_20pct_sm_active,4.722793,percent,main_mechanism,No GPU exceeded the threshold in 46 of 974 selected training telemetry rows
+sync_mean_gpus_above_20pct_sm_active,5.400697,gpus,main_mechanism,Mean count across 287 selected training telemetry rows
+streamweave_mean_gpus_above_20pct_sm_active,6.922998,gpus,main_mechanism,Mean count across 974 selected training telemetry rows
+sync_gpu_busy,65.5,percent,appendix_only,Training-interval telemetry
+streamweave_gpu_busy,84.6,percent,appendix_only,Training-interval telemetry
+concurrent_partition_activity,76.3,percent,appendix_only,Trainer and rollouter partitions both above 50 percent

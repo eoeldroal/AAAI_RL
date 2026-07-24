@@ -1,0 +1,7 @@
+run_alias,block_index,block_size_groups,throughput_groups_per_s,relative_to_sync
+streamweave,1,13312,4.660624,1.673578
+streamweave,2,13312,4.672640,1.677893
+streamweave,3,13312,3.483997,1.251064
+streamweave,4,13312,4.848103,1.740900
+streamweave,5,13312,5.160615,1.853119
+streamweave,6,13312,4.976928,1.787159

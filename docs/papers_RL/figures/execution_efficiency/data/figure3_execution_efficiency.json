@@ -1,0 +1,1343 @@
+{
+  "figure_id": "figure3_execution_efficiency",
+  "status": "locked_main_full_history_and_system_telemetry",
+  "source_snapshot": "execution_efficiency/computed_snapshot.json",
+  "work_unit": "prompt_group",
+  "equivalent_groups": 128,
+  "runs": {
+    "sync": "v96fvd0p",
+    "streamweave": "oki4kv8u"
+  },
+  "gpu_activity": {
+    "threshold_percent": 20,
+    "sample_interval_seconds": 15,
+    "sync_samples": 287,
+    "streamweave_samples": 974,
+    "distribution": [
+      {
+        "active_gpu_count": 0,
+        "sync_share_percent": 27.874564,
+        "streamweave_share_percent": 4.722793
+      },
+      {
+        "active_gpu_count": 1,
+        "sync_share_percent": 2.090592,
+        "streamweave_share_percent": 1.129363
+      },
+      {
+        "active_gpu_count": 2,
+        "sync_share_percent": 1.393728,
+        "streamweave_share_percent": 2.156057
+      },
+      {
+        "active_gpu_count": 3,
+        "sync_share_percent": 0.696864,
+        "streamweave_share_percent": 1.334702
+      },
+      {
+        "active_gpu_count": 4,
+        "sync_share_percent": 1.045296,
+        "streamweave_share_percent": 1.334702
+      },
+      {
+        "active_gpu_count": 5,
+        "sync_share_percent": 0.696864,
+        "streamweave_share_percent": 2.053388
+      },
+      {
+        "active_gpu_count": 6,
+        "sync_share_percent": 0.696864,
+        "streamweave_share_percent": 12.628337
+      },
+      {
+        "active_gpu_count": 7,
+        "sync_share_percent": 2.787456,
+        "streamweave_share_percent": 5.646817
+      },
+      {
+        "active_gpu_count": 8,
+        "sync_share_percent": 62.71777,
+        "streamweave_share_percent": 68.99384
+      }
+    ],
+    "zero_active_share_percent": {
+      "sync": 27.874564459930312,
+      "streamweave": 4.722792607802875
+    },
+    "mean_active_gpus": {
+      "sync": 5.400696864111498,
+      "streamweave": 6.922997946611909
+    }
+  },
+  "gpu_energy": {
+    "sample_interval_seconds": 15,
+    "population": "fully observed non-validation training cycles",
+    "estimator": "cycle mean of total gpu power multiplied by cycle training duration, divided by consumed prompt groups",
+    "sync_energy_per_group_joules": 1503.6399071476667,
+    "streamweave_energy_per_group_joules": 1066.1426732183534,
+    "relative_reduction_percent": 29.09587806559516,
+    "sensitivity_reduction_percent": [
+      23.53156396667535,
+      29.09587806559516
+    ],
+    "ecdf": {
+      "x_cap_kilojoules": 2.5,
+      "sync": [
+        {
+          "energy_kilojoules": 0.6492289718359296,
+          "cumulative_group_share_percent": 1.0638297872340425,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8163905078253931,
+          "cumulative_group_share_percent": 2.127659574468085,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8559658933470671,
+          "cumulative_group_share_percent": 3.1914893617021276,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8620085915752196,
+          "cumulative_group_share_percent": 4.25531914893617,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8696348108582483,
+          "cumulative_group_share_percent": 5.319148936170213,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9024649634938289,
+          "cumulative_group_share_percent": 6.382978723404255,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9284195509504912,
+          "cumulative_group_share_percent": 7.446808510638298,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9567474091865742,
+          "cumulative_group_share_percent": 8.51063829787234,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9777814047903293,
+          "cumulative_group_share_percent": 9.574468085106384,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9829868489302105,
+          "cumulative_group_share_percent": 10.638297872340425,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9871923875232017,
+          "cumulative_group_share_percent": 11.702127659574469,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0165249500221494,
+          "cumulative_group_share_percent": 12.76595744680851,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.023781541446234,
+          "cumulative_group_share_percent": 13.829787234042554,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0300130688979692,
+          "cumulative_group_share_percent": 14.893617021276595,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.045986522271718,
+          "cumulative_group_share_percent": 15.957446808510639,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0482477937640011,
+          "cumulative_group_share_percent": 17.02127659574468,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0645855768411117,
+          "cumulative_group_share_percent": 18.085106382978726,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0646906724537049,
+          "cumulative_group_share_percent": 19.148936170212767,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0743225400712042,
+          "cumulative_group_share_percent": 20.212765957446805,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0837973534253555,
+          "cumulative_group_share_percent": 21.27659574468085,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.088350996314777,
+          "cumulative_group_share_percent": 22.340425531914892,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0953706435275357,
+          "cumulative_group_share_percent": 23.404255319148938,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.149071411333987,
+          "cumulative_group_share_percent": 24.46808510638298,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.154914191690984,
+          "cumulative_group_share_percent": 25.53191489361702,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1951191198296678,
+          "cumulative_group_share_percent": 26.595744680851062,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.2150365305073207,
+          "cumulative_group_share_percent": 27.659574468085108,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.2348330985823175,
+          "cumulative_group_share_percent": 28.723404255319153,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.2467437777113046,
+          "cumulative_group_share_percent": 29.78723404255319,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.2653854672636748,
+          "cumulative_group_share_percent": 30.851063829787233,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3024188514160002,
+          "cumulative_group_share_percent": 31.914893617021278,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3046105764875544,
+          "cumulative_group_share_percent": 32.97872340425532,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3209034736753347,
+          "cumulative_group_share_percent": 34.04255319148936,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3408064130121007,
+          "cumulative_group_share_percent": 35.1063829787234,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3465601358831805,
+          "cumulative_group_share_percent": 36.17021276595745,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3538831221526082,
+          "cumulative_group_share_percent": 37.234042553191486,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.356511820557135,
+          "cumulative_group_share_percent": 38.297872340425535,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3573385385221104,
+          "cumulative_group_share_percent": 39.361702127659576,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.362700140159846,
+          "cumulative_group_share_percent": 40.42553191489361,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3643844493763113,
+          "cumulative_group_share_percent": 41.48936170212766,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3710088922582413,
+          "cumulative_group_share_percent": 42.5531914893617,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3782153425051227,
+          "cumulative_group_share_percent": 43.61702127659575,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3898355652841172,
+          "cumulative_group_share_percent": 44.680851063829785,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3973026320374538,
+          "cumulative_group_share_percent": 45.744680851063826,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.4461273926854001,
+          "cumulative_group_share_percent": 46.808510638297875,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.4564158962713398,
+          "cumulative_group_share_percent": 47.87234042553192,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.4579962064882142,
+          "cumulative_group_share_percent": 48.93617021276596,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.469334767076517,
+          "cumulative_group_share_percent": 50.0,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.4813600916557133,
+          "cumulative_group_share_percent": 51.06382978723404,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.4894732703603846,
+          "cumulative_group_share_percent": 52.12765957446809,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.489592332065072,
+          "cumulative_group_share_percent": 53.191489361702125,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.4897324330525623,
+          "cumulative_group_share_percent": 54.25531914893617,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.5078208992140159,
+          "cumulative_group_share_percent": 55.319148936170215,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.5179225114302046,
+          "cumulative_group_share_percent": 56.38297872340425,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.526475807040417,
+          "cumulative_group_share_percent": 57.446808510638306,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.5278984578880042,
+          "cumulative_group_share_percent": 58.51063829787234,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.5571699547711684,
+          "cumulative_group_share_percent": 59.57446808510638,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.5658824852841766,
+          "cumulative_group_share_percent": 60.63829787234043,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.5727362663174538,
+          "cumulative_group_share_percent": 61.702127659574465,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.5877810114225086,
+          "cumulative_group_share_percent": 62.76595744680851,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.635525236845481,
+          "cumulative_group_share_percent": 63.829787234042556,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.6379502979763725,
+          "cumulative_group_share_percent": 64.8936170212766,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.6437767989091736,
+          "cumulative_group_share_percent": 65.95744680851064,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.6515437124992431,
+          "cumulative_group_share_percent": 67.02127659574468,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.6650930674978635,
+          "cumulative_group_share_percent": 68.08510638297872,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.6716169307305586,
+          "cumulative_group_share_percent": 69.14893617021278,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.6816874836881872,
+          "cumulative_group_share_percent": 70.2127659574468,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.689465339057989,
+          "cumulative_group_share_percent": 71.27659574468085,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.7064654631691822,
+          "cumulative_group_share_percent": 72.3404255319149,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.7127409763402526,
+          "cumulative_group_share_percent": 73.40425531914893,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.7275389319792542,
+          "cumulative_group_share_percent": 74.46808510638297,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.7299707529044182,
+          "cumulative_group_share_percent": 75.53191489361703,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.741224594934104,
+          "cumulative_group_share_percent": 76.59574468085107,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.751658275458964,
+          "cumulative_group_share_percent": 77.6595744680851,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.7552194867645823,
+          "cumulative_group_share_percent": 78.72340425531915,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.7792685503207966,
+          "cumulative_group_share_percent": 79.7872340425532,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.803876191003748,
+          "cumulative_group_share_percent": 80.85106382978722,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.8213135216761047,
+          "cumulative_group_share_percent": 81.91489361702128,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.8411583703903414,
+          "cumulative_group_share_percent": 82.97872340425532,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.8991503764185766,
+          "cumulative_group_share_percent": 84.04255319148936,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.9165089821803172,
+          "cumulative_group_share_percent": 85.1063829787234,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.917755492261433,
+          "cumulative_group_share_percent": 86.17021276595744,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.997828897415348,
+          "cumulative_group_share_percent": 87.2340425531915,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 2.011892654868162,
+          "cumulative_group_share_percent": 88.29787234042553,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 2.0442559051958584,
+          "cumulative_group_share_percent": 89.36170212765957,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 2.0944765125993876,
+          "cumulative_group_share_percent": 90.42553191489363,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 2.170059263692971,
+          "cumulative_group_share_percent": 91.48936170212765,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 2.184242327099234,
+          "cumulative_group_share_percent": 92.5531914893617,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 2.261495092919945,
+          "cumulative_group_share_percent": 93.61702127659575,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 2.2770079465058317,
+          "cumulative_group_share_percent": 94.68085106382979,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 2.294030728688092,
+          "cumulative_group_share_percent": 95.74468085106383,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 2.306199817289953,
+          "cumulative_group_share_percent": 96.80851063829788,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 2.3161898071600926,
+          "cumulative_group_share_percent": 97.87234042553192,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 2.394530507497364,
+          "cumulative_group_share_percent": 98.93617021276596,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 2.5,
+          "cumulative_group_share_percent": 100.0,
+          "right_censored": true
+        }
+      ],
+      "streamweave": [
+        {
+          "energy_kilojoules": 0.6210923351130192,
+          "cumulative_group_share_percent": 0.5263692124762553,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.6375859145426437,
+          "cumulative_group_share_percent": 1.0527384249525107,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.798759217254723,
+          "cumulative_group_share_percent": 1.7212128242680858,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.7991763354401975,
+          "cumulative_group_share_percent": 2.3302350535794556,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8102362629274777,
+          "cumulative_group_share_percent": 2.9987094528950307,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8293233429552227,
+          "cumulative_group_share_percent": 3.654133375868219,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8324495486047712,
+          "cumulative_group_share_percent": 4.23995475834868,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8364685464299154,
+          "cumulative_group_share_percent": 4.938880269129823,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8387993339731399,
+          "cumulative_group_share_percent": 5.617505038933921,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8517937278278312,
+          "cumulative_group_share_percent": 6.2497281150762,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8655770498483274,
+          "cumulative_group_share_percent": 6.892101561707002,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8670562253497415,
+          "cumulative_group_share_percent": 7.5707263315111,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8690024233469185,
+          "cumulative_group_share_percent": 8.249351101315199,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8707741168558216,
+          "cumulative_group_share_percent": 8.917825500630773,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8720814523367574,
+          "cumulative_group_share_percent": 9.596450270434872,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8814726183985192,
+          "cumulative_group_share_percent": 10.264924669750446,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8834885572247096,
+          "cumulative_group_share_percent": 10.933399069066022,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8848012799052618,
+          "cumulative_group_share_percent": 11.622174209358642,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8856993540439541,
+          "cumulative_group_share_percent": 12.290648608674216,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8861842143668649,
+          "cumulative_group_share_percent": 12.959123007989792,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8878452867131271,
+          "cumulative_group_share_percent": 13.555094760958774,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8909764486483072,
+          "cumulative_group_share_percent": 14.233719530762873,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.89105629241911,
+          "cumulative_group_share_percent": 14.922494671055494,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8912165376133011,
+          "cumulative_group_share_percent": 15.590969070371068,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.8952619732151557,
+          "cumulative_group_share_percent": 16.279744210663686,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.902058060129969,
+          "cumulative_group_share_percent": 16.911967286805968,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9054244063865334,
+          "cumulative_group_share_percent": 17.600742427098588,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9086933654498628,
+          "cumulative_group_share_percent": 18.279367196902687,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9134269966118536,
+          "cumulative_group_share_percent": 18.957991966706786,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9185859684455701,
+          "cumulative_group_share_percent": 19.636616736510884,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9186394603032041,
+          "cumulative_group_share_percent": 20.30509113582646,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9193830680917342,
+          "cumulative_group_share_percent": 20.99386627611908,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9255071305988944,
+          "cumulative_group_share_percent": 21.662340675434653,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9260237460282694,
+          "cumulative_group_share_percent": 22.31486449255398,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9339877615547999,
+          "cumulative_group_share_percent": 23.01379000333512,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9371021915395723,
+          "cumulative_group_share_percent": 23.635862708988878,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9398122865795405,
+          "cumulative_group_share_percent": 24.27823615561968,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.940590761840189,
+          "cumulative_group_share_percent": 24.930759972739004,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.942631866922611,
+          "cumulative_group_share_percent": 25.6093847425431,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.942872554085506,
+          "cumulative_group_share_percent": 26.21550686600061,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9441829625459431,
+          "cumulative_group_share_percent": 26.878181053608458,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9463582682334424,
+          "cumulative_group_share_percent": 27.566956193901078,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9479153536272661,
+          "cumulative_group_share_percent": 28.245580963705173,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.948792343704884,
+          "cumulative_group_share_percent": 28.90825515131302,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9525757037521818,
+          "cumulative_group_share_percent": 29.59703029160564,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.953871030596404,
+          "cumulative_group_share_percent": 30.239403738236447,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.956039071689806,
+          "cumulative_group_share_percent": 30.887577396574972,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9580449355057845,
+          "cumulative_group_share_percent": 31.576352536867596,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9607492516515549,
+          "cumulative_group_share_percent": 32.244826936183166,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9633641075032776,
+          "cumulative_group_share_percent": 32.913301335498744,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9635611449508893,
+          "cumulative_group_share_percent": 33.591926105302846,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9636130814873909,
+          "cumulative_group_share_percent": 34.27055087510694,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9639188001805093,
+          "cumulative_group_share_percent": 34.923074692226265,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9657292515518987,
+          "cumulative_group_share_percent": 35.58139872105332,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9671632554304145,
+          "cumulative_group_share_percent": 36.26002349085742,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9673909337205495,
+          "cumulative_group_share_percent": 36.94879863115004,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.96863227533059,
+          "cumulative_group_share_percent": 37.61727303046561,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9705988376478804,
+          "cumulative_group_share_percent": 38.316198541246756,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9712067450246409,
+          "cumulative_group_share_percent": 38.99482331105085,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9723675434535156,
+          "cumulative_group_share_percent": 39.61689601670461,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9746756750806237,
+          "cumulative_group_share_percent": 40.30567115699723,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9762707073963044,
+          "cumulative_group_share_percent": 40.95384481533576,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9816294696851667,
+          "cumulative_group_share_percent": 41.63246958513986,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9829711260763011,
+          "cumulative_group_share_percent": 42.29079361396691,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9877265839804749,
+          "cumulative_group_share_percent": 42.97956875425953,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9967260235876257,
+          "cumulative_group_share_percent": 43.65819352406363,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.997175668045861,
+          "cumulative_group_share_percent": 44.25416527703261,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 0.9972499226839944,
+          "cumulative_group_share_percent": 44.848686977074664,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0082851065009075,
+          "cumulative_group_share_percent": 45.517161376390234,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0084277028224482,
+          "cumulative_group_share_percent": 46.19578614619434,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0142669436886824,
+          "cumulative_group_share_percent": 46.88456128648696,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.016916653401957,
+          "cumulative_group_share_percent": 47.45878224555196,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.017191078065982,
+          "cumulative_group_share_percent": 48.106955903890494,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0175524130166813,
+          "cumulative_group_share_percent": 48.76527993271754,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0182228183393784,
+          "cumulative_group_share_percent": 49.4236039615446,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0276110808976655,
+          "cumulative_group_share_percent": 50.0659774081754,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0293552574139533,
+          "cumulative_group_share_percent": 50.68224990212143,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0297581269054639,
+          "cumulative_group_share_percent": 51.34057393094847,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.034780710573785,
+          "cumulative_group_share_percent": 52.04964981221815,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0361597091672106,
+          "cumulative_group_share_percent": 52.71812421153372,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0380951922526493,
+          "cumulative_group_share_percent": 53.3865986108493,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.039982256859894,
+          "cumulative_group_share_percent": 54.04492263967635,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0404528802963862,
+          "cumulative_group_share_percent": 54.723547409480446,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0426642051430692,
+          "cumulative_group_share_percent": 55.392021808796024,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.04421077619857,
+          "cumulative_group_share_percent": 56.0604962081116,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.045297438022904,
+          "cumulative_group_share_percent": 56.73912097791569,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0459380550344655,
+          "cumulative_group_share_percent": 57.42789611820831,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0474907075263362,
+          "cumulative_group_share_percent": 58.06591940605832,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.05187900379997,
+          "cumulative_group_share_percent": 58.75469454635094,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0521546735878906,
+          "cumulative_group_share_percent": 59.397067992981746,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0554072151575566,
+          "cumulative_group_share_percent": 60.05539202180879,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0572290536912181,
+          "cumulative_group_share_percent": 60.433855835738,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0574146647063,
+          "cumulative_group_share_percent": 61.009526847729944,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0601545722291075,
+          "cumulative_group_share_percent": 61.698301988022564,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0607187694909161,
+          "cumulative_group_share_percent": 62.387077128315184,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0618674702905917,
+          "cumulative_group_share_percent": 63.04540115714224,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0645356340122494,
+          "cumulative_group_share_percent": 63.64572306889201,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0654470401164404,
+          "cumulative_group_share_percent": 64.3141974682076,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0660956272636684,
+          "cumulative_group_share_percent": 64.99282223801168,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0678000980876179,
+          "cumulative_group_share_percent": 65.66129663732725,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0737394684543367,
+          "cumulative_group_share_percent": 66.30367008395807,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0762844115862893,
+          "cumulative_group_share_percent": 66.96199411278512,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0804524799077058,
+          "cumulative_group_share_percent": 67.63046851210069,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.091215386100639,
+          "cumulative_group_share_percent": 68.28879254092774,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0928452358519116,
+          "cumulative_group_share_percent": 68.93116598755856,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.0994179081756006,
+          "cumulative_group_share_percent": 69.57933964589708,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1034635436940075,
+          "cumulative_group_share_percent": 70.22171309252788,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1079348975872776,
+          "cumulative_group_share_percent": 70.89018749184345,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1088373683223474,
+          "cumulative_group_share_percent": 71.5485115206705,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1090697693777047,
+          "cumulative_group_share_percent": 72.23728666096314,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1103541492729896,
+          "cumulative_group_share_percent": 72.92606180125574,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1141524260836115,
+          "cumulative_group_share_percent": 73.55828487739802,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1220804597137641,
+          "cumulative_group_share_percent": 74.26736075866769,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.122922752151194,
+          "cumulative_group_share_percent": 74.8415817177327,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1274082611572485,
+          "cumulative_group_share_percent": 75.48395516436351,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1303304211781913,
+          "cumulative_group_share_percent": 76.14227919319056,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.133442906322105,
+          "cumulative_group_share_percent": 76.77450226933283,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.136715492311546,
+          "cumulative_group_share_percent": 77.45312703913693,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1399937214701323,
+          "cumulative_group_share_percent": 78.09985064454852,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1405078649031244,
+          "cumulative_group_share_percent": 78.66972144483275,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1463479500139957,
+          "cumulative_group_share_percent": 79.3323956324406,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1626886998669124,
+          "cumulative_group_share_percent": 80.03132114322172,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1659049030968422,
+          "cumulative_group_share_percent": 80.70994591302582,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1718272087650181,
+          "cumulative_group_share_percent": 81.40887142380697,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1754694128527325,
+          "cumulative_group_share_percent": 82.06139524092629,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1780292887879864,
+          "cumulative_group_share_percent": 82.65736699389528,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1782948857761564,
+          "cumulative_group_share_percent": 83.28959007003756,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.1825012190051385,
+          "cumulative_group_share_percent": 83.93776372837608,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.2049744496429187,
+          "cumulative_group_share_percent": 84.58013717500688,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.2083025444180955,
+          "cumulative_group_share_percent": 85.25876194481098,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.2406444199199405,
+          "cumulative_group_share_percent": 85.9475370851036,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.2449583218981477,
+          "cumulative_group_share_percent": 86.63631222539622,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.2451430775842847,
+          "cumulative_group_share_percent": 87.27868567202704,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.2630700077451538,
+          "cumulative_group_share_percent": 87.9471600713426,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.2690227538134464,
+          "cumulative_group_share_percent": 88.62578484114671,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.2744681952726147,
+          "cumulative_group_share_percent": 89.27830865826603,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.2802306459132504,
+          "cumulative_group_share_percent": 89.95693342807013,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.2845192350680956,
+          "cumulative_group_share_percent": 90.64570856836275,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3003791879530804,
+          "cumulative_group_share_percent": 91.33448370865537,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3027899145681985,
+          "cumulative_group_share_percent": 91.98700752577469,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3168616137715203,
+          "cumulative_group_share_percent": 92.63953134289402,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.334159855160274,
+          "cumulative_group_share_percent": 93.29785537172107,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3520685902219547,
+          "cumulative_group_share_percent": 93.98663051201369,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.3898518932013886,
+          "cumulative_group_share_percent": 94.67540565230631,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.4654425653934644,
+          "cumulative_group_share_percent": 95.38448153357596,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.5129970520473577,
+          "cumulative_group_share_percent": 96.000754027522,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.5168848182221395,
+          "cumulative_group_share_percent": 96.66342821512985,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.5387466011918176,
+          "cumulative_group_share_percent": 97.34205298493394,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.5872669769643828,
+          "cumulative_group_share_percent": 98.03082812522656,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 1.7205149363213654,
+          "cumulative_group_share_percent": 98.6833519423459,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 2.2200576456295797,
+          "cumulative_group_share_percent": 99.33152560068443,
+          "right_censored": false
+        },
+        {
+          "energy_kilojoules": 2.5,
+          "cumulative_group_share_percent": 100.0,
+          "right_censored": true
+        }
+      ]
+    },
+    "cycle_points_csv": "execution_efficiency/gpu_energy_cycle_points.csv"
+  },
+  "execution_summary": {
+    "sync": {
+      "seconds_per_128_groups": 45.96336725002262,
+      "throughput_groups_per_s": 2.784826431530362,
+      "relative_throughput": 1.0
+    },
+    "streamweave": {
+      "seconds_per_128_groups": 27.967103949562762,
+      "throughput_groups_per_s": 4.5768056725087245,
+      "relative_throughput": 1.64347968716801
+    }
+  },
+  "restrictions": [
+    "GPU bins count telemetry intervals, not independent training trials.",
+    "Zero active means no GPU exceeded the stated SM threshold; do not relabel it as idle or stall.",
+    "The distribution is mechanism evidence, not a causal decomposition of the 1.64x result.",
+    "Do not add stall, tail-wait, MFU, or time-to-quality headlines.",
+    "Exact accelerator model and trainer/rollouter topology remain Appendix-only.",
+    "GPU energy is a sample-based eight-GPU estimate, not node-total energy or an external power-meter reading.",
+    "Prompt-group normalization is not token-normalized energy."
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "status": "draft",
+  "figure": "execution_efficiency_throughput_stability",
+  "work_normalization": {
+    "segments": 10,
+    "definition": "Ten contiguous segments with equal consumed prompt-group work over the full StreamWeave history."
+  },
+  "throughput": {
+    "sync_groups_per_s": 2.784826431530362,
+    "streamweave_groups_per_s": 4.5768056725087245,
+    "full_history_ratio": 1.64347968716801,
+    "deciles": [
+      {
+        "decile": 1,
+        "progress_percent": 10,
+        "segment_groups": 8617.4,
+        "segment_time_s": 1870.5928167470172,
+        "segment_throughput": 4.606774880588796,
+        "segment_relative_throughput": 1.6542412943334528,
+        "cumulative_throughput": 4.606774880588796,
+        "cumulative_relative_throughput": 1.6542412943334528
+      },
+      {
+        "decile": 2,
+        "progress_percent": 20,
+        "segment_groups": 8617.4,
+        "segment_time_s": 1891.332074964362,
+        "segment_throughput": 4.556259640530009,
+        "segment_relative_throughput": 1.6361018370635694,
+        "cumulative_throughput": 4.5813780168693174,
+        "cumulative_relative_throughput": 1.645121564848006
+      },
+      {
+        "decile": 3,
+        "progress_percent": 30,
+        "segment_groups": 8617.399999999998,
+        "segment_time_s": 1771.7433972809808,
+        "segment_throughput": 4.863796875566041,
+        "segment_relative_throughput": 1.7465350157902697,
+        "cumulative_throughput": 4.671801533790074,
+        "cumulative_relative_throughput": 1.6775916376313447
+      },
+      {
+        "decile": 4,
+        "progress_percent": 40,
+        "segment_groups": 8617.400000000001,
+        "segment_time_s": 2024.516751086739,
+        "segment_throughput": 4.256521955362569,
+        "segment_relative_throughput": 1.5284693893915167,
+        "cumulative_throughput": 4.560565773028396,
+        "cumulative_relative_throughput": 1.6376481210436522
+      },
+      {
+        "decile": 5,
+        "progress_percent": 50,
+        "segment_groups": 8617.400000000001,
+        "segment_time_s": 2725.7463979289296,
+        "segment_throughput": 3.1614826700487084,
+        "segment_relative_throughput": 1.1352530392033662,
+        "cumulative_throughput": 4.189740106663511,
+        "cumulative_relative_throughput": 1.5044887750369056
+      },
+      {
+        "decile": 6,
+        "progress_percent": 60,
+        "segment_groups": 8617.400000000001,
+        "segment_time_s": 1693.4427605135286,
+        "segment_throughput": 5.0886869051226835,
+        "segment_relative_throughput": 1.827290508129179,
+        "cumulative_throughput": 4.31683932913962,
+        "cumulative_relative_throughput": 1.5501286831608254
+      },
+      {
+        "decile": 7,
+        "progress_percent": 70,
+        "segment_groups": 8617.400000000001,
+        "segment_time_s": 1641.5850066836722,
+        "segment_throughput": 5.249438783197016,
+        "segment_relative_throughput": 1.8850147081921589,
+        "cumulative_throughput": 4.429251831295943,
+        "cumulative_relative_throughput": 1.590494754411646
+      },
+      {
+        "decile": 8,
+        "progress_percent": 80,
+        "segment_groups": 8617.400000000001,
+        "segment_time_s": 1710.1118502771944,
+        "segment_throughput": 5.039085600513905,
+        "segment_relative_throughput": 1.809479234849386,
+        "cumulative_throughput": 4.497284913774601,
+        "cumulative_relative_throughput": 1.6149246728110025
+      },
+      {
+        "decile": 9,
+        "progress_percent": 90,
+        "segment_groups": 8617.399999999994,
+        "segment_time_s": 1725.5855081851157,
+        "segment_throughput": 4.99389914850603,
+        "segment_relative_throughput": 1.793253285721546,
+        "cumulative_throughput": 4.5475322068474275,
+        "cumulative_relative_throughput": 1.6329679133174542
+      },
+      {
+        "decile": 10,
+        "progress_percent": 100,
+        "segment_groups": 8617.399999999994,
+        "segment_time_s": 1773.759184376376,
+        "segment_throughput": 4.858269417801339,
+        "segment_relative_throughput": 1.7445501675777855,
+        "cumulative_throughput": 4.5768056725087245,
+        "cumulative_relative_throughput": 1.64347968716801
+      }
+    ]
+  },
+  "sources": {
+    "sync_wandb": "/private/tmp/streamweave-qvw/wandb_extract/wandb/run-20260709_204429-v96fvd0p/run-v96fvd0p.wandb",
+    "streamweave_wandb": "/private/tmp/streamweave-qvw/wandb_extract/wandb/run-20260709_232348-oki4kv8u/run-oki4kv8u.wandb"
+  },
+  "restrictions": [
+    "Deciles are descriptive contiguous system observations, not iid samples."
+  ]
+}

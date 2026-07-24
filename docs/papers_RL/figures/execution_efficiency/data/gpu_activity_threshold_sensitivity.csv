@@ -1,0 +1,6 @@
+threshold_percent,sync_zero_active_share_percent,streamweave_zero_active_share_percent,sync_mean_active_gpus,streamweave_mean_active_gpus
+10,26.480836,4.414784,5.466899,6.952772
+20,27.874564,4.722793,5.400697,6.922998
+30,28.919861,5.338809,5.355401,6.877823
+40,28.919861,5.441478,5.254355,6.850103
+50,29.965157,5.852156,5.020906,6.795688

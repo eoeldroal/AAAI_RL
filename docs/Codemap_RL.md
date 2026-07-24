@@ -1,14 +1,22 @@
 # RL Code Map
 
-_Last updated: 2026-07-22_
+_Last updated: 2026-07-23_
 
 Navigation and debugging map for this async-HPT `verl` fork. Use it to find
 where code lives, how a rollout sample becomes a learner update, and — when a
 run breaks — which file/symbol to open first.
 
-Companion docs (single source of truth, do not duplicate them here):
+> **Paper-facing term map.** This code map retains internal labels such as
+> `async-HPT` and `branch-blind policy loss` for symbol and history lookup. In the
+> paper, these map to the implementation lineage and to
+> **source-conditioned input construction → shared primary update** respectively;
+> they are not standalone novelty claims. Public positioning is owned by
+> `papers_RL/Full_Paper_Draft_ko.md`.
+
+Companion references (do not duplicate their operational details here):
 
 - `../AGENTS.md` — durable rules and contracts (what you may/may not change).
+- `papers_RL/README.md` — paper workspace entry point and document authority.
 - `papers_RL/Full_Paper_Draft_ko.md` — current paper thesis, terminology, claim boundaries,
   and evidence ledger.
 - `Overview_RL.md` — what this fork is and why (identity, guarantees).
