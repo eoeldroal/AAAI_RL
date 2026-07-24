@@ -26,8 +26,8 @@
 
 | 자산 | 역할 | 상태 | 캡션이 맡아야 할 내용 |
 |---|---|---|---|
-| Figure 1 — 문제 서사 (`Figure 1 Problem.dc.html`, 의도 문서 `Figure 1 Design Intent.md`) | 두 병목(compute·signal) × 두 부분 처방: sync+expert=신호만, fully-async RL=compute만, StreamWeave=둘 다 | **canonical 초안 (구 `figure1_streamweave_overview` 대체)** | 세 행이 같은 all-✗ hard group을 비교한다는 무대 설명, row C 분기의 γ-threshold 정의, row B의 train이 다른 group 신호로는 계속 돈다는 사실 |
-| Figure 2 — runtime pipeline (`Pipeline Figure Draft.dc.html`, 의도 문서 `Figure 2 Design Intent.md`) | 5단계 파이프라인(Generator / Reconstruction·source decision / Routed-group stream / Conversion / Trainer)과 단일 branch-blind update | **canonical 초안 (구 `figure2_training_pipeline` 대체)** | 경계 단 2개가 각각 generator/trainer 프로세스 내부에서 실행된다는 사실, π_g 칩의 per-sample 단위, mixed batch의 branch-blind reduction |
+| Figure 1 — 문제 서사 ([`plan-figure1-draft.md`](plan-figure1-draft.md)) | 두 병목(compute·signal) × 두 부분 처방: sync+expert=신호만, fully-async RL=compute만, StreamWeave=둘 다 | **DESIGN LOCKED / EXPORT PENDING**; 구 `figure1_streamweave_overview` 대체 | 세 행이 같은 all-✗ hard group을 비교한다는 무대 설명, row C 분기의 γ-threshold 정의, row B의 train이 다른 group 신호로는 계속 돈다는 사실 |
+| Figure 2 — runtime pipeline ([`plan-diagram-set.md`](plan-diagram-set.md)) | 5단계 파이프라인(Generator / Reconstruction·source decision / Routed-group stream / Conversion / Trainer)과 단일 branch-blind update | **DESIGN LOCKED / EXPORT PENDING**; 구 `figure2_training_pipeline` 대체 | 경계 단 2개가 각각 generator/trainer 프로세스 내부에서 실행된다는 사실, π_g 칩의 per-sample 단위, mixed batch의 branch-blind reduction |
 
 두 그림은 AAAI `figure*` 전폭 배치를 전제로 한다. Figure 1은 "왜"(두 병목, 두 부분 처방)를,
 Figure 2는 "어떻게"(경계 장치와 단일 update)를 담당한다.
@@ -36,7 +36,7 @@ Figure 2는 "어떻게"(경계 장치와 단일 update)를 담당한다.
 
 - `figure1_streamweave_overview.*` — **폐기.** "Wait→idle / Decide early→wrong source" 프레임은
   사실 오류(fully-async RL은 group을 조기 판정하지 않으며, 실패의 정체는 학습 신호의 부재다).
-  기각 이력은 `Figure 1 Design Intent.md` §2 참조.
+  기각 이력은 [`plan-figure1-draft.md`](plan-figure1-draft.md) 참조.
 - `figure2_training_pipeline.*` — **폐기.** "RL operators / SFT update 두 박스 + ⊕" 구도는
   코드 사실(단일 branch-blind loss, per-branch 합산 불가)과 어긋나고 "SFT"는 내부 용어다.
 - `asynchpt_efficiency.*`, `figure1_streamweave_draft.*` — 이전 iteration, 이미 대체됨.
@@ -45,7 +45,7 @@ Figure 2는 "어떻게"(경계 장치와 단일 update)를 담당한다.
 
 | 자산 | 역할 | 현재 지위 |
 |---|---|---|
-| `figure2_learning_effect` | main과 RL-only의 early/late window 비교 | 수치가 확정될 때까지 본문 서사에서 제외하고 Appendix 후보로 보관 |
+| `learning_effect_single_panel_draft.*` | Main, expert-off quality와 expert-route dynamics의 단일 패널 초안 | **REVIEW DRAFT.** 공개 지위가 잠길 때까지 본문 자산으로 부르지 않음 |
 | `execution_efficiency/outputs/execution_gpu_activity_overview` | Full-history GPU activity, active-GPU coverage, matched-wall-clock cumulative work | **LOCKED MAIN.** §4.3의 유일한 전폭 efficiency figure |
 | `execution_efficiency/outputs/execution_activity_active_gpu` | Standalone active-GPU distribution | 통합본에 흡수된 source asset |
 | `execution_efficiency/outputs/execution_efficiency_cumulative_work` | Standalone cumulative work | 통합본에 흡수된 source asset |
@@ -60,11 +60,16 @@ Figure 2는 "어떻게"(경계 장치와 단일 update)를 담당한다.
 
 ## 재생성
 
-새 canonical 초안 2종은 디자인 세션 프로젝트("StreamWeave 논문 Figure 설계")의 DC HTML이 원본이며,
-확정 시 SVG/PDF/PNG로 export하여 이 디렉토리에 반입한다. 반입 전까지 아래 기존 파이프라인
-명령은 구 자산(figure3 등 수치 그림)에만 적용된다.
+Figure 1·2의 편집 가능한 DC HTML은 외부 디자인 세션에 있으며 저장소 파일 경로가 아니다.
+저장소 안에서는 위 두 plan이 의도와 기각 이력을 보존한다. 확정 시 SVG/PDF/PNG를 이 디렉터리에
+반입하고 본 표를 `LOCKED MAIN`으로 갱신한다.
+
+`src/generate_paper_figures.cjs`와 `src/export_paper_figures.cjs`는 폐기된 구 Figure 1·2와 초기
+learning-effect draft를 재생성하는 **legacy pipeline**이다. 기각 이력을 재현할 때만 사용하며,
+현재 공개 그림을 생성하거나 갱신하는 명령으로 사용하지 않는다.
 
 ```bash
+# Legacy assets only.
 node src/generate_paper_figures.cjs
 NODE_PATH=... node src/export_paper_figures.cjs
 ```

@@ -132,6 +132,14 @@ ENV/
 logs
 log
 outputs
+!docs/papers_RL/figures/execution_efficiency/outputs/
+docs/papers_RL/figures/execution_efficiency/outputs/*
+!docs/papers_RL/figures/execution_efficiency/outputs/execution_gpu_activity_overview.png
+!docs/papers_RL/figures/execution_efficiency/outputs/execution_gpu_activity_overview.svg
+!docs/papers_RL/figures/execution_efficiency/outputs/execution_gpu_activity_overview.pdf
+!docs/papers_RL/figures/execution_efficiency/outputs/execution_energy_candidate.png
+!docs/papers_RL/figures/execution_efficiency/outputs/execution_energy_candidate.svg
+!docs/papers_RL/figures/execution_efficiency/outputs/execution_energy_candidate.pdf
 .history
 scratch_hpt_fair_viz.html
 docs/papers_RL/AsyncFlow- An Asynchronous Streaming RL Framework for Efficient LLM Post-Training.pdf

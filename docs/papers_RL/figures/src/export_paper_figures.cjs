@@ -1,3 +1,4 @@
+// LEGACY: exports superseded Figure 1/2 and early learning-effect drafts.
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');

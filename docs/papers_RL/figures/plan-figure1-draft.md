@@ -1,9 +1,9 @@
 # StreamWeave Figure 1 Draft Implementation Plan (2026-07-24 개정)
 
 > **For agentic workers:** 이 plan의 구 버전(naive-composition double bind 구도)은 폐기되었다.
-> 현재 canonical 초안과 의도 문서는 디자인 세션 프로젝트("StreamWeave 논문 Figure 설계")의
-> `Figure 1 Problem.dc.html` + `Figure 1 Design Intent.md`이다. 이 plan을 다시 실행하지 말고,
-> 의도 문서를 읽은 뒤 그 초안 위에서 작업할 것.
+> 이 파일이 Figure 1의 저장소 내 canonical 의도와 기각 이력을 소유한다. 편집 가능한 DC HTML은
+> 외부 디자인 세션에 있으며 저장소 경로가 아니다. 이 plan을 처음부터 다시 실행하지 말고,
+> [`figures_README.md`](figures_README.md)의 상태와 함께 현재 디자인 위에서 작업한다.
 
 **Goal:** 두 병목(compute·signal)에 대한 두 부분 처방과 StreamWeave의 자리를 한 그림으로 보인다.
 
@@ -28,7 +28,7 @@
 
 - `HPT`, framework 이름, queue 내부, objective 수식, 측정 수치는 Figure 1에 넣지 않는다.
 - 라벨은 영어, white flat vector-first academic 스타일.
-- 색 규약은 mono+gold (figures/README.md의 2026-07-24 개정 규약을 따른다).
+- 색 규약은 mono+gold (`figures_README.md`의 2026-07-24 개정 규약을 따른다).
 - Nonblocking 실행이 보이도록 back-to-back trajectory(익명 filler 포함)를 유지한다.
 - Row C의 분기는 미니 group 카드 1개 + 화살표 2개까지만 — gate 박스·γ 수식·store는
   Figure 2의 몫이다.

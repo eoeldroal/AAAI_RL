@@ -379,28 +379,20 @@ StreamWeave의 실행 이점은 complete group을 없애서 얻는 것이 아니
 학습 경계로 유지하되, 그 completion을 pipeline 전체가 기다리는 serialized critical path로 만들지 않는
 데서 나온다. 이 차이를 동일한 prompt-group work unit과 동일한 GPU 예산에서 측정한다.
 
-![Concurrent GPU activity](figures/execution_efficiency/outputs/execution_activity_active_gpu.png)
+![End-to-end execution efficiency](figures/execution_efficiency/outputs/execution_gpu_activity_overview.png)
 
-*그림 X: 동일한 8-GPU 예산에서 관측한 concurrent GPU activity. 15초 system telemetry마다
-SM activity가 20\%를 넘은 GPU 수의 분포를 비교한다.*
+*그림 X: 동일한 8-GPU 예산에서의 end-to-end execution efficiency. (a)--(b)는 각 run의 전체
+non-validation training history를 독립적으로 0--100\%로 정규화하여 GPU별 SM activity와 동시에
+활성인 GPU 수를 보여준다. (c)는 synchronous run의 전체 79.7분과 StreamWeave의 동일 길이 prefix를
+비교하며, 같은 시간에 소비한 prompt group은 각각 13.3K와 22.2K이다. 각 run의 전체 이력에서 계산한
+1.64$\times$ throughput은 Table 2에 보고한다.*
 
-그림 X는 두 실행 방식이 만드는 hardware activity의 차이를 training history 전체에서 보여준다.
-Synchronous execution은 여덟 GPU가 함께 작동하는 구간과 전역적으로 activity가 낮은 구간 사이를
-크게 오간다. StreamWeave는 낮은-activity 구간의 질량을 줄이고 더 많은 GPU에서 작업이 동시에
-진행되는 상태를 지속한다. Complete-group waiting을 해당 group의 판단에만 묶고, 먼저 끝난 worker에
-다음 attempt를 공급한 실행 구조가 이 분포의 변화로 나타난다.
-
-![Work-normalized GPU energy](figures/execution_efficiency/outputs/execution_energy_candidate.png)
-
-*그림 Y: 각 cycle을 소비한 prompt group 수로 가중한 estimated GPU energy/group의 누적 분포.
-세로 점선은 cycle-weighted aggregate이며, energy는 여덟 GPU의 device-power telemetry를 합산한
-추정값이다.*
-
-높은 동시성은 단순히 더 많은 전력을 사용한 결과가 아니다. StreamWeave의 평균 total GPU power는
-더 높지만, 그림 Y의 분포는 prompt group당 추정 GPU energy가 전 구간에서 더 낮은 쪽으로
-이동했음을 보여준다. Pooled power, cycle-edge trimming, 첫 cycle 제외와 validation-cycle coverage를
-바꾸어도 감소 폭은 약 24--29\%로 유지된다. StreamWeave가 추가 hardware activity를 실제
-prompt-group work로 전환한다는 뜻이다.
+그림 X는 StreamWeave가 기다림을 실제 작업으로 바꾸는 과정을 세 수준에서 연결한다. Synchronous
+execution은 GPU들이 함께 작동하는 구간과 전역적으로 activity가 낮은 구간 사이를 반복하는 반면,
+StreamWeave는 training history 전반에서 더 많은 GPU가 동시에 작업하는 상태를 유지한다. 이 activity
+coverage의 차이는 동일한 wall-clock 안에서 더 많은 prompt group을 소비하는 누적 작업량으로 이어진다.
+Complete-group decision을 유지하면서도 완료된 worker에 다음 attempt를 공급하고 준비된 group을
+학습하는 구조가 hardware activity와 end-to-end work 양쪽에서 일관되게 나타난다.
 
 | Execution | Time / 128 prompt groups $\downarrow$ | Throughput (groups/s) $\uparrow$ | Relative throughput |
 |---|---:|---:|---:|
@@ -654,6 +646,18 @@ macro-average는 36.8로, main의 38.5보다 낮았다. 이 결과는 StreamWeav
 관찰된 regime에서는 correction weight가 1 근처에 집중되고 truncation이 거의 활성화되지 않아 핵심
 novelty나 성능 원인으로 해석하지 않는다.
 
+![Work-normalized GPU energy](figures/execution_efficiency/outputs/execution_energy_candidate.png)
+
+*그림 Y: 완전 관측된 non-validation cycle에서 prompt-group work로 정규화한 estimated GPU
+energy의 누적 분포. 세로 점선은 cycle-weighted aggregate이며, energy는 15초 device-power
+telemetry를 여덟 GPU에 합산한 sample-based estimate다.*
+
+보조적인 energy accounting에서도 StreamWeave는 평균 total GPU power가 더 높지만 prompt group당
+추정 GPU energy는 1.504에서 1.066 kJ/group으로 낮다. Pooled power, cycle-edge trimming, 첫 cycle
+제외와 validation coverage를 바꾸어도 감소 폭은 약 24--29\%로 유지된다. 이 결과는 추가 hardware
+activity가 더 많은 prompt-group work로 이어진다는 본문의 해석과 일치하지만, node 전체 에너지나
+독립 전력계 측정, 또는 architecture만의 독립적인 에너지 절감 효과로 해석하지 않는다.
+
 §3.1의 endpoint 유도는 fixed complete group, admitted batch, learner-entry parameters, objective와
 reduction 아래에서 source-conditioned inputs가 의도한 policy 및 supervised contribution을 복원한다는
 주장이다. 전체 optimizer trajectory의 동등성, 임의 routing policy, 무제한 source mixture, 보편적
@@ -672,7 +676,7 @@ instantiation에서의 end-to-end demonstration이다. 이 범위를 넘어서�
 1. 먼저 위의 공개 원고(Abstract--Appendix D)를 읽어 현재 논증과 실제 문안을 파악한다.
 2. 이어서 이 메모의 §0·§1·§4·§6·§7을 읽어 claim boundary, design ledger, evidence status,
    Method 규율을 확인한다.
-3. `Paper_writing/AAAI/paper-plan.md`의 §0·§8·§9·§11에서 남은 작업과 금지된 회귀를 확인한다.
+3. `PAPER_PLAN.md`의 §0·§8·§9·§11에서 남은 작업과 금지된 회귀를 확인한다.
 4. 코드나 수치의 exact provenance가 필요할 때만 `Overview_RL.md`, `Codemap_RL.md`, launcher,
    `Efficiency.tex`, `Ablation_RL.md`, DR 문서로 내려간다. 하위 문서의 과거 용어나 수치가 이 파일의
    공개 claim을 덮어쓰지 않는다.
@@ -681,7 +685,7 @@ instantiation에서의 end-to-end demonstration이다. 이 범위를 넘어서�
 
 | 항목 | Cold-start 기준 |
 |---|---|
-| **원고 상태** | 한국어 Abstract--Conclusion과 Appendix A--D의 기본 구조는 안정화됐다. §3의 구조는 동결하고, 현재 본문급 개정은 §4.2의 A+C 통합 서사에 집중한다. §4.3은 E를 국소 보강하고 Abstract는 마지막에 정렬한다. 변화 로그는 결정의 역사이며 현재 상태는 이 capsule과 `paper-plan.md`가 소유한다. |
+| **원고 상태** | 한국어 Abstract--Conclusion과 Appendix A--D의 기본 구조는 안정화됐다. §3의 구조는 동결하고, 현재 본문급 개정은 §4.2의 A+C 통합 서사에 집중한다. §4.3은 E를 국소 보강하고 Abstract는 마지막에 정렬한다. 변화 로그는 결정의 역사이며 현재 상태는 이 capsule과 `PAPER_PLAN.md`가 소유한다. |
 | **Canonical thesis** | Source decision에 필요한 complete-group waiting을 해당 group에 국소화하고, 확정된 source와 필요한 group context를 learner-input construction까지 보존하면, group-conditioned heterogeneous learning을 pipeline-wide execution barrier나 source별 learner path 없이 fully asynchronous하게 실현할 수 있다. |
 | **소유하는 novelty** | Complete-group outcome이 정한 source를 source-conditioned learner input과 shared primary update로 닫는 learning composition, 그리고 source-decision waiting만 국소화하면서 source-resolved group을 기존 asynchronous stream과 learner에 연결하는 architecture. |
 | **독립 novelty가 아닌 것** | Fully-asynchronous RL, expert trajectory, HPT selector, PPO·GRPO·IS·decoupling, unified estimator, accumulator·queue·self-detach·trim-and-carryover 각각. |
@@ -691,7 +695,7 @@ instantiation에서의 end-to-end demonstration이다. 이 범위를 넘어서�
 | **주장하지 않는 것** | LUFFY +0.8 headline, quality-versus-wall-clock, architecture-isolated speedup, `54.7%→3.25%` stall 감소, universal correctness·convergence·optimizer-trajectory equivalence. |
 | **남은 P0** | Provenance manifest와 Table 1 각주, Figure 1–3와 caption, 영어·AAAI LaTeX 이관, accepted-conference citation·checklist, page-budget compression. 새로운 RL training은 필수 gate가 아니다. |
 
-작업 중 충돌이 생기면 권한은 `공개 원고와 이 내부 메모 → paper-plan.md → evidence ledger →
+작업 중 충돌이 생기면 권한은 `공개 원고와 이 내부 메모 → PAPER_PLAN.md → evidence ledger →
 historical documents` 순서다. 코드가 문서와 다르면 구현 사실을 먼저 확인하되, 그 사실을 어떤 공개
 주장으로 올릴지는 이 파일의 논문 헌법과 evidence gate에 따라 다시 결정한다. `Async-HPT`를 공개
 방법명으로, `branch-blind integration`을 novelty framing으로, CISPO를 main objective로 복원하지 않는다.
@@ -874,7 +878,7 @@ Learner contract는 보존할 composition을 압축하는 specification이고, g
 현행 공개 원고는 §3 재작성과 로그 분석을 마쳤으므로 **실증 서사의 선택적 통합** 단계에 있다.
 이미 안정화된 problem framing, Related Work와 Method 구조는 다시 열지 않고, A·C·E가 하나의
 architecture thesis를 지지하도록 Experiments와 앞뒤 회수 문장만 정렬한다. 아래 분류가 개정 범위의
-단일 기준이며, 구체적인 실행 순서와 진행 상태는 `paper-plan.md` §8만 소유한다.
+단일 기준이며, 구체적인 실행 순서와 진행 상태는 `PAPER_PLAN.md` §8만 소유한다.
 
 | 분류 | 잠긴 결정 |
 |---|---|

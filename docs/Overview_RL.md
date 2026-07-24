@@ -86,7 +86,7 @@ queue put, completed-budget pressure, trainer-visible sample throughput.
 - Rules for working in this repo: `../AGENTS.md`.
 - Current paper thesis, evidence, and editing constitution:
   `papers_RL/Full_Paper_Draft_ko.md`.
-- Remaining paper tasks and asset plan: `../../paper-plan.md`.
+- Remaining paper tasks and asset plan: `papers_RL/PAPER_PLAN.md`.
 - Code layout, control flow, and where a run breaks: `Codemap_RL.md`.
 - How to launch and size a run: `Readme_RL.md`.
 - Queue/staleness/HPT budget sizing: `AsyncBudget_RL.md`.

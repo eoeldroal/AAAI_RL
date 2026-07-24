@@ -2,9 +2,9 @@
 
 > **For agentic workers:** 이 plan의 Task 1·2가 만든 구 승인본
 > (`figure1_streamweave_overview`, `figure2_training_pipeline`)은 폐기되었다.
-> 현재 canonical 초안은 디자인 세션 프로젝트("StreamWeave 논문 Figure 설계")의
-> `Figure 1 Problem.dc.html`과 `Pipeline Figure Draft.dc.html`이며, 각각
-> `Figure 1 Design Intent.md` / `Figure 2 Design Intent.md`가 의도와 기각 이력을 소유한다.
+> 이 문서와 [`figures_README.md`](figures_README.md)가 저장소 안의 canonical 의도 기록이다.
+> 편집 가능한 DC HTML은 외부 디자인 세션에 있으며 저장소 경로가 아니다. 최종 export가 반입되기
+> 전까지 그림 상태는 `DESIGN LOCKED / EXPORT PENDING`이다.
 
 **Goal:** 하나의 시각 언어를 공유하는 Figure 1(문제 서사)과 Figure 2(end-to-end pipeline).
 
@@ -21,7 +21,7 @@
 - Repository test suite를 실행하지 않는다.
 - 그림 안 가시 텍스트는 최소 컴포넌트 라벨로 제한, 해석은 캡션.
 - Framework queue 크기, Ray 이름, trim-and-carryover, tensor 필드는 넣지 않는다.
-- **색 규약: mono+gold** (figures/README.md 2026-07-24 개정) — 구 blue/orange/teal/coral 규약 폐지.
+- **색 규약: mono+gold** (`figures_README.md` 2026-07-24 개정) — 구 blue/orange/teal/coral 규약 폐지.
 - 물리 컨테이너는 5개 동급 단계(Generator / Reconstruction·source decision / Routed-group
   stream / Conversion / Trainer), StreamWeave 단 2개는 gold 밑줄로만 구별.
   실제 프로세스 토폴로지(경계 단 2개가 generator/trainer 프로세스 내부)는 캡션이 책임진다.
@@ -38,6 +38,6 @@
 ## 남은 작업
 
 - [ ] 두 초안 확정 후 SVG/PDF/PNG export, `docs/papers_RL/figures/` 반입, README 표 갱신
-- [ ] 두 PNG를 나란히 놓고 공유 시각 언어 최종 점검 (Figure 2 Design Intent §검증 체크리스트 사용)
+- [ ] 두 PNG를 나란히 놓고 이 문서의 공유 시각 어휘와 constraints를 기준으로 최종 점검
 - [ ] PDF Poppler 렌더에서 폰트 치환·crop 확인
 - [ ] 모든 가시 명사가 `Codemap_RL.md`와 구현의 실제 단계에 대응하는지 확인

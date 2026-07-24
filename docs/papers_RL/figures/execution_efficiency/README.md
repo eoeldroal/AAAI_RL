@@ -9,7 +9,7 @@ StreamWeave의 실행 효율 로그에서 만든 그림, 생성 스크립트, �
 |---|---|
 | `outputs/` | 검토용 PNG, 편집 가능한 SVG, LaTeX 삽입용 PDF |
 | `scripts/` | W&B 원장 갱신과 각 후보 그림의 생성 스크립트 |
-| `data/` | Raw telemetry, 파생 CSV, manifest, 공개 efficiency figure 입력 JSON |
+| [`data/`](data/README.md) | Raw telemetry, 파생 CSV, manifest, 공개 efficiency figure 입력 JSON과 provenance |
 
 ## Outputs
 
