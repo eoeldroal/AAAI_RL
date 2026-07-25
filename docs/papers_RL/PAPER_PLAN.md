@@ -35,7 +35,7 @@ _Last updated: 2026-07-24_
 | CISPO의 지위 | Main에서 기각된 ablation; Appendix의 secondary diagnosis |
 | 핵심 실증 | Fixed-checkpoint quality, expert-off learning dynamics, resource-matched execution efficiency |
 | 신규 학습 | 현재 핵심 주장을 위해 요구하지 않음 |
-| 공개 원고 상태 | 한국어 Abstract--Conclusion과 Appendix A--D의 구조·주장 잠금 완료 |
+| 공개 원고 상태 | 전체 구조와 §1--§3은 안정화됐고, §4.2·§4.3의 핵심 논증과 선택된 figure composition도 정리됨; 현재 §4 도입부·§4.1의 질문·비교·측정 단위를 검토해 잠그는 중 |
 | 온보딩 상태 | Full draft §0, project memory, TASKS, code-facing Overview를 2026-07-23 기준으로 동기화; 저장소 `AGENTS.md`는 코드 전용으로 유지 |
 
 ### 0.1 본문 추상화 게이트
@@ -223,27 +223,30 @@ selector·다중 source에서 검증했다는 범용성 주장으로 확대하�
 ### 4.4 Canonical realization boundary
 
 현행 main은 vanilla clipped PPO 기반의 shared learner와 asynchronous policy correction을 사용한다.
-이는 StreamWeave를 실증하는 한 realization이지 논문의 개념적 정체성이 아니다. Main run ID, clipping,
-anchor, token-level correction, $\beta$, auxiliary 설정과 stale/drop knob의 정확한 값은 Experimental Setup과
-Appendix의 reproducibility block에서만 명세한다. Method 본문은 특정 PPO variant가 아니라
-complete-group decision, source-conditioned input construction, shared primary update를 설명한다.
+이는 StreamWeave를 실증하는 한 realization이지 논문의 개념적 정체성이 아니다. Method와 Experimental
+Setup은 objective family, selector와 source별 learning role만 명세한다. Main run ID, clipping, anchor,
+token-level correction, $\beta$, auxiliary 설정과 stale/drop knob의 정확한 값은 Appendix의
+reproducibility block이 소유한다. Method 본문은 특정 PPO variant가 아니라 complete-group decision,
+source-conditioned input construction, shared primary update를 설명한다.
 
 CISPO는 Method 구성요소가 아니다. Decoupling도 main의 realization일 뿐 독립 novelty가 아니며,
 두 결과는 필요할 경우 Appendix의 secondary diagnosis로만 둔다.
 
 ## 5. Experiments 작성 잠금
 
-공개 §4의 구조와 문안은 `Experimental Setup → Learning Effectiveness → Execution Efficiency`로
-잠겼다. 이후 수정은 provenance와 figure/caption 확정에 필요한 범위로 제한하며, 새로운 evidence
-category나 별도 composition-fidelity 실험을 추가하지 않는다.
+공개 §4의 `Experimental Setup → Learning Effectiveness → Execution Efficiency` 구조와 evidence
+role은 잠겼다. §4.2·§4.3의 중심 논증은 유지하고, 현재 문안 검토는 §4 도입부·§4.1이 그 결과를
+정확히 예고하는 데 필요한 범위로 제한한다. 새로운 evidence category나 별도 composition-fidelity
+실험은 추가하지 않는다.
 
 ### 5.1 실험이 답할 세 질문
 
-1. **Learning effectiveness:** StreamWeave가 policy/expert learning의 품질 이점을 유지하는가?
-2. **Role of expert supervision:** Expert channel은 self-generated RL signal이 부족해지는 구간에서
-   어떤 역할을 하는가?
-3. **Execution efficiency:** Complete-group decision을 유지하면서 generation을 serialized critical
-   path에서 분리하고 resource-matched prompt-group throughput을 높이는가?
+1. **Learning effectiveness:** Complete-group outcome이 정한 policy/expert source를 하나의 shared
+   update에 반영하면서 경쟁력 있는 reasoning quality를 달성하는가?
+2. **Role of expert supervision:** Expert source가 선택되는 all-failure 영역에 signal scarcity와
+   generation burden이 함께 집중되며, 그 수요가 학습 중에도 지속되는가?
+3. **Execution efficiency:** Complete-group decision에 필요한 waiting을 source decision에
+   국소화하여 resource-matched concurrent execution과 prompt-group throughput을 높이는가?
 
 ### 5.2 Experimental Setup
 
@@ -252,7 +255,8 @@ category나 별도 composition-fidelity 실험을 추가하지 않는다.
   `openr1_hpt_main_v2`다.
 - 한 prompt에서 `n=8` rollout을 생성한다. 실험적 source selector는 `gamma=0`인 HPT rule로,
   `0/8` all-failure group만 matched expert trajectory로 보낸다. Expert가 필요한데 없는 경우
-  main은 fail-closed이며, expert contribution은 constant `beta=0.3`을 사용한다.
+  main은 fail-closed다. Canonical main의 expert contribution은 constant `beta=0.3`이지만, 공개
+  §4.1은 이를 source-specific supervised signal로만 설명하고 exact coefficient는 Appendix에서 명세한다.
 - Training과 자체 평가는 통일된 Math-Verify grader를 사용한다. 정확한 decoding config와
   evaluation seed는 Table 1 provenance manifest에 기록한다.
 - Quality 평가는 AIME24, AIME25, AMC(83)에 `mean@32`, MATH500, Minerva, Olympiad에
@@ -285,7 +289,7 @@ category나 별도 composition-fidelity 실험을 추가하지 않는다.
 | Fixed-checkpoint quality: main 38.5, synchronous counterpart 37.7 | **LOCKED** | Abstract, Introduction, Table 1 |
 | Resource-matched efficiency: 2.78→4.58 groups/s, 1.64×, 46→28초 | **LOCKED** | Abstract, Introduction, §4 efficiency; full-history `∑groups/∑time`, exact hardware는 Appendix |
 | Source-conditioned composition의 구성적 유도 | **LOCKED** | §3.1과 Appendix |
-| Learning dynamics: 초반 유사, 후반 RL-only 정체, expert channel의 후반 기여 | **DERIVED** | 곡선과 protocol이 함께 있을 때 §4 |
+| Learning dynamics: 초반 유사, 후반 RL-only 정체, expert channel의 후반 기여 | **LOCKED / INTEGRATED** | §4.2 본문과 실증 그림; 단일 training seed의 보편적 인과로 확대하지 않음 |
 | LUFFY 대비 +0.8 points | **PENDING** | Paired uncertainty analysis 전 headline 금지 |
 | Unit/contract tests | **APPENDIX** | Implementation QA로만 사용 |
 
@@ -300,8 +304,8 @@ run length가 headline을 부풀리지 않는다. 이 equal-work 분석은 Appen
 | Asset | 역할 | 상태 |
 |---|---|---|
 | **Table 1: Fixed-checkpoint quality** | Main, 같은 selector의 synchronous reference, RL/expert baselines 비교 | 수치와 본문 잠김; checkpoint/artifact provenance만 확정 필요 |
-| **Learning-dynamics figure** | Expert channel의 후반 보완 역할을 해석 | 분석과 본문 잠김; 최종 caption과 공개 asset 배치 필요 |
-| **Efficiency figure** | 공통 prompt-group work unit → serialized critical path의 분리 → end-to-end payoff | Main-run 수치와 본문 잠김; 최종 caption과 panel 배치 필요 |
+| **Learning-dynamics figure (§4.2)** | Expert channel의 후반 보완 역할을 해석 | **MAIN CONTENT LOCKED**; §4.2 통합 완료, 최종 번호·submission export만 미정 |
+| **Integrated efficiency figure (§4.3)** | 공통 prompt-group work unit → serialized critical path의 분리 → end-to-end payoff | **SELECTED MAIN; COMPOSITION/SCOPE LOCKED; POLISH IN PROGRESS**; §4.3 본문 연결·caption·최종 번호 미정 |
 
 Efficiency 본문은 다음 세 단계만 전면에 둔다.
 
@@ -341,7 +345,9 @@ equal-work 1.67×는 robustness 자산이며 본문 숫자를 늘리는 용도�
 | **Figure 1** | 문제와 StreamWeave의 통찰 | Group은 decision boundary로 남지만 execution barrier일 필요는 없음 |
 | **Figure 2** | §3.1과 §3.2의 대응 | Independent attempts → local reconstruction → source-conditioned input construction → shared primary update |
 | **Table 1** | 최종 quality | Main 38.5, same-selector sync reference 37.7, 주요 baseline landscape |
-| **Figure 3** | 실험의 인과 구조 | Learning dynamics와 resource-matched efficiency를 제한된 panel로 제시 |
+| **Experiment figure (§4.2, 번호 미정)** | Learning dynamics와 expert routing | Residual hard region이 후반에도 남고 expert channel이 지속적으로 작동함 |
+| **Efficiency figure (§4.3, 번호 미정)** | Resource-matched execution efficiency | 더 지속적인 concurrent GPU activity가 동일 시간의 더 많은 prompt-group work로 이어짐 |
+| **Table 2** | End-to-end execution payoff | 동일 8-GPU 예산에서 2.78→4.58 groups/s, 1.64× |
 
 그림 안 텍스트는 최소화하고, 정확한 수치와 해석은 caption이 담당한다. Figure 2는 물리적인
 Generator–Trainer pipeline 위에 세 canonical boundary를 callout으로 대응시키되, learning
@@ -351,18 +357,21 @@ composition과 runtime을 동등한 두 layer처럼 그리지 않는다.
 
 ### P0 — 현재 원고를 닫는 작업
 
-핵심 공개 한국어 원고인 Abstract–§5 Conclusion은 2026-07-23 기준 구조를 잠갔다. 남은 P0는 아래처럼
-재정의한다.
+핵심 공개 한국어 원고의 전체 구조와 §4.2·§4.3의 중심 논증은 안정화됐다. 이 절이 남은 작업의
+**유일한 실행 큐**이며, 다른 메모는 진행 상태를 다시 정의하지 않는다.
 
-1. Main/sync checkpoint, grader·decoding config, evaluation seed, raw result artifact를 provenance
+1. §4 도입부·§4.1을 완료된 §4.2와 §4.3에 실제로 사용한 질문·분석만 남도록 검토해 잠근다.
+2. §3.1·§3.2는 구조나 수식을 다시 쓰지 않고, expert-signal scale의 공개 층위와
+   complete-group context의 handoff 표현만 최종 점검한다.
+3. §4.3의 선택된 통합 효율 그림을 단일 script source에서 SVG/PDF/PNG로 재생성하고, 전폭 배치에서
+   시각적 QA, caption과 최종 번호를 닫는다.
+4. Introduction과 Conclusion을 §4의 최종 판단에 맞춰 회수하고, 한국어 Abstract는 마지막에 압축한다.
+5. Main/sync checkpoint, grader·decoding config, evaluation seed와 raw result artifact를 provenance
    manifest에 등록하고 Table 1 각주를 확정한다.
-2. Figure 1–3의 최종 panel 역할과 caption을 공개 본문의 claim 순서에 맞춰 잠근다. Learning dynamics와
-   efficiency figure는 이미 잠긴 수치 원장을 다시 계산하지 않는다.
-3. 잠긴 한국어 원고를 AAAI-27 LaTeX 구조로 옮기고, 최종 영어 표현을 같은 canonical vocabulary로
-   통일한다.
-4. Accepted-conference citation과 BibTeX를 정리하고 AAAI-27 reproducibility checklist의 근거를
+6. Figure 1·2를 최종 export하고 전체 figure 번호·caption을 확정한 뒤 AAAI-27 LaTeX로 이관한다.
+7. Accepted-conference citation과 BibTeX를 정리하고 AAAI-27 reproducibility checklist의 근거를
    provenance manifest와 Appendix에 연결한다.
-5. 마지막으로 page budget에 맞춰 중복만 압축한다. Thesis, 두 dependency boundary, quality/dynamics/
+8. 마지막으로 page budget에 맞춰 중복만 압축한다. Thesis, 두 dependency boundary, quality/dynamics/
    efficiency의 세 evidence role은 압축 과정에서도 제거하지 않는다.
 
 Appendix A--D는 exact learning realization, asynchronous realization, evaluation protocol, secondary
@@ -394,7 +403,7 @@ P2는 현재 논문의 정체성을 바꾸지 않는 선택 보강이다. 이를
 | “Group reconstruction은 기존 async RL에도 있는 것 아닌가?” | Reconstruction 자체를 novelty로 주장하지 않고, source와 update까지 결정하는 additional control dependency를 localize한 bridge를 소유 |
 | “Source별 처리가 자명하다” | Source decision이 data choice뿐 아니라 shared learner의 해석 조건을 정하며, 두 endpoint가 의도한 policy/supervised contribution으로 환원되고 reduction까지 공통임을 구성적으로 제시 |
 | “빠르지만 다른 학습 문제를 푼 것 아닌가?” | 같은 group-conditioned source-selection policy를 사용하는 synchronous counterpart와 대등한 fixed-checkpoint quality를 먼저 제시하고 resource-matched efficiency를 뒤에 결합 |
-| “1.64×가 서로 다른 cycle 수나 source mixture에서 나온 착시 아닌가?” | 본문에서는 routing 이전의 공통 prompt-group work unit과 work-weighted full-history throughput을 보고한다. Appendix에서는 같은 13,312-group budget에서도 1.67×임을 보이고, exact hardware budget·topology·timing scope·source mix를 공개 |
+| “1.64×가 서로 다른 cycle 수나 source mixture에서 나온 착시 아닌가?” | 본문에서는 routing 이전의 공통 prompt-group work unit과 work-weighted full-history throughput을 보고한다. 통합 효율 그림은 동일한 79.7분에서 누적 작업량이 1.00×에서 1.67×로 벌어지는 과정을 보여주며, exact hardware budget·topology·timing scope·source mix는 Appendix에서 공개 |
 | “6-GPU rollouter인데 28초라면 overlap만으로 산술이 닫히지 않는 것 아닌가?” | 맞다. 이것이 두 번째 시스템 효과다. Appendix는 synchronous 0.637 대비 StreamWeave가 최소 0.763 groups/(GPU·s)를 공급해야 함을 보이고, attempt-level scheduling이 complete-group tail waiting에서 유효 rollout capacity를 회수한다는 해석을 제시한다. 다만 exact 20%를 token-normalized causal decomposition으로 확대하지 않는다 |
 | “단일 모델·수학 domain이라 일반성이 약하다” | 검증 범위를 two-source group-conditioned RLVR로 명시하고 architecture의 구성 가능성과 empirical scope를 구별 |
 | “외부 baseline protocol이 섞였다” | 외부 인용 행을 각주로 분리하고 protocol-matched 주장에는 자체 통일 평가 행만 사용 |

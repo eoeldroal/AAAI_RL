@@ -55,7 +55,7 @@
     "streamweave.timing_s/gen": "Learner-side queue acquisition, deserialization, materialization, alignment, and assembly. It is not the same low-level operation as synchronous generation.",
     "timing_s/step": "Non-evaluation training-loop wall-clock time logged for the cycle.",
     "hpt/onpolicy_num_groups": "Unique prompt groups consumed by the learner in the cycle.",
-    "system.gpu.<i>.smActive": "W&B 15-second system telemetry. Figure 3 counts how many of the eight GPUs exceed the declared SM-activity threshold in each selected training interval.",
+    "system.gpu.<i>.smActive": "W&B 15-second system telemetry. The integrated efficiency figure counts how many of the eight GPUs exceed the declared SM-activity threshold in each selected training interval.",
     "system.gpu.<i>.powerWatts": "W&B 15-second device-power telemetry in watts. The energy estimate sums all eight GPUs and normalizes by consumed prompt groups.",
     "gpu_activity_population": "System rows with all eight SM-active values that fall inside [history timestamp - timing_s/step, history timestamp] for cycles without a validation timer.",
     "gpu_energy_population": "System rows with all eight power values in the same fully observed non-validation training cycles; every telemetry row is assigned to at most one cycle."
@@ -115,6 +115,8 @@
       "2.78 to 4.58 groups/s",
       "46.0 to 28.0 seconds per 128 groups",
       "1.64x throughput",
+      "1.00x to 1.67x relative cumulative work over the same 79.7-minute horizon",
+      "normalized full-history per-GPU SM-activity heatmaps",
       "distribution of the number of GPUs with SM activity above 20% during training intervals",
       "27.9% to 4.7% of telemetry intervals with no GPU above the threshold",
       "5.40 to 6.92 mean GPUs above the threshold",
@@ -126,7 +128,7 @@
       "resource-normalized effective rollout-rate consistency check",
       "equal-work sensitivity",
       "parameter-sync, queue, carryover, and source-mix diagnostics",
-      "per-GPU heatmaps and raw utilization traces",
+      "raw wall-clock-aligned utilization traces",
       "GPU-activity threshold sensitivity"
       ,
       "memory-allocation churn and SM-NVLink joint-state diagnostics"

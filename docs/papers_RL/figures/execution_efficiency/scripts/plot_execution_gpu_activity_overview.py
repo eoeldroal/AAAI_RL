@@ -318,31 +318,40 @@ def render(
     )
 
     common_horizon_s = float(cumulative_work["common_horizon_s"])
-    sync_work = cumulative_work["sync"]
+    sync_work = trim_to_horizon(
+        cumulative_work["sync"],
+        common_horizon_s,
+    )
     streamweave_work = trim_to_horizon(
         cumulative_work["streamweave"],
         common_horizon_s,
     )
 
-    def normalized_work(points: list[dict]) -> tuple[np.ndarray, np.ndarray]:
+    def work_series(points: list[dict]) -> tuple[np.ndarray, np.ndarray]:
         wall_clock = np.asarray(
             [
-                100.0 * point["cumulative_time_s"] / common_horizon_s
+                point["cumulative_time_s"] / 60.0
                 for point in points
             ],
             dtype=float,
         )
-        groups = np.asarray(
-            [point["cumulative_groups"] / 1000.0 for point in points],
+        cumulative_groups = np.asarray(
+            [point["cumulative_groups"] for point in points],
             dtype=float,
         )
-        return wall_clock, groups
+        return wall_clock, cumulative_groups
 
-    sync_wall_clock, sync_groups = normalized_work(sync_work)
-    streamweave_wall_clock, streamweave_groups = normalized_work(
+    sync_wall_clock, sync_groups = work_series(sync_work)
+    streamweave_wall_clock, streamweave_groups = work_series(
         streamweave_work
     )
-    shared_grid = np.linspace(0.0, 100.0, 401)
+    sync_reference = sync_groups[-1]
+    if sync_reference <= 0:
+        raise ValueError("Synchronous cumulative work must be positive")
+    sync_groups = sync_groups / sync_reference
+    streamweave_groups = streamweave_groups / sync_reference
+    common_horizon_min = common_horizon_s / 60.0
+    shared_grid = np.linspace(0.0, common_horizon_min, 401)
     sync_interpolated = np.interp(
         shared_grid,
         sync_wall_clock,
@@ -377,7 +386,7 @@ def render(
         zorder=4,
     )
     work_axis.scatter(
-        [100.0, 100.0],
+        [common_horizon_min, common_horizon_min],
         [sync_groups[-1], streamweave_groups[-1]],
         s=22,
         color=[SLATE, TEAL],
@@ -385,10 +394,10 @@ def render(
         linewidths=0.7,
         zorder=5,
     )
-    work_axis.set_xlim(0, 100)
-    work_axis.set_ylim(0, 24)
-    work_axis.set_xticks((0, 25, 50, 75, 100))
-    work_axis.set_yticks((0, 5, 10, 15, 20))
+    work_axis.set_xlim(0, common_horizon_min)
+    work_axis.set_ylim(0, 1.82)
+    work_axis.set_xticks((0, 20, 40, 60, 80))
+    work_axis.set_yticks((0, 0.4, 0.8, 1.2, 1.6))
     work_axis.tick_params(
         axis="both",
         labelsize=6.1,
@@ -396,13 +405,13 @@ def render(
         width=0.7,
     )
     work_axis.set_xlabel(
-        "Matched wall-clock horizon (%)",
+        "Elapsed wall-clock (min)",
         color=INK,
         fontsize=6.7,
         labelpad=4,
     )
     work_axis.set_ylabel(
-        "Consumed groups (thousands)",
+        "Relative cumulative work",
         color=INK,
         fontsize=6.7,
         labelpad=4,
@@ -424,9 +433,9 @@ def render(
         pad=5,
     )
     work_axis.text(
-        96.0,
-        streamweave_groups[-1] + 0.75,
-        f"SW  {streamweave_groups[-1]:.1f}k",
+        common_horizon_min * 0.96,
+        streamweave_groups[-1] + 0.055,
+        f"SW  {streamweave_groups[-1]:.2f}x",
         color=TEAL,
         fontsize=6.2,
         fontweight="bold",
@@ -434,13 +443,13 @@ def render(
         va="bottom",
     )
     work_axis.text(
-        96.0,
-        9.8,
-        f"Sync  {sync_groups[-1]:.1f}k",
+        common_horizon_min * 0.96,
+        sync_groups[-1] - 0.075,
+        f"Sync  {sync_groups[-1]:.2f}x",
         color=MUTED,
         fontsize=6.2,
         ha="right",
-        va="center",
+        va="top",
         bbox={
             "boxstyle": "square,pad=0.12",
             "facecolor": WHITE,
@@ -460,17 +469,26 @@ def render(
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     output_base = output_dir / "execution_gpu_activity_overview"
+    svg_path = output_base.with_suffix(".svg")
     metadata = {
-        "Title": "GPU activity and cumulative prompt-group work",
+        "Title": "GPU activity and relative cumulative work",
         "Description": (
             "Full-history per-GPU SM activity, active-GPU coverage, and "
-            "cumulative prompt-group work under a matched wall-clock horizon."
+            "relative cumulative work under a matched wall-clock horizon."
         ),
     }
     figure.savefig(
-        output_base.with_suffix(".svg"),
+        svg_path,
         facecolor=WHITE,
         metadata=metadata,
+    )
+    svg_path.write_text(
+        "\n".join(
+            line.rstrip()
+            for line in svg_path.read_text(encoding="utf-8").splitlines()
+        )
+        + "\n",
+        encoding="utf-8",
     )
     figure.savefig(
         output_base.with_suffix(".pdf"),

@@ -52,7 +52,7 @@ samples/s, steps/s는 headline에 사용하지 않는다.
 ## Refresh
 
 W&B API 인증이 설정된 환경에서 다음 명령이 default/system raw CSV, aggregate,
-equal-work window, GPU-activity distribution과 Figure 3 입력 JSON을 함께 갱신한다.
+equal-work window, GPU-activity distribution과 통합 efficiency figure 입력 JSON을 함께 갱신한다.
 
 ```bash
 uv run --no-project --with "wandb>=0.19,<0.24" \
@@ -74,7 +74,7 @@ eight-GPU power row가 기존 API-exported system timeline과 정확히 일치�
 system stream은 각각 897, 3,475 rows다. Raw CSV를 함께 보존하므로 인증 없이도 파생 자산을 재생성할
 수 있다. 원시 행을 집계값에서 역으로 추정하지 않는다.
 
-본문의 end-to-end 결과는 full-history aggregate 하나를 사용한다. Figure 3의 active-GPU 분포는
+본문의 end-to-end 결과는 full-history aggregate 하나를 사용한다. 통합 efficiency figure의 active-GPU 분포는
 같은 run에서 관측된 실행 기전 증거이며 별도의 speedup으로 세지 않는다. 20% 기준에서 아무 GPU도
 문턱을 넘지 않은 interval은 `27.9% → 4.7%`, 평균 active GPU 수는 `5.40 → 6.92`다. 이 방향은
 10–50% 문턱 전체에서 유지된다. `zero active`는 정확히 이 threshold event만 뜻하며 idle, stall,

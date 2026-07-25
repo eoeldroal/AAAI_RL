@@ -29,8 +29,9 @@
 | Figure 1 — 문제 서사 ([`plan-figure1-draft.md`](plan-figure1-draft.md)) | 두 병목(compute·signal) × 두 부분 처방: sync+expert=신호만, fully-async RL=compute만, StreamWeave=둘 다 | **DESIGN LOCKED / EXPORT PENDING**; 구 `figure1_streamweave_overview` 대체 | 세 행이 같은 all-✗ hard group을 비교한다는 무대 설명, row C 분기의 γ-threshold 정의, row B의 train이 다른 group 신호로는 계속 돈다는 사실 |
 | Figure 2 — runtime pipeline ([`plan-diagram-set.md`](plan-diagram-set.md)) | 5단계 파이프라인(Generator / Reconstruction·source decision / Routed-group stream / Conversion / Trainer)과 단일 branch-blind update | **DESIGN LOCKED / EXPORT PENDING**; 구 `figure2_training_pipeline` 대체 | 경계 단 2개가 각각 generator/trainer 프로세스 내부에서 실행된다는 사실, π_g 칩의 per-sample 단위, mixed batch의 branch-blind reduction |
 
-두 그림은 AAAI `figure*` 전폭 배치를 전제로 한다. Figure 1은 "왜"(두 병목, 두 부분 처방)를,
-Figure 2는 "어떻게"(경계 장치와 단일 update)를 담당한다.
+Figure 1·2는 AAAI `figure*` 전폭 배치를 전제로 한다. Figure 1은 "왜"(두 병목, 두 부분 처방)를,
+Figure 2는 "어떻게"(경계 장치와 단일 update)를 담당한다. §4.2와 §4.3의 실증 그림은 아래에서
+별도로 관리하며, 최종 번호는 전체 AAAI 배치가 잠길 때 정한다.
 
 ### 구 승인본의 지위
 
@@ -41,12 +42,12 @@ Figure 2는 "어떻게"(경계 장치와 단일 update)를 담당한다.
   코드 사실(단일 branch-blind loss, per-branch 합산 불가)과 어긋나고 "SFT"는 내부 용어다.
 - `asynchpt_efficiency.*`, `figure1_streamweave_draft.*` — 이전 iteration, 이미 대체됨.
 
-## 실증 자산
+## 실증·보조 자산
 
 | 자산 | 역할 | 현재 지위 |
 |---|---|---|
-| `learning_effect_single_panel_draft.*` | Main, expert-off quality와 expert-route dynamics의 단일 패널 초안 | **REVIEW DRAFT.** 공개 지위가 잠길 때까지 본문 자산으로 부르지 않음 |
-| `execution_efficiency/outputs/execution_gpu_activity_overview` | Full-history GPU activity, active-GPU coverage, matched-wall-clock cumulative work | **LOCKED MAIN.** §4.3의 유일한 전폭 efficiency figure |
+| `learning_effect_single_panel_draft.*` | Main, expert-off quality와 expert-route dynamics | **MAIN CONTENT LOCKED.** §4.2 통합 완료; 최종 번호·caption과 submission export만 미정 |
+| `execution_efficiency/outputs/execution_gpu_activity_overview.*` | Full-history GPU activity, active-GPU coverage, matched-wall-clock relative cumulative work | **SELECTED MAIN; COMPOSITION/SCOPE LOCKED; POLISH IN PROGRESS.** §4.3 본문 연결, 시각적 polish와 최종 번호·caption은 진행 중 |
 | `execution_efficiency/outputs/execution_activity_active_gpu` | Standalone active-GPU distribution | 통합본에 흡수된 source asset |
 | `execution_efficiency/outputs/execution_efficiency_cumulative_work` | Standalone cumulative work | 통합본에 흡수된 source asset |
 | `execution_efficiency/outputs/execution_energy_candidate` | Prompt-group-normalized GPU energy | **STRONG APPENDIX.** Work-weighted energy/group ECDF |
@@ -77,9 +78,10 @@ NODE_PATH=... node src/export_paper_figures.cjs
 가시 텍스트는 패널 표시, 단계·축·단위, 최소 범례로 제한한다. 제목과 해석 문장은 LaTeX caption에만
 둔다.
 
-현재 권장 배치: Figure 1(문제 서사)을 Intro/§1의 `figure*` 전폭, Figure 2(pipeline)를 Method의
-`figure*` 전폭, 통합 execution-efficiency figure를 §4.3의 `figure*` 전폭으로 둔다. 추가 efficiency
-figure 탐색은 종료한다. Activity telemetry의 15초 interval을 독립 실험 반복으로 해석하지 않으며,
+현재 배치 방향: Figure 1(문제 서사)은 Intro/§1의 `figure*` 전폭, Figure 2(pipeline)는 Method의
+`figure*` 전폭으로 둔다. Learning-dynamics figure와 §4.2의 내용은 완료됐고, 통합 efficiency
+figure의 §4.3 연결과 polish만 진행 중이다. 두 실증 그림의 최종 번호는 미정이다. 새로운 efficiency
+후보 탐색은 종료한다. Activity telemetry의 15초 interval을 독립 실험 반복으로 해석하지 않으며,
 `zero active`를 idle이나 stall로 바꾸어 부르지 않는다. Energy panel은 같은 8-GPU
 device-power telemetry의 sample-based estimate로서 Appendix에서만 사용하며, node 전체 에너지나
 독립 전력계 측정으로 바꾸어 부르지 않는다.

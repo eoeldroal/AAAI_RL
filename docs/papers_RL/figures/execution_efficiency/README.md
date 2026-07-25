@@ -17,7 +17,7 @@ StreamWeave의 실행 효율 로그에서 만든 그림, 생성 스크립트, �
 
 | 자산 | 역할 | 상태 |
 |---|---|---|
-| `execution_gpu_activity_overview.*` | Full-history GPU activity + active-GPU coverage + matched-wall-clock cumulative work | **LOCKED MAIN**, §4.3 전폭 그림, 재생 가능 |
+| `execution_gpu_activity_overview.*` | Full-history GPU activity + active-GPU coverage + matched-wall-clock cumulative work | **SELECTED MAIN; COMPOSITION/SCOPE LOCKED; POLISH IN PROGRESS**, §4.3의 선택된 전폭 그림, 본문·caption 통합과 번호 확정 진행 중, 재생 가능 |
 | `execution_activity_active_gpu.*` | Active-GPU count distribution | 통합본에 흡수된 source asset, 재생 가능 |
 | `execution_efficiency_completion_tail.*` | Synchronous completion tail | **Appendix 전용**, 재생 가능 |
 | `execution_efficiency_cumulative_work.*` | Cumulative work standalone source panel | 통합본에 흡수된 진단 자산, 재생 가능 |
@@ -32,12 +32,13 @@ StreamWeave의 실행 효율 로그에서 만든 그림, 생성 스크립트, �
 - `(a)--(b)`는 각 run의 전체 non-validation telemetry를 해당 run 안에서 독립적으로
   `0--100%` progress로 정규화한다. 같은 x 좌표를 동일 wall-clock 시각으로 해석하지 않는다.
 - `(c)`는 synchronous complete non-validation history인 `79.7 min`과 StreamWeave의 동일 시간
-  prefix를 비교한다. Endpoint `13.3K`와 `22.2K`는 이 matched horizon에서 소비된 고유
-  prompt-group work다.
+  prefix를 비교한다. x축은 실제 wall-clock 분, y축은 synchronous endpoint를 `1.0x`로 둔 상대
+  누적 prompt-group work다. 그림에는 총 prompt-group 수를 노출하지 않는다.
 - Full-history `2.78 -> 4.58 groups/s`와 `1.64x`는 Table 2가 소유한다. Panel (c)의 endpoint
-  ratio를 `1.64x`로 표기하거나, 그림 안에서 Table 2의 scalar result를 반복하지 않는다.
-- 최종 caption은 위 세 범위 차이를 반드시 명시한다. 이 규칙을 바꾸려면 figure data,
-  caption, Table 2의 estimator scope를 함께 재검토해야 한다.
+  ratio로 이를 대체하거나, 그림 안에서 Table 2의 scalar result를 반복하지 않는다.
+- 최종 caption은 `(a)--(b)`의 run별 전체 이력과 `(c)`의 동일 wall-clock 비교를 명시한다.
+  Table 2의 estimator를 caption에서 별도로 해명하지 않는다. 이 규칙을 바꾸려면 figure data,
+  caption과 Table 2의 estimator scope를 함께 재검토해야 한다.
 
 ## Rebuild
 
