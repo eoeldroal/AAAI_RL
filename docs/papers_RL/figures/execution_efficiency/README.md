@@ -17,7 +17,7 @@ StreamWeave의 실행 효율 로그에서 만든 그림, 생성 스크립트, �
 
 | 자산 | 역할 | 상태 |
 |---|---|---|
-| `execution_gpu_activity_overview.*` | Full-history GPU activity + active-GPU coverage + matched-wall-clock cumulative work | **SELECTED MAIN; COMPOSITION/SCOPE LOCKED; POLISH IN PROGRESS**, §4.3의 선택된 전폭 그림, 본문·caption 통합과 번호 확정 진행 중, 재생 가능 |
+| `execution_gpu_activity_overview.*` | Full-history GPU activity + active-GPU coverage + matched-wall-clock cumulative work | **LOCKED MAIN; RENDER/VISUAL QA COMPLETE**, §4.3 본문·caption 통합과 SVG/PDF/PNG export 완료, 최종 번호와 LaTeX 배치 확인만 남음, 재생 가능 |
 | `execution_activity_active_gpu.*` | Active-GPU count distribution | 통합본에 흡수된 source asset, 재생 가능 |
 | `execution_efficiency_completion_tail.*` | Synchronous completion tail | **Appendix 전용**, 재생 가능 |
 | `execution_efficiency_cumulative_work.*` | Cumulative work standalone source panel | 통합본에 흡수된 진단 자산, 재생 가능 |

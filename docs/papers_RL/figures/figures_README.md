@@ -46,8 +46,9 @@ Figure 2는 "어떻게"(경계 장치와 단일 update)를 담당한다. §4.2�
 
 | 자산 | 역할 | 현재 지위 |
 |---|---|---|
-| `learning_effect_single_panel_draft.*` | Main, expert-off quality와 expert-route dynamics | **MAIN CONTENT LOCKED.** §4.2 통합 완료; 최종 번호·caption과 submission export만 미정 |
-| `execution_efficiency/outputs/execution_gpu_activity_overview.*` | Full-history GPU activity, active-GPU coverage, matched-wall-clock relative cumulative work | **SELECTED MAIN; COMPOSITION/SCOPE LOCKED; POLISH IN PROGRESS.** §4.3 본문 연결, 시각적 polish와 최종 번호·caption은 진행 중 |
+| `learning_effect_dynamics.*` | Normalized progress 위의 StreamWeave·Async RL (expert-off) reasoning performance와 expert-route dynamics | **LOCKED MAIN; RENDER/QA COMPLETE.** 절대 cycle과 training scale을 노출하지 않는 §4.2 canonical asset; 최종 번호만 미정 |
+| `learning_effect_single_panel_draft.*` | Cycle 축을 사용한 이전 learning-effect draft | 신규 normalized-progress 자산으로 대체된 source asset |
+| `execution_efficiency/outputs/execution_gpu_activity_overview.*` | Full-history GPU activity, active-GPU coverage, matched-wall-clock relative cumulative work | **LOCKED MAIN; RENDER/VISUAL QA COMPLETE.** §4.3 본문·caption 통합과 SVG/PDF/PNG export 완료; 최종 번호와 LaTeX 배치 확인만 남음 |
 | `execution_efficiency/outputs/execution_activity_active_gpu` | Standalone active-GPU distribution | 통합본에 흡수된 source asset |
 | `execution_efficiency/outputs/execution_efficiency_cumulative_work` | Standalone cumulative work | 통합본에 흡수된 source asset |
 | `execution_efficiency/outputs/execution_energy_candidate` | Prompt-group-normalized GPU energy | **STRONG APPENDIX.** Work-weighted energy/group ECDF |
@@ -75,12 +76,21 @@ node src/generate_paper_figures.cjs
 NODE_PATH=... node src/export_paper_figures.cjs
 ```
 
+현행 learning-dynamics figure는 다음 명령으로 재생성한다.
+
+```bash
+uv run --no-project --with matplotlib --with numpy python \
+  src/plot_learning_effect_dynamics.py \
+  --input-snapshot data/learning_effect_single_panel_draft.json \
+  --output-base learning_effect_dynamics
+```
+
 가시 텍스트는 패널 표시, 단계·축·단위, 최소 범례로 제한한다. 제목과 해석 문장은 LaTeX caption에만
 둔다.
 
 현재 배치 방향: Figure 1(문제 서사)은 Intro/§1의 `figure*` 전폭, Figure 2(pipeline)는 Method의
-`figure*` 전폭으로 둔다. Learning-dynamics figure와 §4.2의 내용은 완료됐고, 통합 efficiency
-figure의 §4.3 연결과 polish만 진행 중이다. 두 실증 그림의 최종 번호는 미정이다. 새로운 efficiency
+`figure*` 전폭으로 둔다. Learning-dynamics figure와 통합 efficiency figure의 렌더·시각적 QA 및
+각 본문 연결은 완료됐다. 두 실증 그림의 최종 번호와 LaTeX 배치 확인만 남아 있다. 새로운 efficiency
 후보 탐색은 종료한다. Activity telemetry의 15초 interval을 독립 실험 반복으로 해석하지 않으며,
 `zero active`를 idle이나 stall로 바꾸어 부르지 않는다. Energy panel은 같은 8-GPU
 device-power telemetry의 sample-based estimate로서 Appendix에서만 사용하며, node 전체 에너지나
