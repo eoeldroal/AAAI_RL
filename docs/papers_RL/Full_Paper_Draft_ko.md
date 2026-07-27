@@ -5,103 +5,133 @@
 
 ## Abstract
 
-Reinforcement learning with verifiable rewards (RLVR)는 policy가 풀기 어려운 문제에서 긴 rollout에 많은 계산을 쓰고도, 생성한 응답이 모두 실패하면 group 내 보상이 같아져 relative learning signal을 얻지 못한다. 기존 연구는 이 이중 병목을 서로 다른 방향에서 완화해 왔다. Fully-asynchronous RL은 rollout generation과 model training을 중첩해 실행 비용을 줄이고, expert trajectory를 활용하는 방법은 policy가 풀지 못한 문제에 외부의 성공 경로를 제공한다. 특히 expert trajectory를 all-failure group에 선택적으로 투입하면 supervision을 가장 필요한 문제에 집중할 수 있다. 그러나 이를 trajectory-level fully-asynchronous execution으로 확장하면 새로운 composition 문제가 생긴다. Complete group은 어떤 source를 사용할지와 policy-side relative signal을 결정하는 학습 경계인 반면, fully-asynchronous runtime은 같은 group의 trajectory를 독립적으로 실행한다. 또한 선택된 policy rollout과 expert trajectory는 shared learner가 구성해야 할 signal, reference, correction 조건이 다르다. 단순한 결합은 이 차이를 pipeline-wide execution barrier나 source별 learner path로 확장한다. **StreamWeave**는 complete-group context를 source decision에서, source identity를 learner-input construction에서 각각 소비하여 필요한 학습 의존성을 국소화한다. 이후 source-conditioned learner input은 하나의 shared primary update로 들어가며, rollout generation과 model training은 계속 중첩된다. 수학 추론 실험에서 StreamWeave는 같은 group-success selector를 사용하는 동기식 quality reference와 대등한 성능 범위에 있으며(38.5 대 37.7), 동일한 절차로 평가한 expert-trajectory 활용 방법들 가운데 가장 높은 평균 성능을 기록한다. 또한 128개 prompt group의 처리 시간을 46초에서 28초로 줄여 prompt-group throughput을 1.64$\times$ 높인다. 이는 group-conditioned heterogeneous learning에 필요한 경계를 보존하면서도 그 의존성을 pipeline-wide execution barrier로 확장할 필요가 없음을 보여준다.
+Reinforcement learning with verifiable rewards (RLVR)는 policy가 아직 해결하지 못한 문제에서 긴
+rollout에 많은 generation workload를 사용하지만, 같은 prompt의 모든 응답이 실패하면 group-relative
+learning signal을 얻지 못한다. Fully-asynchronous RL은 rollout generation과 model training을
+병행하여 실행 비용을 줄이고, expert trajectory는 policy-generated signal이 사라진 문제에 외부의
+해결 경로를 제공한다. 우리가 다루는 group-conditioned setting에서는 complete-group outcome이
+training source와 각 sample의 학습 역할을 함께 정하지만, fully-asynchronous runtime은 trajectory
+attempt를 독립적으로 실행한다. 우리의 핵심 판단은 complete group을 학습 결정의 경계로 보존하면서
+그 completion을 pipeline-wide execution barrier에서 분리할 수 있다는 것이다. **StreamWeave**는
+attempt를 독립적으로 실행하고 source-decision boundary에서 complete group을 복원하며,
+확정된 source와 생성 맥락을 source에 맞는 training input으로 변환한다. Policy와 expert input은
+하나의 policy objective와 같은 averaging rule을 사용하는 one primary update에서 학습되고, rollout
+generation과 model training은 계속 병행된다. 수학 추론에서 StreamWeave는 평균 38.5를 달성하여 같은
+group-success selector를 사용하는 동기식 quality reference의 37.7과 대등한 reasoning performance를
+보인다. 또한 128개 prompt group의 처리 시간을 46초에서 28초로 줄이고, 동일한 GPU 예산에서
+prompt-group throughput을
+1.64$\times$ 높인다. StreamWeave는 group-conditioned heterogeneous learning의 역할을 보존하면서
+fully-asynchronous execution의 효율을 하나의 training system에서 함께 실현한다.
 
 ### English Draft
 
-Reinforcement learning with verifiable rewards (RLVR) can expend substantial compute on long rollouts for difficult problems, yet obtain no relative learning signal when every response in a group fails. Prior work addresses these bottlenecks separately: fully asynchronous RL overlaps rollout generation with model training, while expert trajectories provide successful solution paths when the policy fails. Selectively using expert trajectories for all-failure groups concentrates supervision where it is most needed. Combining this rule with trajectory-level fully asynchronous execution, however, creates a composition problem. A complete group determines both the training source and the policy-side relative signal, whereas the runtime executes trajectories independently; policy and expert data also require different signal, reference, and correction conditions before entering a shared primary update. **StreamWeave** localizes these dependencies: complete-group context is consumed at source selection, source identity is consumed when learner inputs are constructed, and the resulting samples enter a shared primary update while rollout generation and model training remain overlapped. In mathematical reasoning experiments, StreamWeave achieves performance comparable to a synchronous quality reference using the same group-success selector (38.5 versus 37.7) and the highest average score among expert-trajectory methods evaluated under the same protocol. It reduces the time to process 128 prompt groups from 46 to 28 seconds, improving prompt-group throughput by 1.64$\times$. StreamWeave shows that group-conditioned heterogeneous learning need not propagate its dependencies into a pipeline-wide execution barrier.
+Reinforcement learning with verifiable rewards (RLVR) expends generation workload on difficult
+problems, yet receives no group-relative learning signal when every response to a prompt fails. Fully
+asynchronous RL reduces execution cost by overlapping rollout generation with model training, while expert
+trajectories provide solution paths where policy-generated signal is absent. In the group-conditioned setting
+we study, complete-group outcomes determine the training source and each
+sample's learning role, while fully asynchronous runtimes execute trajectory attempts independently. Our key
+insight is that a complete group can remain a learning-decision boundary without making its completion a
+pipeline-wide execution barrier. **StreamWeave** executes attempts independently, reconstructs each complete
+group at the source-decision boundary, and converts the resolved source and generation context into
+source-appropriate training inputs. Policy and expert inputs are consumed in one primary update, using one policy
+objective and the same averaging rule, while rollout generation and model training remain concurrent. On
+mathematical reasoning benchmarks, StreamWeave scores 38.5, comparable to 37.7 for a synchronous quality
+reference using the same group-success selector. It also reduces the time for 128 prompt groups from 46 to 28
+seconds, improving prompt-group throughput by 1.64$\times$ under the same GPU budget. StreamWeave preserves
+group-conditioned heterogeneous learning while realizing fully asynchronous execution.
 
 ### TL;DR
 
-StreamWeave enables selective expert supervision in fully asynchronous RLVR by preserving complete groups as learning-decision boundaries without turning them into pipeline-wide execution barriers, retaining synchronous-reference performance while improving prompt-group throughput by 1.64$\times$.
+StreamWeave ends the wait for a complete-group decision where the source is fixed and retains its learning
+context only until the corresponding training input is built, preserving group-conditioned expert supervision
+under trajectory-level fully asynchronous RLVR. It achieves reasoning performance comparable to the
+synchronous reference while improving prompt-group throughput by 1.64x under the same GPU budget.
 
 ## 1. Introduction
 
 Reinforcement learning with verifiable rewards (RLVR)는 자동으로 검증 가능한 성공을 강화하여
-LLM의 reasoning 능력을 향상시키지만, policy가 아직 해결하지 못한 어려운 문제에서는 rollout generation에
-상대적으로 많은 계산을 쓰면서도 유효한 learning signal은 가장 적게 얻는 역설에 직면한다. 널리 사용되는
-group-based RLVR에서는 policy가 정답을 탐색하기 위해 다수의 긴 autoregressive rollout을
-생성하므로, rollout collection이 강화학습 wall-clock의 지배적인 병목이 된다. 그러나 그렇게
-비싸게 수집한 group이 전부 실패하면 group 내 보상 차이도 사라져
-relative learning signal을 얻지 못한다. 이를 해결하기 위해 서로 다른 두 연구 방향이 발전해 왔다.
-먼저 실행 효율의 관점에서 fully-asynchronous RL은 rollout generation과 model training을 분리하고 중첩하여
-synchronization idle을 줄인다. 이 계열은 policy-generated rollout이 생성 시점보다 늦게 소비되는
-temporal mismatch를 다루지만, 학습 신호의 source 자체는 policy experience로 유지된다. 반면 학습
-신호 보강의 관점에서는 expert-provided trajectories가 policy가 아직 성공하지 못한 문제에 유효한
-해결 경로를 제공한다. 두 병목은 독립적이지 않다. 동일한 어려운 문제가 긴 rollout과 all-failure group을 함께
-유발하기 때문이다. 따라서 scalable RLVR에는 asynchronous
-execution과 heterogeneous supervision이 동시에 필요하다. 그럼에도 기존 방법들은 두 역량을 서로
-다른 training regime에서 다루어 왔으며, heterogeneous supervision의 learning semantics를
-fully-asynchronous policy learning 안에서 어떻게 보존할지는 여전히 열린 문제다.
+LLM의 reasoning 능력을 높이지만, policy가 아직 해결하지 못한 문제에서는 많은 generation workload를
+사용하고도 학습 신호를 얻지 못할 수 있다. Group-based RLVR은 정답을 탐색하기 위해 같은 prompt에서
+여러 rollout을 생성하며, 이 과정은 긴 reasoning trajectory 때문에 학습 wall-clock의 큰 비중을
+차지한다. 그 rollout이 모두 실패하면 group 내 보상 차이가 사라져 relative learning signal도 남지
+않는다. 실제 training trace에서 all-failure group은 전체 group의 22.4\%였지만 generated response
+token의 26.8\%를 차지했다. 따라서 계산 부담과 성공 신호 부족은 같은 어려운 영역에 함께 집중된다.
+Fully-asynchronous RL은 rollout generation과 model training을 병행하여 실행 병목을 줄이고,
+expert trajectory를 활용하는 방법은 policy가 성공하지 못한 문제에 외부의 해결 경로를 제공한다.
+그러나 두 역량을 함께 두는 것만으로는 complete group에 정의된 decision이 trajectory attempt를
+독립적으로 전진시키는 runtime에 어떻게 전달되어야 하는지가 정해지지 않는다.
 
-두 방향의 결합이 단순하지 않다는 사실은 외부 expert trajectory의 사용 여부를 policy-generated
-outcomes에 따라 결정할 때 선명해진다. Group-based RLVR에서 이 결정은 완성된 prompt group을
-요구한다. 충분한 성공 신호가 있는 group은 policy-generated rollouts로 학습하고, 그렇지 않은 group은
-expert trajectory를 사용한다. 같은 group은 policy branch에서 rollout 간 reward 차이로 relative
-advantage를 구성하는 단위이기도 하다. 따라서 complete group은 training source와 policy-side learning
-contribution을 함께 결정한다. 동기식 실행에서는 barrier가 source decision 시점의 group 완성을
-보장하지만, fully-asynchronous execution은 개별 trajectory를 독립적으로 전진시켜 효율을 얻는다.
-Group을 그대로 실행 단위로 유지하면 가장 느린 trajectory가 다시 장벽이 되므로, complete group은
-trajectory 실행을 함께 묶지 않으면서 판정 시점에만 복원되어야 한다. 또한 group을 복원하는 것만으로
-결합이 끝나지는 않는다. Source decision은
-사용할 data뿐 아니라 shared learner가 각 sample을 해석하는 조건을 정한다. Policy rollout은
-group-relative signal과 이를 생성한 policy의 맥락을 필요로 하지만, expert trajectory는 외부에서 주어진
-supervised target이므로 동일한 behavior-policy correction이 정의되지 않는다. 따라서 필요한 것은
-source별 learner path가 아니라, source가 정한 signal, reference, correction 조건을 learner input에
-보존한 뒤 update를 공유하는 구성이다. 이러한 충돌에서 이 논문의 질문이 나온다.
-**Trajectory-level execution의 효율을 유지하면서, 완성된 group이 결정하는 training source와 각
-source의 고유한 학습 역할을 하나의 fully-asynchronous stream에서 보존할 수 있는가?** 이는 scheduler나
-loss 하나를 고르는 문제가 아니라, execution granularity와 learning boundary를 함께 설계하는
-algorithm-system co-design 문제다.
+두 역량은 complete-group outcome이 relative signal을 만드는 데서 그치지 않고 training source까지
+결정하기 때문에 직접 맞물린다. 성공을 포함한 group은 policy rollout으로 학습하고, all-failure
+group은 대응하는 expert trajectory를 선택한다. 따라서 group은 사용할 source와 선택된 sample이
+update에 기여하는 방식을 함께 정한다. 반면 fully-asynchronous execution은 같은 group의 trajectory
+attempt를 독립적으로 진행시켜 효율을 얻는다. Complete group을 실행 단위로 유지하면 가장 늦게
+끝나는 trajectory가 pipeline의 critical path가 되고, source identity를 잃으면 policy와 expert
+sample의 서로 다른 학습 역할도 사라진다. 핵심 과제는 trajectory 실행을 다시 묶지 않으면서
+complete-group decision을
+asynchronous training stream이 그대로 소비할 수 있는 형태로 옮기는 것이다. 따라서 본 논문의 질문은
+다음과 같다. **Complete-group decision을 보존하면서 trajectory-level fully-asynchronous
+execution을 유지할 수 있는가?**
 
-우리는 이 충돌을 **StreamWeave**로 해결한다. StreamWeave의 핵심은 학습 판단에 필요한 group
-boundary와 runtime이 작업을 진행시키는 execution unit을 분리하는 것이다. Complete group은 어떤
-source를 사용할지와 learner가 필요한 입력 조건을 확정하는 경계로 유지하되, 각 trajectory는
-독립적으로 실행된다. Runtime은 다른 작업을 막지 않으면서 group을 복원하고 source를 확정하며, learner는
-그 source에 맞는 learner input을 구성한 뒤 모든 sample을 하나의 shared primary update로 학습한다. 따라서
-StreamWeave는 complete-group decision과 source별 learning role을 보존하면서도, 그 경계를
-pipeline-wide execution barrier나 별도의 learner path로 확장하지 않는다.
+그림 1은 StreamWeave가 이때 필요한 두 의존성을 어디까지 유지하고 어디에서 끝내는지를 요약한다.
 
-그러나 pipeline을 계속 전진시키는 것만으로 이 결합이 올바른 것은 아니다. 신호가 생성된 맥락이
-learner까지 보존되지 않으면, 비동기 runtime의 완료 순서와 batching이 어떤 source를 training
-stream에 받아들일지, 어떤 update를 적용할지, 그리고 두 source가 얼마나 기여할지를 다시 쓸 수 있다.
-이 공동설계를 관통하는 기준은 간결하다. 비동기는 신호가 **도착하는 시점과 순서**를 바꿀 수 있지만,
-그 신호가 **의미하는 것**을 바꾸어서는 안 된다. StreamWeave는 이를 위해 각 신호의 provenance, 즉
-어느 group과 source에서 왔으며 rollout이라면 어떤 policy가 생성했는지를 learner까지 유지한다. 우리는
-이를 세 조건의 learner contract로 명시한다. **Complete-group decision**은 source를 group이 완성된
-뒤에만 정하고, **source-conditioned input construction**은 각 source가 요구하는 signal, reference,
-correction을 learner 경계에서 구성하며, **shared primary update**는 그렇게 구성된 모든 sample을 하나의
-primary objective와 common reduction으로 학습한다.
-이 contract는 특정한 동기식 control flow가 아니라 execution optimization이 보존해야 할 boundary를
-규정한다. §3.1은 실제 mixed objective가 이 세 조건으로 환원됨을 구성적으로 보이고, §3.2는 같은
-조건을 pipeline-wide execution barrier 없이 실현하는 architecture를 제시한다.
+[그림 1 위치: `figures/Figure1.pdf`]
 
-이러한 의미 보존은 비동기 효율과의 타협을 요구하지 않는다. Math-reasoning 실험에서 StreamWeave는
-비교한 방법 중 가장 높은 평균 성능 38.5를 기록하고, 같은 group-success selector를 사용하는
-동기식 quality reference(37.7)와 대등한 성능 범위에 있다. 실행 비교에서는 128개 prompt
-group의 처리 시간을 46초에서 28초로 줄여 prompt-group throughput을 1.64$\times$ 높인다. 이로써
-StreamWeave는 같은 learning composition을 유지한 채 complete-group decision이 pipeline-wide
-execution barrier로 되돌아오는 것을 막는다.
+*그림 1: 하나의 complete group을 기다리는 범위는 해당 group에 국소화된다. Group이 아직 완성되지
+않은 동안에도 다른 rollout generation과 이미 준비된 training은 계속되며, all-failure group은 expert
+source를 선택하고 성공을 포함한 group은 policy rollout을 유지한다.*
 
-이 논문의 기여는 다음과 같다.
+우리는 이를 위해 **StreamWeave**를 제안한다. StreamWeave는 trajectory attempt를 독립적으로
+실행하고 source decision에 필요한 시점에만 complete group을 복원하며, 확정된 source와 생성 맥락을
+하나의 training record로 queue 너머까지 전달한다. 이 record는 source가 요구하는 training input으로
+구성되므로, Generator는 다음 trajectory를 계속 생성하고 learner는 준비된 input을 학습한다. Complete
+group은 학습 판단의 경계로 남지만 그 completion에 필요한 기다림은 다른 group의 generation과 model
+training으로 전파되지 않는다.
 
-1. **Group-conditioned learning composition.** Complete group이 training source와 policy-side relative
-   signal을 함께 결정하는 환경에서, source별 signal, reference, correction을 learner input에 표현하고
-   이후 하나의 primary objective와 common reduction으로 학습하는 구성을 제시한다.
-2. **Dependency-localized fully-asynchronous architecture.** StreamWeave는 complete-group context를 source
-   decision에서, source identity를 learner-input construction에서 소비한다. 그 밖의 trajectory execution,
-   transport, optimization은 공유하여 group dependency가 pipeline-wide execution barrier나 source별
-   pipeline으로 번지는 것을 막고, complete-group waiting에 묶이던 rollout-side capacity를 회수한다.
-3. **학습 효과와 실행 효율의 공동 실측.** Fixed-checkpoint evaluation, expert-off learning dynamics,
-   resource-matched execution 비교를 통해 practical learning utility와 prompt-group throughput,
-   critical-path payoff를 함께 보인다.
+이 handoff는 두 source의 학습 역할도 보존한다. Complete-group decision은 training input에 표현할
+sequence, signal, ratio reference와 policy-lag correction을 확정한다. Policy와 expert input은 이후
+하나의 policy objective와 같은 averaging rule을 사용하는 one primary update에 들어가며, 각각
+group-relative reinforcement와 supervised learning으로 환원된다. StreamWeave는 필요한 결합을
+complete-group decision과 training-input construction에 국소화하고 나머지 pipeline을
+trajectory-level asynchrony에 열어 둔다.
+
+수학 추론 실험에서 StreamWeave는 동일한 평가 절차로 비교한 방법들 가운데 경쟁력 있는 평균 성능
+38.5를 달성하며, 같은 group-success selector를 사용하는 동기식 quality reference의 37.7과 대등한
+reasoning performance를 보인다. Learning dynamics에서는 expert source가 필요한 어려운 영역이 학습
+후반에도 지속되며, expert-off control과의 성능 차이가 학습이 진행되면서 나타난다. StreamWeave는
+expert input을 사용하는 run에서 더 긴 generation workload가 관찰되는 조건에서도 이 online expert
+channel을 유지하며, 128개 prompt group의 처리 시간을 46초에서 28초로 줄이고 동일한 GPU 예산에서
+prompt-group throughput을 1.64$\times$ 높인다. 이 결과는 group-conditioned learning composition을
+보존하면서 fully-asynchronous execution의 효율을 하나의 training system에서 함께 회수할 수 있음을
+보여준다.
+
+Complete-group decision은 수명이 서로 다른 두 요구를 만든다. Group을 기다리는 실행은 source가
+확정되면 끝나지만, 선택된 source의 학습 역할을 재현하는 정보는 training input이 완성될 때까지
+유지되어야 한다. StreamWeave는 각 요구를 실제로 소비되는 경계에서 끝내며, 이 구분에 따라 다음을
+기여한다.
+
+1. **Asynchrony-compatible learning composition.** 확정된 source가 선택한 학습 역할을 재현하는 데
+   필요한 정보, 즉 source 자체, complete group의 reward context와 각 rollout의 generation policy를
+   식별한다. 이를 source가 요구하는 training input으로 표현하고 나면 learner와 optimizer 경로에
+   source별 판단이 더 남지 않으므로, 두 source는 하나의 policy objective와 같은 averaging rule을
+   공유한다. 구성적 유도를 통해 두 input이 각각 의도한 group-relative reinforcement와 supervised
+   contribution으로 환원됨을 보인다.
+2. **Boundary-localized asynchronous architecture.** Trajectory attempt를 독립적으로 실행하면서
+   source decision 직전에만 complete group을 복원하고, 확정된 source와 생성 맥락을 training-input
+   construction까지 보존한다. 필요한 처리를 asynchronous queue의 경계에 배치하여 Generator와
+   learner의 기본 역할을 유지하고, complete-group waiting을 source decision에 국소화한다.
+3. **Composition-aware empirical study.** 성공 신호가 부족한 영역에 generation workload가 함께
+   집중되고 expert 수요가 학습 후반까지 지속되며, expert supervision이 asynchronous workload를
+   변화시키는 과정을 분석한다. 이 조건에서 StreamWeave가 경쟁력 있는 reasoning performance와
+   동일한 GPU 예산의 1.64$\times$ prompt-group throughput을 함께 달성함을 보인다.
 
 ## 2. Related Work
 
 StreamWeave와 직접 맞닿는 선행연구는 rollout generation과 model training을 비동기화한 연구와,
 policy rollout 밖의 expert data를 학습에 활용한 연구다. 두 방향은 각각 실행 효율과
 policy-generated signal의 부족을 다뤘다. StreamWeave는 complete-group outcome이 학습 source까지
-결정하는 경우에 두 방향을 함께 사용한다.
+결정하는 경우의 composition을 다룬다.
 
 **Fully-asynchronous policy learning.** 시스템 계층에서 HybridFlow (EuroSys 2025)는 RLHF의
 computation과 data dependency를 분리하여 다양한 알고리즘과 resource mapping을 유연하게 구성할 수
@@ -129,32 +159,39 @@ post-training에 expert trajectory를 활용한다. 이 계보는 외부 data를
 **Composing asynchronous execution with heterogeneous supervision.** 두 계보를 결합하려면
 complete-group decision을 asynchronous stream이 소비할 수 있는 training record로 변환해야 한다.
 Group outcome은 policy rollout과 expert trajectory 중 학습할 source를 정하며, source에 따라 update에
-사용할 sequence와 training input도 달라진다. StreamWeave는 source decision 직전에 complete group을
-복원하고, source가 확정된 record와 필요한 context를 training-input construction까지 보존한다. 이
-구성은 trajectory attempt의 독립 실행을 유지하면서 두 source를 하나의 primary update로 연결한다.
+사용할 sequence와 training input의 조건도 달라진다. 그러나 어느 계보도 이 outcome을 기다리는
+범위가 어디까지여야 하는지, 선택된 source와 group context가 언제까지 유지되어야 하는지를 정하지
+않는다. Group이 learning signal에 영향을 주지 않는 system은 첫 질문을 갖지 않고, 모든 sequence를
+update까지 묶는 synchronous barrier는 둘째 질문에 전역적인 답을 기본값으로 제공한다.
 
 ## 3. StreamWeave
 
 StreamWeave는 trajectory attempt를 실행 단위로, complete prompt group을 학습 판단 단위로,
-source에 맞게 구성된 sample을 최적화 단위로 사용한다. 각 attempt는 독립적으로 생성되고, complete
-group은 policy group과 expert trajectory 중 학습에 사용할 source를 결정한다. 선택된 data는 source에
-맞는 training input으로 구성되어 하나의 primary update에 들어간다. Complete-group waiting은 source
-decision에서 끝나고, 확정된 source와 update에 필요한 context는 training-input construction까지
-보존된다.
+source에 맞는 training input을 최적화 단위로 구분한다. Attempt는 독립적으로 실행되고, complete
+group은 policy group과 대응하는 expert trajectory 중 하나를 선택한다. Cross-attempt waiting은
+source가 확정되면 끝나지만, source와 필요한 group context는 input construction까지 유지된다. 이
+handoff 바깥에서 Generator는 rollout generation을 계속하고 learner는 준비된 input을 학습한다.
+§3.1은 complete-group decision이 선택한 역할을 learner가 재현하려면 어떤 정보를 training input까지
+전달해야 하는지를 묻는다. §3.2는 그 decision을 기다리는 실행의 범위가 어디까지여야 하는지를 묻는다.
+그림 2는 queue handoff의 세 data-state boundary를, Algorithm 1은 concurrent control flow를
+요약한다.
 
-StreamWeave는 source decision 직전에 accumulator로 complete group을 복원하고, source가 확정된
-prompt-group record를 queue로 전달한 뒤 trainer에서 training input을 구성한다. 이 handoff 바깥에서
-Generator는 rollout generation을 계속하고 learner는 준비된 input으로 기존 policy update를
-수행한다. §3.1은 complete-group decision과 source별 training input이 하나의 policy objective에서
-만나는 방식을 정의하고, §3.2는 이를 fully-asynchronous execution에서 실현한다. 그림 2는 학습 정의와
-실행 구조의 대응을, Algorithm 1은 concurrent control flow를 요약한다.
+[그림 2 위치: `figures/Figure2.pdf`]
+
+*그림 2: StreamWeave의 세 data-state 경계(실험의 $\gamma=0$ source rule). Complete group은
+$n$-sequence policy record 또는 singleton expert record 중 하나를 만들고, 서로 다른 prompt의
+source-fixed record(A--C)는 하나의 queue를 공유한다. Trainer는 source에 맞는 signal, reference와
+correction을 구성하며, policy provenance는 rollout-to-entry correction으로, expert는 identity
+correction으로 이어진다. 두 input은 하나의 policy objective와 같은 averaging rule을 사용하는 one
+primary update로 들어간다.*
 
 ### 3.1 Learning Composition
 
-StreamWeave는 complete rollout group의 성과에 따라 policy group과 expert trajectory 중 하나를
-선택하는 HPT를 구체적인 learning program으로 사용한다. StreamWeave는 이 source decision을 signal,
-policy ratio의 reference와 policy-lag correction 조건이 명시된 training input으로 변환한다. 이후
-policy와 expert sample은 하나의 policy objective와 같은 averaging rule로 학습된다.
+Complete-group decision은 학습할 sequence뿐 아니라 learner가 그 sequence를 해석하는 조건까지
+확정한다. 이 절은 그 decision이 전달해야 할 정보를 식별하고, 이를 source가 요구하는 training
+input으로 표현하며, 두 input이 하나의 policy objective와 같은 averaging rule에 들어가는 방식을
+보인다. 실험에서는 complete rollout group의 outcome에 따라 policy group과 expert trajectory 중
+하나를 선택하는 Hybrid Post-Training (HPT)을 구체적인 source rule로 사용한다.
 
 **Source selection from a completed group.** Prompt $x$에 대해 policy가 생성한 $n$개의 rollout을
 $G_x=\{\tau_{x,1},\ldots,\tau_{x,n}\}$이라 하자. 각 rollout은 verifier score
@@ -171,12 +208,10 @@ z_x=S_\gamma(G_x)=
 \end{cases}
 $$
 
-$z_x=\mathrm{policy}$이면 생성된 group $G_x$를 학습에 사용하고,
-$z_x=\mathrm{expert}$이면 같은 prompt에 대응하는 expert trajectory $\tau_x^\star$를 사용한다.
-여기서 $S_\gamma$는 실험에서 사용하는 complete-group source decision을 나타낸다. 이 결정은 개별
-trajectory가 아니라 $G_x$ 전체의 관측 결과에 정의되므로, $n$개의 score가 모두 모인 뒤에만 source를
-확정할 수 있다. 구체적인 $n$, $\gamma$, 그리고 expert trajectory의 제공 범위는 Experimental
-Setup에서 명시한다.
+$z_x=\mathrm{policy}$이면 생성된 group $G_x$를, $z_x=\mathrm{expert}$이면 같은 prompt에 대응하는
+expert trajectory $\tau_x^\star$를 학습에 사용한다. 이 결정은 개별 trajectory가 아니라 $G_x$
+전체의 관측 결과에 정의되므로, $n$개의 score가 모두 모인 뒤에만 source를 확정할 수 있다. 구체적인
+$n$, $\gamma$, 그리고 expert trajectory의 제공 범위는 Experimental Setup에서 명시한다.
 
 **Constructing source-specific training inputs.** Source decision은 update에 사용할 sequence와 함께
 learning signal을 만드는 방법, policy ratio의 reference, policy-lag correction의 적용 여부를
@@ -227,21 +262,22 @@ $$
 constant다. Policy input은 group-relative policy contribution을 만든다. Expert input은 forward ratio가 1이지만
 numerator의 gradient가 남으므로 $\beta_r$로 가중된 supervised negative-log-likelihood contribution을
 만든다. 두 input은 하나의 optimizer path에서 같은 policy objective와 averaging rule을 공유한다.
-실험에서는 $\Phi$로 vanilla clipped PPO를 사용하며, 정확한 gradient 유도와 loss averaging은
-각각 Appendix A.2와 A.3에서 제시한다.
+실험에서는 $\Phi$로 vanilla clipped PPO를 사용한다. Appendix A.2--A.3은 expert endpoint의 gradient와
+두 source에 공통인 averaging rule을 유도하여, source의 학습 의미는 input construction에서 정해지고
+objective와 aggregation은 하나로 유지됨을 확인한다.
 
 Complete group에서 정한 source는 사용할 sequence와 그 sequence가 update에 기여하는 방식을
-함께 정한다. 다음 절은 group 복원과 training-input 구성을 generation과 training 사이의 queue 양쪽에
-배치하여, 이 learning composition을 fully-asynchronous execution 안에서 실현한다.
+함께 정한다. 그러나 이 설명만으로는 그 decision을 위해 실행이 얼마나 오래 기다려야 하는지가
+정해지지 않는다. 다음 절은 바로 그 질문을 다룬다.
 
 ### 3.2 Fully-Asynchronous Execution
 
 Fully-asynchronous execution은 independent attempt scheduling, bounded queue, backpressure와
-parameter refresh를 사용해 rollout generation과 model training을 계속 전진시킨다. StreamWeave는
-§3.1의 learning composition에 필요한 처리를 generation--training handoff의 두 경계에 집중한다. Queue
-앞에서는 complete group을 복원해 source를 확정하고, queue 뒤에서는 source가 확정된 record를 §3.1의
-training input으로 구성한다. 이 경계 밖에서 Generator는 trajectory attempt를 생성하고 learner는
-구성된 input으로 기존 policy update를 수행한다.
+parameter refresh를 사용해 rollout generation과 model training을 병행한다. StreamWeave는 이
+composition에 필요한 처리를 generation--training handoff의 두 경계에 집중한다. Queue 앞에서 complete
+group을 복원해 source를 확정하고, queue 뒤에서 source-fixed record를 대응하는 training input으로
+구성한다. 이 경계 밖에서 Generator는 trajectory attempt를 생성하고 learner는 준비된 input으로 기존
+policy update를 수행한다.
 
 **Algorithm 1: StreamWeave.**
 
@@ -253,54 +289,50 @@ State: accumulator A[g_x] for prompt-group key g_x, queue Q of source-fixed reco
 GENERATOR and TRAINER run concurrently.
 
 GENERATOR:
- 1  launch one trajectory attempt in every idle rollout slot
+ 1  launch one attempt in every idle rollout slot
  2  when attempt (g_x, i) finishes under pi_gen_i:
- 3      A[g_x][i] <- <tau_i, R(tau_i), pi_gen_i>; launch the next attempt
- 4      if |A[g_x]| = n:
- 5          G_x <- ordered A.pop(g_x);  z_x <- S_gamma(G_x)
- 6          Q.push(SOURCE_RECORD(x, z_x, G_x, E[x]))
+ 3      A[g_x][i] <- <tau_i, R(tau_i), pi_gen_i>     # keep per-attempt provenance
+ 4      launch the next attempt                      # slot freed; no wait on siblings
+ 5      if |A[g_x]| = n:                             # boundary 1: complete-group decision
+ 6          G_x <- ordered A.pop(g_x);  z_x <- S_gamma(G_x)
+ 7          Q.push(SOURCE_RECORD(x, z_x, G_x, E[x])) # source fixed before the queue
 
 TRAINER:
- 7  records <- DEQUEUE(Q);  B <- empty
- 8  for q in records:
- 9      B += POLICY_INPUTS(q) if q.source = policy else EXPERT_INPUT(q)
-10  theta <- LEARNER_UPDATE(theta, L(B));  PUBLISH(theta)
+ 8  records <- DEQUEUE(Q);  B <- empty
+ 9  for q in records:                                # boundary 2: source-conditioned inputs
+10      if q.source = policy: B += POLICY_INPUTS(q)  # n rows; group-relative + lag correction
+11      else:                 B += EXPERT_INPUT(q)   # 1 row; beta signal, no correction
+12  theta <- LEARNER_UPDATE(theta, L(B))             # one objective, one averaging rule
+13  PUBLISH(theta)
 ```
 
 `SOURCE_RECORD`는 선택된 data와 필요한 context를 보존하며, `POLICY_INPUTS`와 `EXPERT_INPUT`은
 §3.1에서 정의한 두 training-input construction을 나타낸다.
 
 **Execute attempts independently and reconstruct each group locally.** 하나의 prompt group을 이루는
-trajectory attempt들은 서로의 완료를 기다리지 않고 독립적으로 생성된다. 각 attempt는 group identity와
-group 안에서의 위치를 유지한다. 먼저 끝난 attempt는 rollout slot을 즉시 반환하고, 그 slot은 다음
-trajectory 작업을 받아 generation을 계속한다. 각 prompt의 완료된 attempt는 accumulator에 모이며,
-모든 attempt가 도착하면 원래 순서의 complete group으로 복원된다. 해당 group이 완성되기를 기다리는
-동안에도 다른 group의 rollout generation과 이미 준비된 input을 사용한 model training은 계속된다. 이 역할
-분리를 통해 trajectory는 독립적으로 실행되고, complete group은 source를 결정하는 순간에 복원된다.
+trajectory attempt들은 group identity와 위치를 유지한 채 독립적으로 실행된다. 먼저 끝난 attempt는
+rollout slot을 다음 작업에 넘기고 accumulator에 들어간다. 모든 attempt가 도착하면 accumulator가
+source decision을 위해 원래 순서의 complete group을 복원한다. 그동안 다른 group의 generation과
+준비된 input의 training은 계속되므로, complete-group requirement는 trajectory 실행이 아니라 decision
+가능 시점을 제한한다.
 
 **Fix the source before the queue.** Group이 완성되면 §3.1의 $S_\gamma$를 적용하여 policy rollout
-group과 대응하는 expert trajectory 중 사용할 data를 확정한다. 확정된 source와 선택된 data를 해당
-source에 필요한 context와 함께 하나의 prompt-group record로 묶어 queue에 전달한다. Policy record는
-complete group의 scores와 각 rollout의 generation policy 정보를 함께 유지하고, expert record는 선택된
-target sequence와 source를 유지한다. Source는 queue에 들어가기 전에 확정되므로, record의 소비 순서는
-update timing에는 영향을 주지만 이미 확정된 source를 바꾸지 않는다.
+group과 대응하는 expert trajectory 중 사용할 data를 확정한다. Source, 선택된 data와 필요한 context는
+하나의 prompt-group record로 queue를 건넌다. Policy record는 complete-group scores와 rollout별
+generation policy를, expert record는 선택된 target과 source를 보존한다. Source는 transport 전에
+확정되므로 record의 소비 순서는 update timing에는 영향을 주지만 learning decision을 바꾸지 않는다.
 
 **Construct training inputs after the queue.** Trainer는 queue에서 꺼낸 record를 §3.1의 input으로
-구성한다. Policy record에서는 complete-group scores로 GRPO advantage를 계산하고 policy-lag
-correction에 필요한 값을 구성한다. Expert record에서는 선택된 target sequence가
-$\beta$-weighted supervised contribution을 만들도록 구성한다. 이렇게 구성된 policy와 expert input은
-같은 policy objective와 averaging rule로 학습된다.
+구성한다. Policy record는 GRPO signal과 policy-lag correction에 필요한 complete-group scores와
+provenance를 제공하고, expert record는 $\beta$-weighted supervised contribution에 필요한 target을
+제공한다. Trainer는 두 input에 §3.1의 policy objective와 averaging rule을 적용한다.
 
-**Keep one asynchronous flow.** 이 두 경계 밖에서는 rollout generation과 model training이 서로를
-기다리지 않고 계속 실행된다. Source가 확정된 record는 기존 queue, backpressure와
-parameter-refresh flow를 따르고, policy와 expert input은 하나의 learner와 optimizer path를 공유한다.
-Group reconstruction과 training-input construction을 handoff 경계에 집중하여 기존 rollout generation과
-policy update interface를 유지한다.
-
-Complete-group waiting은 accumulator에서 해당 group의 source를 확정하는 데만 사용된다. Policy
-record의 group scores와 generation context는 queue 뒤에서 relative signal이 구성될 때까지 유지되며,
-다른 group의 rollout generation과 준비된 input을 사용한 model training은 계속된다. 따라서 StreamWeave는
-complete-group decision과 source별 학습 역할을 하나의 fully-asynchronous execution 안에서 유지한다.
+**Keep one asynchronous flow.** Source-fixed record는 기존 queue, backpressure와 parameter-refresh
+flow를 따르고, 두 input은 하나의 learner와 optimizer path를 공유한다. Complete-group waiting은
+accumulator가 source를 확정할 때 끝나며, policy route의 scores와 generation context만 input
+construction까지 record에 남는다. 이 handoff는 주변 asynchronous flow의 핵심 interface를 유지하면서
+complete-group decision과 source별 학습 역할을 보존한다. Appendix B는 group context와 source identity가 소비되는
+위치를 추적하고 나머지 asynchronous substrate가 하나의 실행 흐름으로 유지되는 이유를 보여준다.
 
 ## 4. Experiments
 
@@ -309,7 +341,7 @@ complete-group decision과 source별 학습 역할을 하나의 fully-asynchrono
 StreamWeave가 경쟁력 있는 수학 추론 성능을 달성하고 cross-domain reasoning 성능도 유지하는가. 둘째,
 expert trajectory가 선택되는 all-failure group에 성공 신호의 부족과 generation workload가 함께
 집중되며, 선택적인 expert supervision이 이 영역을 넘어 shared policy의 학습 전반에 기여하는가.
-셋째, 이러한 지속적인 expert supervision에 동반되는 generation workload와 가변적인 learner input을
+셋째, 이러한 지속적인 expert supervision에 동반되는 generation workload와 source에 따라 달라지는 training input을
 필요한 경계에서 처리하여, complete-group decision을 pipeline-wide execution barrier로 만들지 않고
 동일한 GPU 예산에서 prompt-group throughput을 높이는가.
 
@@ -318,12 +350,12 @@ expert trajectory가 선택되는 all-failure group에 성공 신호의 부족�
 **Training setting and control.** StreamWeave는 Qwen2.5-Math-1.5B를 기반으로 하며,
 OpenR1-Math의 prompt와 verified expert trajectory로 구성한 training set을 사용한다. 각 prompt에서
 $n=8$개의 policy rollout을 생성하고, complete-group source rule을 $\gamma=0$으로 설정해 여덟
-rollout이 모두 실패한 group에만 대응하는 expert trajectory를 사용한다. 선택된 data는 §3.1의 shared
-learning composition으로 학습한다. Expert channel의 역할과 generation workload는 같은
+rollout이 모두 실패한 group에만 대응하는 expert trajectory를 사용한다. Expert channel의 역할과
+generation workload는 같은
 fully-asynchronous execution stack에서 expert trajectory의 학습 사용만 비활성화한 Async RL
 (expert-off)과 비교한다. 이후 산문에서는 이를 expert-off control로 부른다. Expert-signal scale,
-asynchronous correction, loss averaging과 optimization 설정은 Appendix
-A.2--A.4와 C.1에서 제시한다.
+asynchronous correction, loss averaging과 정확한 optimization 설정은 Appendix A.2--A.4와 C.1에서
+명세한다.
 
 **Quality evaluation.** 각 모델은 AIME24, AIME25, AMC(83), MATH500, Minerva(272),
 Olympiad(674)의 여섯 수학 추론 benchmark에서 fixed-checkpoint evaluation을 수행한다. AIME24,
@@ -334,7 +366,8 @@ grader를 사용한다. 같은 checkpoint의 cross-domain reasoning은 ARC-Chall
 MMLU-Pro에서 별도로 평가하고 세 점수의 macro-average를 보고한다. 비교군은 base와 instruct model,
 Async RL (expert-off), RL 및 expert-trajectory 활용 방법을 포함하며, HPT (sync)는 같은 all-failure 기준으로
 expert trajectory를 선택하는 동기식 quality reference다. 원 논문에서 인용한 행은 $\dagger$로
-구별하여 자체 평가 결과와 분리한다.
+구별하여 자체 평가 결과와 분리한다. Appendix C.2는 mean@$k$, 반올림과 checkpoint provenance를
+명세하여 Table 1을 선택된 peak가 아닌 fixed-checkpoint evaluation으로 검증한다.
 
 **Learning-process analysis.** Expert channel이 필요한 영역과 학습 과정에서의 역할은 세 층위에서
 살펴본다. 먼저 generator-side census에서 complete generated group을 all-failure와 any-success로 나누어
@@ -351,15 +384,15 @@ step 수 대신 routing 이전의 고유 prompt group으로 둔다. Throughput�
 제외한 training-loop wall-clock 동안 소비한 prompt group으로 계산한다. GPU activity와 동일
 wall-clock에서 누적된 prompt-group work를 함께 측정하고, source에 따른 sample 수의 차이가 고정된
 prompt-group input budget 안에서 처리되는지도 확인한다. 정확한 hardware 배치, run identifier,
-telemetry, timing과 alignment scope는 Appendix C.4--C.5에서 제시한다.
+work-weighted throughput estimator와 telemetry normalization은 Appendix C.4에서 정의하고, 같은 작업량
+비교와 telemetry sensitivity로 headline의 matched-budget 해석을 검산한다.
 
 ### 4.2 Learning Effectiveness
 
-**Overall mathematical reasoning performance.** StreamWeave는 heterogeneous supervision을
-fully-asynchronous execution 안에서 사용하면서 경쟁력 있는 수학 추론 성능을 달성한다. Table 1에서
-StreamWeave는 동일한 절차로 평가한 RL 및 expert-trajectory 활용 방법들 가운데 가장 높은 평균 성능을
-기록하며, 같은 group-success selector를 사용하는 HPT (sync)의 성능 수준도 유지한다. StreamWeave는
-complete-group learning의 효과를 보존하면서 이를 fully-asynchronous execution으로 확장한다.
+**Overall mathematical reasoning performance.** Table 1은 learning composition을
+fully-asynchronous execution으로 옮겨도 수학 추론 성능을 반납하지 않음을 보여준다. StreamWeave는
+38.5를 달성하여 HPT (sync)의 37.7 수준을 유지하고, 평가한 RL 및 expert-trajectory 방법들 사이에서
+경쟁력 있는 성능을 보인다.
 
 | Model | AIME24 | AIME25 | AMC (83) | MATH500 | Minerva | Olympiad | **Avg.** |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -391,13 +424,10 @@ policy branch에 reward-derived group-relative signal을 제공하지 않는다.
 *표 X: Routing 이전 policy rollout의 generator-side 특성. 완료 시간 차이는 같은 prompt에서 생성한
 여덟 request 중 가장 늦은 request와 가장 빠른 request의 duration 차이다.*
 
-All-failure group은 발생 빈도보다 더 큰 생성량을 차지하며, 개별 rollout도 더 길고 group 내 완료
-시점도 더 넓게 벌어진다. Policy-generated signal이 사라지는 영역에 generation workload와 rollout
-완료 시간의 차이가 함께 집중된다. 이 관측은 asynchronous execution과 expert supervision이 같은
-영역에서 함께 필요해지는 이유를 보여준다. 긴 rollout과 불균등한 완료 시점에는 비동기 실행이
-필요하고, $0/8$ reward outcome에는 policy-generated relative signal을 보완할 expert source가
-필요하다. Async RL (expert-off)과 HPT (sync)가 각각 이 두 요구의 한쪽을 대표한다면, StreamWeave는
-두 요구를 하나의 continuous training system에서 함께 실현한다.
+All-failure group은 발생 빈도보다 더 큰 생성량을 차지하며 rollout도 더 길고 불균등하게 완료된다.
+따라서 policy-generated signal의 부재는 더 큰 generation workload와 completion imbalance에 겹쳐
+나타난다. 긴 generation에는 asynchronous execution이, $0/8$ outcome에는 expert source가 필요하다.
+StreamWeave는 두 요구를 하나의 continuous training system에서 지속한다.
 
 ![StreamWeave의 학습 동역학과 expert routing](figures/learning_effect_dynamics.png)
 
@@ -408,26 +438,20 @@ StreamWeave와 expert-off control의 여섯 benchmark 중간 평가 성능을, �
 
 Expert routing은 policy가 빠르게 개선되는 초기에 크게 감소하지만, 이후 안정적인 tail을 형성한다.
 필요한 supervision의 범위는 좁아지지만, policy-generated signal이 사라지는 residual region은 학습
-후반에도 남는다. 이 변화하는 expert 사용은 별도의 warm-start stage로 분리되지 않고, policy rollout과
-함께 동일한 fully-asynchronous training stream에 지속적으로 반영된다.
+후반에도 남는다. 이 변화하는 expert 사용은 policy rollout과 함께 하나의 fully-asynchronous training
+stream에 지속적으로 반영된다.
 
-StreamWeave와 expert-off control은 동일한 fully-asynchronous execution stack, primary objective와 optimizer
-configuration을 사용한다. 두 run은 같은 prompt population과 expert trajectory에 접근하며, 의미 있는
-차이는 all-failure outcome에서 expert input을 실제로 사용하는지 여부다. All-failure group 자체는
-policy branch에 reward-derived relative direction을 제공하지 않으므로, policy-only learning은 다른
-prompt에서 얻은 신호가 이 영역으로 일반화되는 데 의존한다. StreamWeave는 matched expert input을
-통해 해당 prompt에 직접 대응하는 learning contribution을 shared primary update에 추가한다. 두 run은 초기
-비교 구간에서 유사하게 개선되지만, 이후 StreamWeave는 개선을 이어가고 expert-off control은 정체되는
-경향을 보인다. 후반의 차이는 평균 benchmark 성능에만 나타나지 않으며, held-out prompt에서 모든
-응답이 실패하는 비율도 같은 방향으로 분리된다.
+StreamWeave와 expert-off control은 execution stack, policy objective, optimizer, prompt population과
+expert access를 공유하며, all-failure outcome이 선택한 expert input을 실제로 소비하는지에서 갈린다.
+이 group은 reward-derived relative direction을 제공하지 않으므로 expert-off run은 다른 prompt의
+신호가 이 영역으로 전이되는 데 의존한다. 두 run은 초기에 유사하게 개선된 뒤 분리되며, 평균
+benchmark 성능과 held-out all-failure rate가 같은 방향으로 갈라진다.
 
-이 차이가 expert input을 받은 prompt에만 국한되는지 확인하기 위해, 같은 prompt와 첫 encounter의
-성공 수를 맞춰 후속 결과를 비교한다. StreamWeave는 $k=0,\ldots,8$의 아홉 구간 모두에서 더 높은
-후속 성과를 보였으며, 가장 큰 차이는 partial-success 영역인 $k=5\ldots7$에서 8개 응답당
-$0.39$--$0.44$개의 추가 성공으로 나타났다. 선택적으로 들어온 expert contribution은 shared primary
-update를 통해 특정 prompt의 교정에 머무르지 않고, 새로운 문제의 학습과 이미 형성된 능력의 유지에
-함께 연결된다는 해석을 지지한다. Appendix C.3은 동일 prompt를 이용한 matching 절차, 전체 $k$별
-결과와 불확실성, 세 번째 encounter의 재현, signal accounting과 후반 학습 동역학을 제시한다.
+같은 prompt와 첫 encounter의 성공 수를 맞춘 뒤, StreamWeave는 $k=0,\ldots,8$의 모든 구간에서 더
+높은 후속 성과를 보였고 가장 큰 차이는 partial-success 영역에서 나타났다. 이 pattern은 selective
+expert contribution이 대응 prompt뿐 아니라 shared policy의 acquisition과 retention에도 연결된다는
+해석을 지지한다. Appendix C.3은 전체 층화 결과, 불확실성과 후속 encounter를 제시하여 이 pattern이
+직접 routing된 prompt를 넘어섬을 보이되, 증거 범위를 matched longitudinal comparison으로 한정한다.
 
 **Cross-domain reasoning.** 수학 중심의 selective expert supervision이 cross-domain reasoning을
 좁히는지 확인하기 위해 ARC-Challenge, GPQA-Diamond와 MMLU-Pro에서 같은 checkpoint를
@@ -448,27 +472,19 @@ fixed-checkpoint evaluation으로 평가한다.
 *표 X: Fixed-checkpoint cross-domain reasoning results. Avg.는 ARC-C, GPQA-D와 MMLU-Pro의 동일 가중
 macro-average다.*
 
-StreamWeave는 Async RL (expert-off)과 HPT (sync)가 확보한 cross-domain aggregate 수준을 유지하면서
-수학 추론에서는 더 높은 성능을 보인다. Benchmark별 결과에서도 특정 영역의 큰 손실로 평균을 유지한
-양상은 나타나지 않는다. Selective expert supervision의 추가적인 학습 이득은 cross-domain reasoning의
-뚜렷한 저하 없이 목표 수학 영역에 집중된다.
-
-Expert supervision은 변화하는 수요에 따라 online stream에 계속 들어오며 shared policy 전반에
-학습 효과를 형성한다. §4.3은 StreamWeave가 이 반복적인 complete-group decision을 유지하면서도 그
-기다림의 실행 범위를 제한한 효과를 평가한다.
+StreamWeave는 Async RL (expert-off)과 HPT (sync)의 cross-domain aggregate 수준을 유지하고 개별
+점수도 두 reference의 범위에 머물면서, 수학 추론에서는 더 높은 성능을 보인다. 추가 학습 이득은
+cross-domain reasoning의 뚜렷한 저하 없이 목표 수학 영역에 집중된다.
 
 ### 4.3 Execution Efficiency with Expert Supervision
 
-§4.2에서 확인한 expert source는 초기 학습을 위한 일회성 단계가 아니라 학습 과정에 계속 참여한다.
-이러한 expert channel을 fully-asynchronous execution 안에 유지하면 학습된 policy가 생성하는 response의
-길이와 같은 prompt group의 rollout들이 완료되는 시점도 달라진다. StreamWeave의 실행 과제는 이
-generation workload를 처리하면서도 complete-group decision과 shared primary update를 유지하고,
-나머지 rollout generation과 model training을 계속 진행하는 것이다.
+Expert source가 학습 전반의 online stream에 참여하므로, 그에 동반되는 generation workload와 group
+completion pattern은 fully-asynchronous execution이 지속적으로 처리해야 할 실행 조건이다.
+이 절은 이러한 조건이 complete-group decision을 나머지 pipeline의 제약으로 확장하는지를 평가한다.
 
-같은 fully-asynchronous execution stack에서 expert input만 비활성화한 control과 비교하면,
-expert-supervised run의 response는 평균 1.59배 길고, 한 group에서 가장 오래 걸린 rollout의 평균
-시간은 1.94배 길다(Table 2). 이에 따라 인접한 두 policy version에서 생성된 rollout을 함께 포함하는
-group의 비율도 2.03\%에서 7.00\%로 증가한다.
+같은 fully-asynchronous execution stack의 expert-off control과 비교하면, expert-supervised run은 더
+긴 response와 group tail을 만들고 인접한 policy version의 rollout을 함께 포함하는 group도 늘어난다
+(Table 2).
 
 | 관측 범위 | 지표 | Reference | **StreamWeave** | 변화 |
 |---|---|---:|---:|---:|
@@ -482,29 +498,25 @@ group의 비율도 2.03\%에서 7.00\%로 증가한다.
 efficiency. 위 세 행은 같은 fully-asynchronous execution stack에서 expert input만 비활성화한
 Async RL (expert-off)을 reference로
 사용하며, generation 관련 값은 source decision 이전의 policy rollout에서 계산한다. 아래 두 행은 동일한
-GPU 예산의 synchronous execution을 reference로 사용한다. 모든 efficiency metric은 source별 learner
-sample 수가 아니라 routing 이전의 고유 prompt group을 공통 작업 단위로 사용한다.*
+GPU 예산의 synchronous execution을 reference로 사용한다. 모든 efficiency metric은 routing 이전의 고유
+prompt group을 공통 작업 단위로 사용한다.*
 
 이 시간적 노출은 모든 group에 균일하지 않았다. StreamWeave 안에서는 최종적으로 expert source가
 선택되는 all-failure group의 10.0\%가 두 policy version의 rollout을 포함하여 가장 높은 비율을 보였다.
 즉 expert source가 필요한 영역은 학습 신호뿐 아니라 complete group이 준비되는 시점에서도
 asynchronous execution과 가장 강하게 맞물린다.
 
-이처럼 길고 완료 시점이 불균등한 group의 모든 rollout을 함께 끝내야 하는 실행 단위로 다루면 가장
-늦은 trajectory가 전체 pipeline의 진행을 결정한다. Synchronous trace에서 generation phase의 길이는
-가장 느린 request의 완료 시간과 거의 일치한다. 개별 request는 평균 7.6초에 완료되지만, 가장 느린
-request는 23.7초까지 이어지고 후처리를 포함한 generation phase는 25.1초에 종료된다. 먼저 끝난 request가
-실행 자원을 비워도 같은 phase가 끝나기 전에는 다음 attempt를 시작할 수 없으며, model training 역시
-generation 이후에 실행된다. 따라서 길고 완료 시점이 불균등한 rollout이 많아질수록 한 request의
-tail이 전체 pipeline의 진행을 제한한다.
+길고 완료 시점이 불균등한 group이 하나의 execution phase를 공유하면 가장 늦은 trajectory가 pipeline
+진행을 결정한다. Synchronous trace에서 개별 request는 평균 7.6초에 완료되지만 가장 느린 request는
+23.7초까지 이어지고, 후처리를 포함한 generation phase는 25.1초에 종료된다. 먼저 끝난 request도
+phase가 닫히기 전에는 다음 attempt를 시작할 수 없고 model training도 generation 이후에 시작한다.
+따라서 completion tail은 후속 rollout과 training을 함께 제한한다.
 
-StreamWeave는 기존 fully-asynchronous runtime의 attempt-level execution을 유지한다. 생성 측에서는
-attempt가 끝날 때마다 빈 실행 슬롯에 다음 작업을 공급하고, 인접한 policy version의 rollout을 함께
-포함하는 group에서도 group identity와 각 rollout을 생성한 policy의 정보를 유지한다. 서로 다른 시점에 완료된
-rollout은 source decision 직전에 complete group으로 복원된다. 학습 측에서는 source에 따라 달라지는
-training input을 §3.1의 하나의 shared primary update로 전달한다. Complete
-group을 기다리는 동안에도 다른 group의 rollout generation과 이미 준비된 data의 model training은 계속되므로,
-필요한 조정은 각각의 경계에서 끝나고 pipeline 전체의 기다림으로 전파되지 않는다.
+StreamWeave는 attempt가 끝날 때마다 빈 rollout slot에 다음 작업을 공급한다. 독립적으로 완료되는
+동안에도 group identity와 rollout별 generation policy를 보존하고, source decision을 위해서만
+group을 복원한다. 한 group이 완성되지 않은 동안에도 다른 group은 계속 생성되고 준비된 data는 계속
+학습된다. 필요한 조정은 decision과 input-construction 경계에서 끝나며 pipeline-wide waiting으로
+전파되지 않는다.
 
 ![End-to-end execution efficiency](figures/execution_efficiency/outputs/execution_gpu_activity_overview.png)
 
@@ -513,38 +525,41 @@ non-validation training history를 독립적으로 0--100\%로 정규화하여 G
 초과하는 SM activity를 보인 GPU 수를 나타낸다. (c)는 synchronous run의 전체 79.7분과 StreamWeave의
 동일 길이 prefix를 비교하며, 누적 작업량은 synchronous endpoint를 1.0으로 두어 정규화한다.*
 
-이 실행 구조는 하드웨어 수준에서도 일관된 양상을 만든다. 그림 X에서 synchronous execution은 여러
-GPU의 activity가 함께 낮아지는 구간을 반복하는 반면, StreamWeave는 더 많은 GPU가 동시에 작동하는
-상태를 유지한다. 같은 wall-clock에서 이 차이는 지속적으로 누적되는 prompt-group work의 격차로
-이어진다. 그림은 complete-group decision에 필요한 기다림의 범위를 제한한 설계가 GPU activity와 실제
-작업량에 남긴 실행 결과를 보여준다.
+그림 X는 이 설계의 하드웨어 수준 signature를 보여준다. StreamWeave는 여러 GPU의 activity가 함께
+낮아지는 구간을 줄이고 더 넓은 concurrent activity를 유지하며, 같은 wall-clock에서 더 많은
+prompt-group work를 누적한다. 이는 complete-group waiting의 범위를 제한한 설계를 실제 작업량과
+연결한다.
 
 StreamWeave는 128개 prompt group의 처리 시간을 46초에서 28초로 줄이고, 동일한 GPU 예산에서
-**1.64$\times$의 full-history prompt-group throughput**을 달성한다(Table 2). 이 결과는 rollout generation과 model training을
-겹치는 데서 끝나지 않는다. StreamWeave는 expert-supervised training에서 나타나는 더 긴 rollout과
-불균등한 group completion을 필요한 경계에서 처리한다. 그 결과
-complete group은 source와 learning signal을 결정하는 경계로, source identity는 learner input을
-구성하는 조건으로 보존되면서도 두 요구는 pipeline-wide execution barrier가 되지 않는다.
+**1.64$\times$의 full-history prompt-group throughput**을 달성한다(Table 2). 이 end-to-end 이득에는
+서로 연결된 두 실행 효과가 함께 작용한다. 첫째, 동기식에서 generation 이후에 시작되던 model
+training이 rollout generation과 병행된다. 둘째, attempt가 끝날 때마다 빈 rollout slot에 다음 작업을
+공급하여, 먼저 끝난 rollout이 complete-group tail을 기다리는 동안 잃던 유효 rollout capacity를
+회수한다. 두 효과는 complete-group decision을 유지한 채, 그 기다림이 model training과 다른 rollout
+slot의 진행까지 묶는 범위를 줄인다.
 
-Appendix C.5는 route별 policy-version 분포와 synchronous generation phase가 가장 느린 request의
-completion tail에 노출되는 양상을 제시한다.
+Appendix C.4--C.5는 resource-normalized accounting, source별 policy-version 구성과 request-level
+timing으로 이 해석을 검산하고, 이를 exact speedup decomposition으로 확장할 수 없는 범위를 명시한다.
 
 ## 5. Conclusion
 
-StreamWeave는 scalable RLVR에서 함께 충족하기 어려웠던 두 요구를 다룬다. Group-conditioned expert
-learning은 무엇을 학습할지 정하기 위해 complete group과 source identity를 필요로 하지만,
-fully-asynchronous execution은 이러한 의존성이 계산의 진행 시점까지 제약하지 않을 때 효율을 얻는다.
-StreamWeave는 학습 의존성을 제거하는 대신 실제로 소비되는 경계에 국소화한다. Complete-group context는
-source decision에서 끝나고, source identity는 learner input이 구성될 때까지 유지되며, 이후
-source-conditioned learner input은 하나의 shared primary update로 학습된다. 이 decomposition은 학습 판단을
-pipeline-wide execution barrier로 만들지 않고 trajectory-level execution, rollout-side utilization,
-rollout generation과 model training의 overlap을 함께 유지한다. 실험에서 StreamWeave는 경쟁력 있는 수학 추론 성능을
-달성했고, expert-off control과의 학습 동역학은 policy-generated signal만으로 진전이 둔화되는 후반에
-expert channel이 보완적으로 기여함을
-보였다. 동시에 동일한 실행 예산에서 prompt-group throughput을 1.64$\times$ 높였다. 본 연구의 실증
-범위는 group-conditioned two-source RLVR이지만, 여기서 얻는 더 넓은 판단은 분명하다. 확장 가능한 학습
-시스템은 비동기화를 위해 구조적인 학습 의존성을 없앨 필요가 없으며, 그 의존성이 필요한 위치를 정확히
-제한하면 된다.
+StreamWeave는 trajectory 실행과 training source 및 학습 역할을 정하는 complete-group decision을
+분리하여 group-conditioned RLVR을 fully-asynchronous execution으로 실현한다. 그 decision을 기다리는
+실행은 source가 확정되는 곳에서 끝나고, 선택된 학습 역할을 재현하는 정보는 training input이
+완성되는 곳에서 끝난다. 이 의존성의 국소화는 complete group을 학습 판단의 경계로 유지하면서 그
+completion을 pipeline-wide execution barrier에서 분리한다.
+
+실험에서 policy-generated relative signal이 사라지는 all-failure 영역에는 더 큰 generation
+workload가 집중되고 expert 수요는 학습 후반에도 지속되며, selective expert contribution은 직접
+routing된 prompt를 넘어 shared policy의 acquisition과 retention에 연결된다. StreamWeave는 수학에서
+동기식 quality reference와 대등한
+성능을 달성하고, 경쟁력 있는 cross-domain reasoning performance를 유지했다. Expert input을 사용하는
+run에서 더 긴 generation workload가 관찰되는 조건에서도 동일한 GPU 예산의 prompt-group throughput을
+1.64$\times$ 높였다. 본 연구가 직접 검증한 범위는 하나의 backbone과 training seed, 동일한 8-GPU
+예산, 수학 중심의 group-conditioned two-source RLVR이다. 이 범위에서 StreamWeave는 complete-group
+learning composition을 보존하고 그 의존성의 실행
+범위를 제한하여, selective expert supervision과 fully-asynchronous execution의 효율을 하나의 training
+system에서 함께 실현했다.
 
 ## Appendix A. Exact Learning Realization
 
@@ -595,7 +610,7 @@ $$
 $$
 
 Forward ratio는 1이므로 PPO clipping은 expert token에서 활성화되지 않지만, numerator의 gradient는
-남는다. 따라서 shared policy loss의 expert endpoint는 다음 supervised contribution을 복원한다.
+남는다. 따라서 하나의 policy loss에서 expert endpoint는 다음 supervised contribution을 복원한다.
 
 $$
 \nabla_\theta \mathcal{L}_{\mathrm{exp}}
@@ -606,7 +621,7 @@ $$
 두 source는 별도 optimizer step이나 primary-loss branch로 갈라지지 않는다. Source별 input이 구성된
 뒤에는 같은 vanilla PPO function을 통과한다.
 
-### A.3 Shared loss averaging
+### A.3 Same loss averaging across sources
 
 Main realization은 policy와 expert token에 동일한 `seq-mean-token-sum-norm`을 적용한다. Token-level
 loss를 $\phi_{r,t}$, update가 소비하는 sequence 수를 $|B|$, 최대 response length를 $L_{\max}$라 하면
@@ -653,7 +668,7 @@ version에 묶이지 않은 supervised target이다.
 |---|---|---|
 | Trajectory attempt | 독립적인 rollout generation과 자원 반환 | Group dependency를 아직 소비하지 않음 |
 | Source-resolved prompt group | Complete-group reconstruction, source decision, transport | Complete-group context를 source decision에서 소비 |
-| Training sample | Tokenization, masks, reference와 correction 구성, one-path update | Source identity를 training-input construction에서 소비 |
+| Training sample | Tokenization, masks, reference와 correction 구성, one primary update | Source identity를 training-input construction에서 소비 |
 
 Rollouter는 각 attempt에 `group_uid`와 group 안의 index를 부여해 독립적으로 실행한다. Accumulator는
 중복 index와 mixed prompt identity를 거부하며, $n$개 attempt가 모두 도착한 group만 원래 순서로
@@ -672,7 +687,7 @@ freshness control을 사용하고, updated policy는 기존 parameter-refresh lo
 
 Attempt generation이나 infrastructure가 실패하면 그 group을 gate와 queue 이전에 닫아 partial decision을
 막는다. Queue와 scheduler의 모든 drop은 별도 metric으로 회계한다. 이 정책은 universal zero-waste를
-보장하기 위한 것이 아니라, transport failure가 조용히 다른 training source나 learner input을 만들지
+보장하기 위한 것이 아니라, transport failure가 조용히 다른 training source나 training input을 만들지
 않게 하기 위한 것이다.
 
 ## Appendix C. Experimental and Evaluation Details
@@ -712,7 +727,7 @@ convergence 주장을 대신하지 않는다.
 
 **Matched control.** 두 run은 같은 prompt population, group size와 data-source composition을
 사용하며 모든 prompt에 동일한 expert trajectory가 제공된다. 차이는 all-failure outcome에서 이
-trajectory를 learner input으로 사용하는지 여부다.
+trajectory를 training input으로 사용하는지 여부다.
 
 | Item | StreamWeave | Expert-off |
 |---|---:|---:|
@@ -869,7 +884,7 @@ version에서 생성된 rollout을 함께 포함한다. Expert-off run의 대응
 (`12.43` 대 `6.71`초), 평균 response도 길다(`2,116` 대 `1,377` tokens). 이 결과는 version span이
 낮은 성공률의 원인이라는 뜻이 아니다. 오래 걸리는 group일수록 refresh boundary와 겹칠 가능성이
 높으며, StreamWeave는 continuation 이후에도 group identity와 rollout을 생성한 policy 정보를 유지해
-같은 complete-group decision과 shared learner 경로로 연결한다.
+같은 complete-group decision과 하나의 training path로 연결한다.
 
 #### C.5.2 Synchronous completion-tail exposure
 
@@ -885,7 +900,7 @@ idle의 일대일 대응이나 \(1.64\times\) speedup의 가산적 성분 분해
 
 Main은 vanilla clipped PPO를 사용한다. 같은 StreamWeave stack에서 CISPO를 사용한 secondary arm의
 macro-average는 36.8로, main의 38.5보다 낮았다. 이 결과는 StreamWeave의 새로운 algorithmic component를
-주장하기 위한 ablation이 아니라, shared architecture의 base policy objective로 vanilla PPO를 선택한
+주장하기 위한 ablation이 아니라, StreamWeave architecture의 base policy objective로 vanilla PPO를 선택한
 근거다. Learner-entry reference와 rollout correction을 분리한 decoupling도 main realization에 포함되지만,
 관찰된 regime에서는 correction weight가 1 근처에 집중되고 truncation이 거의 활성화되지 않아 핵심
 novelty나 성능 원인으로 해석하지 않는다.
@@ -929,7 +944,7 @@ instantiation에서의 end-to-end demonstration이다. 이 범위를 넘어서�
 
 | 항목 | Cold-start 기준 |
 |---|---|
-| **원고 상태** | 한국어 원고의 §3과 §4 중심 논증은 잠겼다. §3은 `queue 앞의 source decision → queue 뒤의 training-input construction → one-path update`로 정렬했고, Related Work는 fully-asynchronous와 expert-trajectory learning의 두 계보 및 source가 확정된 training record의 composition gap으로 정리했다. 현재 작업은 Introduction과 세 Contributions의 재작성이다. 이후의 정확한 실행 순서는 `PAPER_PLAN.md`의 P0만 소유하며, 변화 로그는 결정의 역사로만 사용한다. |
+| **원고 상태** | Abstract부터 Conclusion까지 공개 한국어 원고의 중심 논증을 정렬했다. §3은 `queue 앞의 source decision → queue 뒤의 training-input construction → one primary update`로 잠겼고, Related Work, Introduction과 세 Contributions 및 Conclusion이 같은 composition thesis를 회수한다. English Abstract와 TL;DR도 동기화했다. 공개 원고 전문의 canonical vocabulary, 의미 중복과 Appendix handoff 최종 검사를 완료했다. 현재 작업은 provenance manifest와 Table 1 각주의 확정이며, 이후의 정확한 실행 순서는 `PAPER_PLAN.md`의 P0만 소유한다. |
 | **Canonical thesis** | Source decision에 필요한 complete-group waiting을 해당 group에 국소화하고, 확정된 source와 필요한 group context를 queue 뒤의 learner-ready input construction까지 보존하면, group-conditioned heterogeneous learning을 pipeline-wide execution barrier나 source별 engine 없이 fully asynchronous하게 실현할 수 있다. |
 | **소유하는 novelty** | Complete-group outcome이 정한 source를 learner-ready input과 one-path primary update로 닫는 learning composition, 그리고 source-decision waiting만 국소화하면서 source-fixed group을 기존 asynchronous stream의 queue와 core engines 사이에 연결하는 architecture. |
 | **독립 novelty가 아닌 것** | Fully-asynchronous RL, expert trajectory, HPT learning program, PPO·GRPO·IS·decoupling, unified estimator, accumulator·queue·self-detach 각각과 특정 framework의 batching 절차. |
@@ -938,7 +953,7 @@ instantiation에서의 end-to-end demonstration이다. 이 범위를 넘어서�
 | **보조 평가 상태** | ARC-Challenge, GPQA-Diamond, MMLU-Pro의 cross-domain reasoning 결과 수집과 §4.2 benchmark-level 표 반영을 완료했다. Async RL (expert-off)과 HPT (sync)는 각각 Table 1의 동일 모델에 대한 추가 평가이며, CISPO는 Appendix의 ablation으로 유지한다. |
 | **통합 evidence 서사** | A는 all-failure 영역에 generation workload와 signal scarcity가 함께 집중됨을, C는 expert channel이 그 residual hard region에 후반까지 필요함을, E는 그 channel을 fully-asynchronous execution 안에 유지하면서 phase serialization과 completion-tail exposure를 회수함을 보인다. 셋은 별도 novelty가 아니라 하나의 architecture thesis를 닫는 증거다. |
 | **주장하지 않는 것** | LUFFY +0.8 headline, quality-versus-wall-clock, architecture-isolated speedup, `54.7%→3.25%` stall 감소, universal correctness·convergence·optimizer-trajectory equivalence. |
-| **현재 next** | 완성된 §3·§4와 Related Work의 판단을 Introduction과 세 Contributions에서 먼저 회수한다. 이어서 Conclusion을 정렬하고 한국어 Abstract를 마지막에 압축한다. 그림의 최종 번호와 배치는 LaTeX 이관에서 닫으며, 새로운 RL training은 필수 gate가 아니다. |
+| **현재 next** | Main/sync checkpoint, cross-domain 결과, grader·decoding config, evaluation seed와 raw result artifact를 provenance manifest에 연결하고 Table 1 각주를 확정한다. 이어서 그림·표 번호와 caption을 닫고 AAAI-27 LaTeX로 이관한다. 새로운 RL training은 필수 gate가 아니다. |
 
 작업 중 충돌이 생기면 권한은 `공개 원고와 이 내부 메모 → PAPER_PLAN.md → evidence ledger →
 historical documents` 순서다. 코드가 문서와 다르면 구현 사실을 먼저 확인하되, 그 사실을 어떤 공개
@@ -1174,9 +1189,9 @@ framing, Related Work와 §3--§4의 중심 논증을 다시 열지 않는다. �
 |---|---|
 | **구조 동결** | Related Work의 두 계보와 §3의 `Learning Composition → Fully-Asynchronous Execution` 구조, complete-group selector와 one-path primary-update 유도, learning-decision boundary와 execution barrier의 분리 |
 | **완료된 본문 통합** | §4.2에서 A의 compute--signal concentration, C의 persistent expert channel과 matched repeat-prompt 해석을 하나의 learning finding으로 연결하고, Appendix C.3이 matching·전체 strata·uncertainty·process diagnostics를 소유하도록 정렬. §4.3은 expert-supervised run의 generation-side workload 변화와 completion-tail pressure를 GPU activity·prompt-group throughput으로 회수하며, Appendix C.4--C.5가 telemetry scope·route별 version span과 paired completion-tail timing을 소유하도록 연결. `verl` fixed-grain alignment와 carryover는 공개 원고에서 제외 |
-| **완료된 도입부와 용어 정렬** | §4 도입부는 완료된 §4.1--§4.3이 실제로 답하는 세 질문만 예고하며 결과나 재현 세부를 선행 반복하지 않음. 공개 원고는 `Async RL (expert-off)`, `HPT (sync)`, `primary objective`, `same averaging rule`, `fully-asynchronous execution`, `generation workload`, `prompt-group throughput`을 일관되게 사용 |
+| **완료된 도입부와 용어 정렬** | §4 도입부는 완료된 §4.1--§4.3이 실제로 답하는 세 질문만 예고하며 결과나 재현 세부를 선행 반복하지 않음. 공개 원고는 `Async RL (expert-off)`, `HPT (sync)`, `training input`, `one primary update`, `policy objective`, `same averaging rule`, `fully-asynchronous execution`, `generation workload`, `prompt-group throughput`을 일관되게 사용 |
 | **Method 잠금** | §3 도입부·§3.1·§3.2와 Algorithm 1을 `queue 앞의 source decision → queue 뒤의 training-input construction → one-path update`로 정렬했다. Generator와 learner는 각각 generation과 준비된 input의 update를 담당한다. |
-| **후속 정렬** | 두 실증 그림의 렌더·시각적 QA는 완료됐다. Introduction·Conclusion의 상위 서사를 정렬하고 한국어 Abstract를 마지막에 압축한다. 최종 그림 번호와 배치는 LaTeX 이관에서 닫으며, 정확한 순서는 `PAPER_PLAN.md`의 P0를 따른다. |
+| **후속 정렬** | Introduction·Contributions·Conclusion과 Abstract의 상위 서사를 정렬하고 공개 원고 전문의 용어·중복·Appendix handoff 검사를 완료했다. 두 실증 그림의 렌더·시각적 QA도 완료했다. Provenance와 Table 1 각주를 확정한 뒤 최종 그림 번호와 배치를 LaTeX 이관에서 닫는다. 정확한 순서는 `PAPER_PLAN.md`의 P0를 따른다. |
 | **Related Work 본문 정렬 완료** | Laminar를 fully-asynchronous 계보 안에 담백하게 배치하고, 마지막 문단에서 source가 확정된 training record의 필요성을 회수했다. Accepted-conference citation metadata의 최종 closure만 남음 |
 
 개정의 성공 기준은 문장 수가 아니라 reviewer classification이다. 첫 독자가 StreamWeave를 새로운
@@ -1808,31 +1823,42 @@ State: accumulator A[g_x] for prompt-group key g_x, queue Q of source-fixed reco
 GENERATOR and TRAINER run concurrently.
 
 GENERATOR:
- 1  launch one trajectory attempt in every idle rollout slot
+ 1  launch one attempt in every idle rollout slot
  2  when attempt (g_x, i) finishes under pi_gen_i:
- 3      A[g_x][i] <- <tau_i, R(tau_i), pi_gen_i>; launch the next attempt
- 4      if |A[g_x]| = n:
- 5          G_x <- ordered A.pop(g_x);  z_x <- S_gamma(G_x)
- 6          Q.push(SOURCE_RECORD(x, z_x, G_x, E[x]))
+ 3      A[g_x][i] <- <tau_i, R(tau_i), pi_gen_i>     # keep per-attempt provenance
+ 4      launch the next attempt                      # slot freed; no wait on siblings
+ 5      if |A[g_x]| = n:                             # boundary 1: complete-group decision
+ 6          G_x <- ordered A.pop(g_x);  z_x <- S_gamma(G_x)
+ 7          Q.push(SOURCE_RECORD(x, z_x, G_x, E[x])) # source fixed before the queue
 
 TRAINER:
- 7  records <- DEQUEUE(Q);  B <- empty
- 8  for q in records:
- 9      B += POLICY_INPUTS(q) if q.source = policy else EXPERT_INPUT(q)
-10  theta <- LEARNER_UPDATE(theta, L(B));  PUBLISH(theta)
+ 8  records <- DEQUEUE(Q);  B <- empty
+ 9  for q in records:                                # boundary 2: source-conditioned inputs
+10      if q.source = policy: B += POLICY_INPUTS(q)  # n rows; group-relative + lag correction
+11      else:                 B += EXPERT_INPUT(q)   # 1 row; beta signal, no correction
+12  theta <- LEARNER_UPDATE(theta, L(B))             # one objective, one averaging rule
+13  PUBLISH(theta)
 ```
 
-**각 구역이 지고 있는 주장.** 아래는 알고리즘을 옮기거나 압축할 때 무엇이 사라지면 안 되는지를
-정한다.
+**주석은 장식이 아니다.** 이 알고리즘은 §3.2의 세부 문단보다 앞에 놓여 roadmap으로 읽히므로,
+독자가 설명을 읽기 전에 각 줄이 무엇을 주장하는지 알아야 한다. 아래 일곱 항목이 알고리즘 형태를
+바꿀 때 검사하는 기준이며, 줄 번호가 아니라 주장 단위로 확인한다.
 
-- **병렬 실행.** Generator와 trainer가 독립적으로 전진하고, learner는 trainer가 구성한 input으로
-  update를 수행한다.
-- **3번 줄.** 완료된 attempt는 형제를 기다리지 않고 다음 작업에 rollout slot을 넘긴다. 생성 policy도
-  함께 기록하여 이후 correction에 필요한 provenance를 보존한다.
-- **4--6번 줄.** Complete group은 accumulator 안에서만 복원되고, source가 확정된 record가 queue를
-  통과한다.
-- **9--10번 줄.** §3.1의 source별 input construction 이후에는 하나의 $\mathcal{L}(B)$와 optimizer
-  path만 남는다.
+1. **병렬 실행.** Generator와 trainer가 서로를 기다리지 않고 전진한다.
+2. **Slot 즉시 반납.** 완료된 attempt는 형제를 기다리지 않고 rollout slot을 다음 작업에 넘긴다.
+   Group을 실행 단위로 두지 않았다는 진술이며, 그 대안의 비용은 §4 `Complete-group decision` 행의
+   `나이브 결합의 실패` 칸이 소유한다.
+3. **완료 처리 안의 복원.** Complete group은 별도의 대기 지점이 아니라 attempt 완료 처리 내부에서
+   복원된다.
+4. **Transport 전 source 확정.** Source는 queue에 들어가기 전에 정해지므로 소비 순서가 이미 내려진
+   결정을 바꾸지 못한다.
+5. **Provenance 보존.** 생성 policy를 attempt와 함께 기록하여, 인접한 policy version의 rollout을
+   함께 포함하는 group에서도 correction이 row별로 정의된다.
+6. **Row cardinality 1 대 n.** Source에 따라 한 group이 만드는 learner row 수가 갈린다는 사실은
+   감출 세부가 아니라 보여줄 사실이다. §4 `Variable-cardinality batch alignment`가 왜 필요한 문제인지가
+   이 분기에서 드러난다.
+7. **단일 update.** 분기 뒤에는 하나의 $\mathcal{L}(B)$, 하나의 averaging rule, 하나의 optimizer
+   step만 남는다. `AReaL + HPT를 병치했다`는 분류에 대한 가장 짧은 반증이 이 부재다.
 
 **넣지 않은 것과 사는 곳.** 알고리즘의 일은 두 경계와 공유되는 꼬리를 보이는 것이다. 상수를 넣으면
 구성 목록이 되고 현행 realization이 유일한 선택처럼 읽힌다.
@@ -1891,10 +1917,10 @@ Method와 Experiments가 함께 보이게 하는 데 있다.
 | **§4.3 Execution Efficiency with Expert Supervision** | **PUBLIC PROSE AND TWO-SIDED INTERACTION EVIDENCE INTEGRATED; FIGURE RENDER/QA COMPLETE** | Async RL (expert-off)과의 비교로 expert-supervised run의 generation workload와 adjacent-version group 변화를 보인다. Synchronous execution comparison은 completion tail, rollout generation과 model training의 overlap, active-GPU coverage, matched-wall-clock cumulative work와 1.64$\times$ prompt-group throughput으로 닫는다. Table 2는 workload와 end-to-end reference를 행 블록으로 분리하고, Appendix는 route별 version span·completion-tail timing·telemetry scope를 소유한다. Framework-specific alignment와 carryover는 논문 범위에서 제외한다. 통합 효율 그림은 본문·caption 연결과 SVG/PDF/PNG export를 완료했으며 최종 번호와 배치 확인만 LaTeX 이관에서 수행한다. |
 | **§4.1 Experimental Setup** | **PUBLIC PROSE UPDATED** | §4.2·§4.3이 실제로 사용하는 training setting, expert-off learning control, fixed-checkpoint evaluation, learning-process analysis와 공통 efficiency work unit을 정의하고 exact hyperparameter는 Appendix로 분리 |
 | **§4 도입부** | **PUBLIC PROSE UPDATED AND LOCKED** | 완료된 §4.1--§4.3이 답하는 세 질문만 예고하고 결과 수치와 분석 세부를 선행 반복하지 않음 |
-| **Introduction·Conclusion** | **FOLLOW-UP** | §4의 최종 판단만 상위 서사에서 회수 |
+| **Introduction·Conclusion** | **PUBLIC PROSE UPDATED** | §3·§4의 composition thesis, 공동 payoff와 직접 검증한 범위를 상위 서사에서 회수했다. |
 | **Related Work** | **PUBLIC PROSE ALIGNED** | Async의 시간적 비동기와 expert 계보의 source 확장을 담백하게 서술하고, source가 확정된 training record의 composition gap을 마지막 문단에서 회수했다. Citation closure만 남음 |
 | **§3 전체** | **REWRITTEN AND LOCKED** | §3 도입부를 실행·판단·최적화 단위의 분리로 갱신하고, §3.1--§3.2를 `complete-group source decision → source-specific training inputs → one-path update`와 `queue 앞의 source 확정 → queue 뒤의 input construction`으로 정렬했다. Algorithm 1은 같은 구성을 10-line concurrent control flow로 요약한다. |
-| **Abstract** | **LAST** | A·C 세부 수치 없이 thesis, competitive quality와 `1.64x`만 한 문단으로 재압축 |
+| **Abstract** | **PUBLIC PROSE UPDATED** | A·C 세부 수치 없이 thesis, competitive quality와 `1.64x`를 한 문단으로 압축하고 English Draft와 TL;DR을 동기화했다. |
 
 현재 실행 순서는 `PAPER_PLAN.md`의 P0가 단독으로 소유한다. 이 절은 evidence의 본문 반영 상태만
 기록하며, 공개 문단의 개정 순서나 작업 우선순위를 다시 정의하지 않는다. Proposal A·C·E의 아래
@@ -3177,3 +3203,1068 @@ Abstract에는 세부 수치를 추가하지 않는다. 최종 지면과 전체 
 
 위 항목은 최종 Appendix·artifact manifest와 제출 정합을 위한 작업이다. §4.2의 공개 구조와
 benchmark-level 표를 다시 잠정 상태로 돌리는 집필 gate로 사용하지 않는다.
+
+---
+
+## GPT-5.6 Sol Pro 주장 강화 상호작용 원장
+
+> **목적.** 공개 본문을 바로 수정하지 않고, 원고 전문과 내부 메모를 함께 읽힌 장기 상호작용을
+> 통해 StreamWeave의 주장·가치·철학·우아함을 강화할 개선 후보를 축적한다.
+>
+> **우선순위.** 주장 강화가 1순위이고 사실 정합은 허용 가능한 주장 범위를 지키는 2순위 제약이다.
+> 숫자 검산, provenance, 추가 baseline이 논문의 연구 객체와 가치 판단을 밀어내지 않게 한다.
+>
+> **변경 규율.** 이 원장은 추천과 재판정만 기록한다. 이 상호작용 중에는 공개 한국어 본문,
+> Appendix 본문, 제출용 TeX/PDF를 수정하지 않는다. 각 제안은 외부 모델의 의견을 그대로
+> 채택하지 않고 `채택 / 보류 / 기각`으로 다시 판정한다.
+
+### Round 01 — 논문의 분류 순서와 최상위 서사 병목
+
+- **질문 목적:** 원고 전체와 내부 메모를 읽힌 뒤, 독자가 기억해야 할 단 하나의 판단, 공개
+  원고의 상위 세 병목, `AReaL + HPT`라는 분류가 생기는 서사적 원인, 아직 회수되지 않은 내부
+  자산을 찾게 했다. 문장 재작성과 사실 감사는 금지하고 reviewer failure mode, 강화할 claim,
+  착지 위치, 가치와 오용 위험을 함께 요구했다.
+- **외부 모델의 최상위 진단:** 원고에 새 내용이 부족한 것이 아니라 공개 서사의 추상화 수준이
+  내부 메모보다 한 단계 낮다. 현재 원고는 complete-group decision, source-conditioned input,
+  one primary update, independent attempts를 모두 설명하지만, 이들을 관통하는 판단보다 동작
+  순서를 먼저 가르친다. 그 결과 리뷰어가 개념적 소유권을 비동기 실행 계보와 HPT 계보에 각각
+  돌려주고 StreamWeave에는 연결 코드만 남길 수 있다.
+- **복원된 단일 판단:** 비동기화는 학습 구조를 없애는 일이 아니라 각 학습 의존성을 실제로
+  소비하는 경계까지만 유지하는 일이다. Complete-group context는 source decision에 필요한
+  범위에서 보존하고 pipeline-wide blocking으로 확장하지 않으며, source 차이는 별도 learner
+  path로 확장하지 않고 training input에서 소진한다. Accumulator, queue, 수식과 수치는 이 판단의
+  주인공이 아니라 constructive witness와 empirical payoff다.
+- **병목 P0 — 연구 객체의 늦은 등장:** Introduction이 `async는 비용`, `expert는 신호`라는 두
+  해법의 상보성으로 출발하여 독자의 최초 분류를 조합 문제로 고정한다. 실제 연구 객체인
+  `complete-group outcome이 policy lineage 밖의 source와 learner input의 의미를 함께 바꿀 때,
+  그 group-level learning program을 trajectory-level stream으로 어떻게 옮길 것인가`는 뒤늦게
+  등장한다. 단순한 연결로 닫히지 않는 이유가 Method 이전에 연구 문제의 지위를 얻어야 한다.
+- **병목 P1 — 기여의 병렬화:** §3.1과 §3.2가 각각 learning novelty와 systems novelty처럼
+  병렬로 읽히면, 전자는 HPT에 후자는 AReaL·Laminar에 환원될 수 있다. 외부 모델은 이를
+  `정의 → 실현 → 제한된 의미 보존`의 관계로 재배치하자고 제안했다. 핵심 가치는 §3.1이
+  보존해야 할 learning composition을 정하고 §3.2가 그 의미를 global group barrier 없이
+  실현한다는 위계를 독자에게 먼저 주는 데 있다.
+- **병목 P2 — 실험의 병렬 scorecard화:** §4.2의 quality와 §4.3의 efficiency가 각각 좋은
+  결과로만 읽히면 왜 이 architecture가 필요한지 닫히지 않는다. 더 강한 사슬은
+  `신호가 사라지는 영역에 generation 부담도 집중됨(A) → expert 수요가 warm start 이후에도
+  지속됨(C) → 그 online heterogeneous stream의 기다림을 국소화해 실행 payoff를 회수함(E)`이다.
+  특히 persistence는 `expert warm start 후 ordinary asynchronous RL`이라는 순차적 대안이
+  충분하지 않음을 보여주는 해석 자산이다.
+- **`AReaL + HPT` 분류의 원인:** 방어 문구의 부족이 아니라 원고가 제공하는 분해 순서다.
+  부모 방법들이 execution freedom과 expert learning을 먼저 소유하고, StreamWeave가 accumulator와
+  queue로 둘을 연결하는 순서로 읽힌다. `단순 조합이 아니다`라고 쓰는 대신, 둘이 만날 때 새로
+  생기는 학습 의존성의 범위와 이를 끝내는 변환을 StreamWeave의 연구 객체로 먼저 확정해야 한다.
+- **가장 가치 있는 내부 자산:** 첫째, 두 component 사이의 중간 표현이 자연스럽게 맞지 않는다는
+  composition problem. 둘째, complete-group context와 source identity라는 두 의존성 및 각
+  종료점. 셋째, persistent expert channel이 순차적 warm-start 대안을 무너뜨린다는 해석이다.
+
+#### 우리의 재판정
+
+- **강하게 채택:** `내용 부족`이 아니라 `추상화 수준과 분류 순서`가 핵심 병목이라는 진단.
+  이는 더 많은 사실이나 mechanism을 추가하지 않고도 novelty의 소유권을 StreamWeave로
+  되돌리는 방향이며, 현재 내부 헌장의 가치·철학 우선 원칙과 정확히 맞는다.
+- **강하게 채택:** A–C–E를 필요성·지속성·실행 payoff의 한 사슬로 읽고, quality와 throughput을
+  architecture의 서로 다른 payoff로 배치하는 방향. 현재 수치를 늘리지 않고도 §4가 Method의
+  판단을 증명하게 만든다.
+- **조건부 채택:** §3.1과 §3.2의 `정의 → 실현` 관계. 두 절이 독립된 부품처럼 보이는 문제는
+  실제로 있으나, §3.2를 §3.1의 하위 구현으로 축소하면 boundary-localized architecture라는
+  독립적인 기여가 약해진다. 다음 라운드에서 contribution 1과 2의 구별을 유지하면서도 하나의
+  thesis로 묶는 더 정확한 위계를 요구한다.
+- **조건부 채택:** Completion order가 source와 training-input interpretation을 바꾸지 않는다는
+  제한된 의미 보존. Architecture를 단순 dataflow보다 한 단계 높이는 데 유용하지만, 이미 내부
+  메모가 엄격한 전제를 둔 좁은 결과다. 이를 전면적 `불변성`이나 proposition으로 브랜드화하면
+  사실 제약과 formalism이 철학을 밀어낼 수 있으므로 보조 문장 이상의 지위는 아직 주지 않는다.
+- **표현은 기각, 통찰은 채택:** `composition contract`, `closure`, `intermediate contract`,
+  `transformation architecture`를 새 핵심 용어로 전면화하는 방식. 연구 객체를 먼저 세우라는
+  통찰은 강하지만, 이 용어들은 현재 원고가 지키는 담백하고 범용적인 언어를 해칠 수 있다.
+  최종 공개 문구는 `무엇이 함께 있어야 하는가`, `무엇을 분리할 수 있는가`, `필요한 의존성을
+  어디에서 끝내는가`라는 기존 언어로 회수한다.
+- **기각:** 기존 asynchronous RL이 complete group을 다루지 못한다고 넓히는 주장, decomposition의
+  유일성·최소성·최적성, completion order가 optimizer trajectory까지 보존한다는 확대,
+  persistence를 보편적 수렴 우위로 바꾸는 주장. 모두 novelty를 강화하는 대신 반례와 사실
+  감사를 논문의 중심으로 불러온다.
+
+#### 다음 라운드의 반론
+
+외부 모델의 P0와 P2는 강하지만 P1은 contribution 2의 architecture적 독립성을 지나치게
+종속시킬 위험이 있다. 다음 라운드에서는 `§3.1=학습 구성`, `§3.2=국소적 architecture`라는 두
+기여를 유지하면서도 리뷰어가 둘을 부모 연구에 따로 돌려줄 수 없게 만드는 하나의 우아한
+논증 위계를 요구한다. 동시에 새 jargon이나 방어적 `not just AReaL + HPT` 문구 없이,
+Abstract–Introduction–Contributions–Method가 어떤 순서로 개념의 소유권을 배분해야 하는지
+압박한다.
+
+### Round 02 — 두 핵심 기여의 동등한 지위와 비대칭적 독해 순서
+
+- **질문 목적:** Round 01의 `§3.1=정의, §3.2=실현`이 architecture contribution을 하위 구현으로
+  축소할 수 있다고 반박했다. Learning composition과 boundary-localized architecture가 각각
+  독립적인 판단을 소유하면서도 하나의 thesis를 완성하는 위계를 요구하고, 부모 계보와
+  StreamWeave의 개념적 소유권, Abstract부터 §3.2까지 각 위치의 책임, integration paper로
+  오독시키는 현재 서술 순서, completion-order property의 지위를 다시 판정하게 했다.
+- **외부 모델의 정정:** `정의 → 실현`은 독해 순서로는 유효하지만 기여 위계로는 과도하다고
+  철회했다. 동일한 learning composition도 synchronous group execution, 별도 expert path,
+  source-aware learner branching 등 여러 구조로 실현될 수 있으므로, §3.2는 §3.1의 구현 세부가
+  아니다. 최종 관계는 **동등한 기여 지위, 비대칭적인 독해 순서**다. 무엇을 보존해야 하는지
+  먼저 알아야 architecture가 무엇의 범위를 제한하는지 읽히므로 §3.1이 먼저 올 뿐이다.
+- **두 기여를 묶는 공통 주어:** Complete-group decision이다. Contribution 1은 그 결정이
+  update 안에서 가져야 할 학습 의미를 다루고, Contribution 2는 그 결정의 실행상 영향이
+  schedule과 core engine으로 불필요하게 확장되지 않게 한다.
+- **Contribution 1의 압축:** Source에 따라 필요한 sequence, signal, reference, correction의
+  차이를 training input에 표현하고 하나의 primary policy objective와 같은 averaging rule에서
+  소비한다. 보존하는 것은 policy와 expert sample의 서로 다른 학습 역할이고, 분리하는 것은
+  source heterogeneity와 별도 loss·optimizer·learner path다.
+- **Contribution 2의 압축:** Complete group은 source decision에 필요하지만 trajectory execution
+  unit이나 pipeline clock일 필요는 없다. Complete-group waiting은 source decision에서 끝내고,
+  이후 필요한 source와 group context만 training-input construction까지 운반한다. Generator는
+  generation에, learner는 준비된 input 소비에 집중한다. 보존하는 것은 complete-group decision과
+  필요한 context이고, 분리하는 것은 group completion과 trajectory schedule, source 판단과
+  core-engine responsibility다.
+- **가장 강한 umbrella thesis 후보:** `Complete-group decision의 학습 의미는 training input까지
+  보존하고, 그 결정을 기다리는 실행상 영향은 source decision에서 끝낸다.` 두 기여는 하나가
+  다른 하나를 구현하는 관계가 아니라, 같은 decision의 서로 다른 불필요한 전파를 막아 하나의
+  decomposition을 완성한다.
+- **부모 계보와의 대비:** Async 계보는 policy-generated experience의 실행 시점과 소비 시점의
+  자유를, HPT 계보는 complete-group outcome에 따른 selective expert source 사용을 제공한다.
+  StreamWeave의 고유한 판단은 source decision의 학습 의미를 보존하면서도 complete group이
+  execution schedule을, source identity가 learner topology를 지배하지 않게 그 작용 범위를
+  정하는 데 있다는 진단이다.
+- **공개 서사의 위험 지점:** 첫째, TL;DR이 `integrates`를 주동사로 사용하여 두 부모와 결합
+  행위로 소유권을 배분한다. 둘째, Introduction이 `비용 해법 + 신호 해법 → 둘 다 필요`의
+  순서로 시작한다. 셋째, §3 도입부의 `§3.1 정의 → §3.2 실현` 직후 §3.1이 HPT를 주어로
+  시작하여 `HPT의 async implementation`이라는 분류를 유도한다.
+- **절별 책임:** Abstract는 decision의 작용 범위를 다시 정한 상위 판단만 소유한다.
+  Introduction은 execution freedom과 source freedom이 만날 때 하나의 decision이 의미와
+  waiting을 함께 만들며 두 효과의 범위를 분리해야 한다는 문제를 소유한다. Contributions는
+  learning meaning/update와 waiting/responsibility라는 서로 다른 목적어를 가진 두 기여를
+  공식화한다. §3 도입부는 같은 complete-group decision에서 파생되는 두 질문과 두 절의 접점을
+  소유한다. §3.1은 source별 학습 역할과 one-path update를, §3.2는 waiting·information의 서로
+  다른 수명과 core-engine 역할 보존을 각각 독점한다.
+- **Completion-order property 판정:** 중앙 claim이나 theorem이 아니라 §3.2의 보조 architecture
+  property로 유지한다. Arrival order가 update timing에는 영향을 주더라도, 고정된 complete
+  group과 learner-entry 조건 아래에서 source decision과 sample interpretation을 다시 쓰지
+  못한다는 좁은 문장이 architecture가 단순 bookkeeping이 아님을 보여준다.
+
+#### 우리의 재판정
+
+- **강하게 채택:** `동등한 기여 지위, 비대칭적인 독해 순서`. 이는 Contribution 2를 하위
+  구현으로 만들지 않으면서도 §3.1과 §3.2가 서로 경쟁하는 두 발명처럼 보이는 문제를 해결한다.
+- **강하게 채택:** Contribution 1을 `source heterogeneity → learner heterogeneity`의 불필요한
+  전파를 막는 판단으로, Contribution 2를 `group dependency → pipeline-wide dependency`의
+  불필요한 전파를 막는 판단으로 대칭화하는 방식. 두 기여의 차이와 하나의 철학이 동시에
+  보이며, 부품보다 판단이 먼저 온다.
+- **강하게 채택:** §3 도입부의 section order를 **epistemic order이지 contribution hierarchy가
+  아니다**라고 보는 관점. 공개 문구로 이 용어를 직접 쓸 필요는 없지만, 향후 개정 판단의
+  내부 기준으로 유용하다.
+- **강하게 채택:** Completion-order interpretation을 한 문장 수준의 보조 property로 제한하고
+  proposition·headline·새 브랜드로 올리지 않는 판정.
+- **조건부 채택:** TL;DR의 `integrates`, Introduction의 두 해법 병치, §3.1의 HPT-first 시작을
+  고위험 지점으로 보는 진단. 실제 수정 시에는 부모 연구를 숨기거나 attribution을 늦추기보다,
+  StreamWeave가 소유하는 판단을 먼저 세운 뒤 부모 방법을 그 판단의 입력으로 배치해야 한다.
+- **중요한 보류:** 외부 모델은 HPT가 source 선택만 제공하고 source-specific signal, reference,
+  correction, one-objective 구성은 StreamWeave가 독점적으로 소유한다고 넓게 서술했다. 그러나
+  현재 내부 메모와 §3.1은 HPT에서 상속한 selector·singleton construction·pseudo-reward·
+  self-detached reference를 명시한다. StreamWeave의 novelty를 강화하기 위해 선행 학습 구성의
+  소유권을 가져오면 오히려 가장 쉬운 반박을 만든다. Contribution 1의 독점적 새로움이 개별
+  수학 장치가 아니라 **그 학습 의미를 learner-entry staleness가 있는 asynchronous stream과
+  one-path update에서 보존하도록 닫은 구성**인지 다음 라운드에서 다시 엄격히 판정해야 한다.
+- **기각:** `HPT는 무엇을 선택할지만 정하고 이후 학습 의미는 결정하지 않는다`는 포괄적 대비.
+  이는 선행연구의 실제 역할을 지나치게 축소할 수 있으며, 현재 논문의 정직한 novelty
+  positioning과 충돌한다.
+
+#### 다음 라운드의 반론
+
+다음 라운드에서는 HPT의 selector, singleton group, `β` pseudo-reward, self-detached reference와
+기존 async RL의 group-relative learning, independent execution, staleness correction을 모두
+선행 자산으로 먼저 빼게 한다. 그 뒤에도 StreamWeave에 과학적으로 남는 판단을 산출하게 하여,
+Contribution 1과 2가 선행 소유권을 침해하지 않으면서 `engineering glue`보다 높은 지위를
+어떻게 갖는지 검증한다. 목표는 novelty를 줄이는 것이 아니라, 반박 가능한 개별 mechanism 대신
+**필요한 결합을 정확한 경계에만 남긴 decomposition 자체**에 소유권을 더 강하게 집중하는 것이다.
+
+### Round 03 — 선행 mechanism을 모두 뺀 뒤 남는 novelty
+
+- **질문 목적:** HPT의 selector·singleton·`β` pseudo-reward·self-detached reference, 기존
+  group-relative RL의 통계와 signal, 기존 async RL의 independent execution·queue·policy
+  provenance·staleness correction, accumulator와 shared loss를 모두 상속 자산으로 먼저
+  제거했다. 그 뒤에도 남는 StreamWeave의 algorithm-system 판단, C1/C2의 정직한 소유권,
+  `one primary update`·`source-before-queue`·`group reconstruction`의 지위와 적대적 component
+  subtraction review를 논증 구조로 무너뜨리는 방법을 요구했다.
+- **외부 모델의 최상위 정정:** 현행 `asynchrony-compatible learning composition`을 새로운
+  learning algorithm 자체로 세우는 것은 약하다. §3.1의 유도는 새로운 endpoint의 발명보다,
+  상속한 policy/expert endpoint가 새로운 실행 배치에서도 정확히 복원된다는 구성적 근거다.
+  그러나 novelty는 사라지지 않으며, complete-group decision 뒤에 **함께 기다려야 하는 범위와
+  학습 의미를 재현하기 위해 정보를 남겨야 하는 범위를 서로 다르게 정한 end-to-end
+  decomposition**으로 이동한다.
+- **Subtraction 뒤 남는 한 문장:** `Complete-group decision이 요구하는 두 수명을 분리하여,
+  함께 기다려야 하는 범위는 source가 확정되는 순간 끝내고, 선택된 학습 의미를 재현하는 데
+  필요한 정보만 training-input construction까지 남긴다.` 부모 기법이 수행하는 연산보다
+  `그 연산 사이에서 무엇이 끝나고 무엇이 남는가`가 StreamWeave의 소유점이다.
+- **직접 병치가 자동으로 정하지 않는 것:** Async attempt의 출력은 서로 다른 시점의 trajectory와
+  policy provenance이고, HPT의 source decision 입력은 complete group이다. 두 방법이 각각
+  올바르더라도 group completion이 decision 가능 시점만 제한하는지 execution의 다음 진행까지
+  제한하는지, source 결정 뒤 무엇을 transport 단위로 만들지, policy group context와 provenance를
+  언제까지 남길지, expert에 불필요한 lag correction을 어느 연산에서 배제할지, source-specific
+  판단을 언제 ordinary learner input으로 환원할지는 정해지지 않는다. 이는 틀린 결합의
+  문제가 아니라 여러 올바른 구현 사이에 남은 **미결정 관계**다.
+- **재정의된 Contribution 1:** HPT endpoint 자체나 새 loss를 소유하지 않는다. Source가 확정된
+  뒤 inherited policy/expert endpoint를 learner entry에서 재현하는 데 필요한 source,
+  complete-group context와 policy provenance를 training-input construction까지 보존하고,
+  input이 구성된 뒤에는 source-specific 판단을 optimizer와 learner control flow에 남기지 않는
+  **information-scope 판단**을 소유한다. §3.1의 수식은 이 판단이 두 endpoint를 실제로
+  복원한다는 검산 장치다.
+- **재정의된 Contribution 2:** Attempt scheduler나 queue를 소유하지 않는다. HPT가 요구하는
+  logical group synchronization의 물리적 범위를 source resolution으로 제한하고, 이후 transport,
+  batching, parameter refresh와 learner consumption은 기존 fully-asynchronous flow를 따르게
+  하는 **waiting-scope 판단**을 소유한다. Generator와 learner는 group-level source 판단을
+  지속적인 책임으로 떠안지 않는다.
+- **두 기여의 관계:** C1은 `무슨 정보가 어디까지 남는가`, C2는 `어떤 실행이 어디까지 함께
+  기다리는가`를 각각 결정한다. C1의 종료점은 training-input construction이고 C2의 종료점은
+  source resolution이다. 두 기여는 complete-group decision이 만든 서로 다른 두 효과의 범위를
+  정하며, 하나가 다른 하나의 구현이 아니다.
+- **One primary update 판정:** 독립 primitive novelty는 아니지만, input construction 뒤
+  source-specific control이 optimizer topology까지 남지 않았다는 구조적 귀결이자 preservation
+  check다. Contribution 제목에서는 한 단계 내릴 수 있으나 §3.1, Figure 2, Algorithm의 shared
+  tail에서는 반드시 유지해야 한다.
+- **Source-before-queue 판정:** 물리적으로 특정 queue 앞이라는 위치 자체는 구현 선택이다.
+  그러나 source를 일반 asynchronous batching과 learner consumption 전에 확정한다는 선후관계는
+  구조적이다. 상위 서사에서는 `queue 앞`보다 `transport 전에 source decision을 닫는다`로
+  추상화하고, 정확한 queue 배치는 Method가 소유한다.
+- **Group reconstruction 판정:** Accumulator와 reconstruction 자체는 headline novelty가 아니다.
+  구조적 가치는 attempts가 독립적으로 실행되는 가운데 group을 source decision이 가능한 순간에만
+  논리적으로 복원하고, 그 waiting을 decision 뒤로 전파하지 않으며, policy route의 group
+  context를 waiting이 아닌 record 내부 정보로 바꾸는 배치에 있다.
+- **적대적 review를 무너뜨리는 증거 구조:** Abstract와 Introduction은 부모 component의 합이
+  아니라 `waiting과 information이 같은 지점까지 살아 있을 필요가 없다`는 잔여 연구 객체를
+  먼저 세운다. Method는 상속한 endpoint와 async substrate를 먼저 인정하고 둘을 언제 결합하고
+  언제 분리하는지만 전면화한다. Experiments는 A와 C로 이 decomposition이 online으로 계속
+  필요함을, quality 결과로 inherited learning semantics가 유지됨을, E로 inherited asynchronous
+  payoff가 group-conditioned decision 때문에 사라지지 않았음을 보여준다.
+
+#### 우리의 재판정
+
+- **가장 강하게 채택:** `기다림과 정보의 서로 다른 범위`라는 novelty 핵. 이는 내부 메모의
+  complete-group context와 source identity라는 두 dependency를 더 직관적인 한 장면으로 묶고,
+  선행 mechanism을 정직하게 인정한 뒤에도 남는다.
+- **가장 강하게 채택:** 직접 병치의 문제를 `틀린 시스템`이나 가상 failure가 아니라 부모
+  결과 사이에 남은 미결정 관계로 규정하는 방식. Strawman 없이도 연구 판단의 필요성을 세우며,
+  여러 가능한 구현 중 StreamWeave가 왜 이 decomposition을 택했는지 설명할 수 있다.
+- **강하게 채택:** C1을 새 learning algorithm이 아니라 information scope, C2를 waiting scope로
+  재정의하는 방향. 이는 C1의 수학적 엄밀함과 C2의 architecture적 독립성을 모두 살리면서
+  mechanism novelty overclaim을 제거한다.
+- **강하게 채택:** `박스 대부분은 상속되었지만, 박스 사이에서 무엇이 끝나고 무엇이 남는가는
+  StreamWeave가 정한다`는 내부 판단. 공개 문구를 그대로 이 비유로 쓸 필요는 없지만 Figure 1,
+  Figure 2, Algorithm 1과 본문을 한 철학으로 읽게 하는 매우 강한 편집 원칙이다.
+- **조건부 채택:** C1의 현행 이름과 framing을 낮추자는 제안. `새 mixed-learning algorithm`처럼
+  보이면 약하다는 지적은 맞지만, §3.1은 단순 검산 Appendix가 아니라 source decision을
+  asynchronous learner-ready input으로 닫는 decomposition의 첫 축이다. 공개 원고에서는
+  contribution 지위를 유지하되, 소유 대상을 loss가 아니라 **필요한 학습 정보를 정확한
+  endpoint까지 보존하고 그 뒤 source branching을 끝내는 판단**으로 바꿔야 한다.
+- **조건부 채택:** One primary update를 headline에서 내린다는 제안. 새로운 PPO primitive가
+  아니라는 점은 맞지만, policy와 expert를 별도 loss·learner로 분리하지 않았다는 사실은 이
+  논문의 철학과 우아함을 가장 빠르게 보여준다. 독립 mechanism novelty로는 내리되,
+  `source heterogeneity가 learner heterogeneity로 번지지 않았다`는 architecture-level
+  outcome으로는 여전히 전면에 남긴다.
+- **조건부 채택:** HPT (sync) quality가 inherited endpoint preservation을 보인다는 해석.
+  본문에서 허용된 `fully-asynchronous execution에서도 HPT (sync)의 performance level을
+  유지했다`는 제한된 해석은 가능하지만, 엄밀한 endpoint-equivalence나 인과 보존으로 확대하지
+  않는다.
+- **표현상 주의:** `information lifetime`, `waiting lifetime`은 내부 설계 언어로 매우 좋지만,
+  공개 원고에서 새 branded term으로 반복하면 다시 현학적일 수 있다. 공개 문장에서는
+  `기다림은 source decision에서 끝나고, 필요한 정보는 training input이 만들어질 때까지
+  이어진다`처럼 동사 중심으로 풀어 쓴다.
+
+#### 다음 라운드의 반론
+
+Novelty 핵은 충분히 좁고 강해졌다. 다음 라운드에서는 이를 또 다른 추상어로 남기지 않고 실제
+원고 전체의 claim ladder로 바꾼다. Abstract, Introduction, Contributions, §3 도입부, §3.1,
+§3.2, §4, Conclusion이 각각 단 한 번 소유할 판단을 정하고, 현재 내용을 삭제·강등·승격할
+우선순위를 요구한다. 특히 one primary update의 우아함은 살리되 primitive novelty로 오해되지
+않게 하고, `waiting / information` framing이 비전공 reviewer에게도 직관적으로 읽히는 평이한
+언어를 찾게 한다.
+
+### Round 04 — 원고 전체의 claim ladder와 삭제 우선순위
+
+- **질문 목적:** Round 03까지 잠근 novelty를 실제 reader-facing argument로 전환했다. Abstract,
+  Introduction, Contributions, Related Work, §3, §4, Conclusion의 단일 책임, leverage가 높은
+  수정 열 개, 평이한 서술 패턴, one-primary-update의 강조 예산, Figure 1·2와 Algorithm 1의
+  역할, 삭제하면 더 강해지는 중복을 요구했다.
+- **외부 모델의 마스터 규율:** 현재 원고는 `independent execution → group reconstruction →
+  source decision → input construction → one primary update`를 여러 위치에서 반복하여
+  claim hierarchy를 mechanism chronology로 평평하게 만든다. 개정 후에는 **각 위치가 독자의
+  이해를 한 단계만 전진시키고 이미 지난 단계를 다시 설명하지 않아야 한다.**
+- **제안된 독해 사슬:** 비싸지만 self-generated signal이 없는 hard region → complete group이
+  source와 sample interpretation을 정함 → source resolution에서 cross-attempt waiting 종료 →
+  input construction에 필요한 정보만 더 유지 → input이 완성되면 source-specific control도
+  종료되고 ordinary update로 합류 → expert channel은 후반까지 지속 → StreamWeave가 online
+  composition을 유지하면서 asynchronous payoff를 회수.
+
+#### 위치별 단일 책임
+
+- **Abstract:** Complete-group decision의 학습 의미를 보존하면서 waiting과 필요한 정보를 서로
+  다른 지점에서 끝내 quality와 throughput을 함께 달성했다는 판단. Accumulator·queue·단계별
+  flow와 A/C 세부는 넣지 않고, one primary update는 종속적인 결과로만 회수한다.
+- **Introduction 1:** 추가 학습이 필요한 hard region에서 generation work가 커지는 동시에
+  group-relative signal이 사라지는 compute–signal pressure.
+- **Introduction 2:** Complete-group outcome이 source와 sample interpretation을 함께 정하지만
+  async runtime은 attempts를 독립적으로 산출하므로, 기다림과 downstream information을 각각
+  어디에서 끝낼지 별도로 정해야 한다는 연구 문제.
+- **Introduction 3:** Source가 확정되는 순간 해당 group을 위한 waiting은 끝나며 다른 rollout과
+  준비된 training은 계속된다는 C2 판단.
+- **Introduction 4:** 확정된 source와 필요한 context는 input construction까지 남고, source
+  차이가 input에 표현된 뒤 source-specific learner control이 끝난다는 C1 판단. One primary
+  update는 이 종료의 결과다.
+- **Introduction 5:** Expert channel이 warm start 이후에도 남으며, StreamWeave가 이 online
+  composition에서 learning performance와 execution payoff를 함께 유지했다는 preview.
+- **Contributions:** Umbrella thesis 아래 C1은 필요한 정보와 source-specific control의 종료점을,
+  C2는 complete-group waiting과 async flow의 재개 지점을, C3는 A–C–quality–E의 evidence chain을
+  소유한다.
+- **Related Work 마지막 문단:** 두 계보의 직접 병치가 자동으로 정하지 않는 잔여 관계만
+  소유한다. StreamWeave의 pipeline walkthrough는 Method로 돌린다.
+- **§3 도입부:** 하나의 decision을 두 방향으로 추적한다. §3.1은 무엇을 input construction까지
+  남기는지, §3.2는 무엇을 source resolution까지만 기다리는지 설명한다.
+- **§3.1:** Inherited policy/expert endpoint를 learner entry에서 정확히 재현하는 데 필요한
+  정보와, source-specific 판단이 input construction에서 끝나는 과정을 소유한다. One primary
+  update는 이 절의 최종 구조적 결과다.
+- **§3.2:** Complete group이 source resolution에만 국소적 waiting을 만들고, source-resolved
+  record가 기존 asynchronous flow를 따라 input construction까지 이동하도록 역할을 배치한
+  architecture를 소유한다.
+- **§4 도입부:** Online으로 함께 필요한가, learning meaning이 유지되는가, execution payoff가
+  남는가라는 검증 순서만 예고한다.
+- **§4.2:** Signal이 사라지는 영역의 generation burden, expert channel의 persistence, reasoning
+  performance의 유지가 online heterogeneous stream의 실질적 필요와 학습 가치를 닫는다.
+- **§4.3:** Persistent channel이 만든 workload에서도 local source resolution이 concurrency와
+  throughput을 유지했다는 E만 소유한다.
+- **Conclusion:** 필요한 학습 의미는 보존하고 그 결정을 위한 waiting은 pipeline 전체로
+  확장하지 않았다는 달성 판단과 검증 범위로 끝낸다. Pipeline을 다시 열거하지 않는다.
+
+#### Leverage가 높은 수정 열 개
+
+1. **Abstract와 TL;DR의 분류어 교정:** `integrates X into Y`와 단계별 component 열거를 내리고,
+   complete-group decision 뒤 waiting과 information을 다르게 끝낸 판단을 첫 분류로 세운다.
+2. **Introduction 1–2의 연구 객체 전진:** `비용 해법 + 신호 해법 → 둘 다 필요`라는 약한
+   결론을 삭제하고, 두 자유가 만날 때 하나의 group decision이 만든 두 효과의 범위를 정해야
+   한다는 문제를 앞당긴다.
+3. **Introduction 3–4의 책임 분리:** 3문단은 waiting 종료, 4문단은 information 종료와
+   one-path learner outcome만 소유하게 하여 같은 record·queue·engine 설명을 겹치지 않는다.
+4. **Contributions 재편:** 하나의 algorithm-system design 아래 C1의 information scope, C2의
+   waiting scope, C3의 joint evidence를 배치한다. C1을 새 mixed-learning algorithm처럼
+   보이게 하는 표현은 내린다.
+5. **Related Work의 Method recipe 제거:** 부모 계보가 자동으로 정하지 않는 세 관계만 남기고
+   reconstruction–record–input–update walkthrough는 삭제한다.
+6. **§3 도입부의 chronology와 `정의→실현` 제거:** 두 Method 질문만 제시하고 section order가
+   contribution hierarchy로 읽히지 않게 한다.
+7. **§3.1의 개념적 주어 변경:** HPT를 opening subject로 두지 않고, 선택된 학습 역할을
+   재현하려면 어떤 정보가 어디까지 필요한지를 먼저 세운 뒤 HPT를 concrete source rule로
+   attribution한다.
+8. **§3.2를 queue가 아니라 waiting 중심으로 정리:** 어떤 execution이 즉시 계속되는지,
+   complete group에서 어떤 decision이 내려지고 어떤 waiting이 끝나는지, 이후 어떤 정보만
+   이동하는지를 중심으로 중복 flow 설명을 압축한다.
+9. **§4의 evidence 연결:** A와 C가 online need를, quality가 learning preservation을, E가
+   execution payoff를 맡도록 §4.2와 §4.3의 transition을 강화한다.
+10. **§4.3과 Conclusion의 replay 제거:** §4.3은 local waiting이 만든 concurrency와 `1.64×`
+    payoff로, Conclusion은 `preserve meaning; limit execution reach`의 판단으로 끝낸다.
+
+#### 평이한 공개 서술 패턴
+
+- `여덟 응답이 모두 도착해야 source를 정할 수 있다. Source가 정해지는 순간 그 group을 위한
+  waiting은 끝나며, 다른 rollout과 준비된 training은 계속된다.`
+- `Waiting은 끝났지만 training input을 정확히 만들기 위해 필요한 group context와 policy
+  provenance는 조금 더 이동한다. Input이 완성되면 source-specific 판단도 끝난다.`
+- `Generator는 trajectory를 생성하고, resolver는 complete group에서 source를 확정하며,
+  trainer는 확정된 source와 context로 input을 만든다. Learner는 준비된 input을 소비한다.`
+- 가장 짧은 내부 압축은 `Complete group을 기다리는 일은 source가 정해질 때 끝난다. Source에
+  따른 정보는 training input이 만들어질 때 끝난다.`다. 공개 원고에서는 동일 문장을 반복하지
+  말고 각 절의 목적어에 맞게 변형한다.
+
+#### One primary update의 강조 예산
+
+- **Primary home:** §3.1. Objective 식과 endpoint 해석을 온전히 소유한다.
+- **Abstract:** Source-specific inputs가 common update로 합류한다는 종속절 한 번.
+- **Introduction 4:** Source heterogeneity가 learner heterogeneity로 번지지 않았다는 결과 한 번.
+- **Contribution 1:** Information scope와 종료점을 먼저 말한 뒤 bullet의 마지막 결과로 회수.
+- **Figure 2:** Policy/expert input이 합류하는 최종 endpoint.
+- **Algorithm 1:** Source-specific branches 뒤의 shared tail 한 줄.
+- **§3 도입부, §4.2, §4.3:** 삭제하거나 §3.1 역참조만 남긴다.
+- **Conclusion:** `one primary update`라는 exact phrase보다 source-specific control이 optimizer
+  이전에 끝났다는 함의만 회수한다.
+
+#### Figure와 Algorithm의 역할
+
+- **Figure 1 — 왜 분리하는가:** 한 group의 decision을 기다리는 동안 다른 rollout과 training이
+  계속되고, source resolution 뒤에는 waiting 대신 필요한 정보만 이어진다는 시간적 범위.
+  Queue와 signal/reference/correction은 그리지 않는다.
+- **Figure 2 — 무엇으로 바뀌는가:** Complete-group decision이 source-resolved record와
+  source-specific training input으로 변환되고, input construction 뒤 두 경로가 common update로
+  합류한다는 data-state 변화. Slot scheduling과 시간축은 넣지 않는다.
+- **Algorithm 1 — 누가 언제 실행하는가:** Attempt 완료 뒤 slot 재사용, complete-group 시점의
+  source decision, record handoff, trainer-side input construction, shared learner tail의
+  concurrent control flow. §3.1 수식과 Figure 2의 semantic 설명은 반복하지 않는다.
+
+#### 우리의 재판정
+
+- **강하게 채택:** 각 절이 claim ladder의 한 단만 전진한다는 마스터 규율. 이는 단순 분량
+  압축보다 논문의 추상화 수준을 올리고, 같은 pipeline을 반복하면서 component paper처럼 보이는
+  문제를 직접 해결한다.
+- **강하게 채택:** Abstract/TL;DR, Introduction 1–2, §3 도입부, §3.1 opening의 분류 순서를
+  최우선으로 본 판정. Reviewer의 novelty category는 Method의 세부를 읽기 전에 정해진다.
+- **강하게 채택:** One primary update의 primary home을 §3.1로 고정하고 Figure 2와 Algorithm의
+  endpoint로만 반복하는 예산. 우아함은 보존하면서 primitive novelty overclaim과 산문 중복을
+  함께 줄인다.
+- **강하게 채택:** Figure 1=`왜`, Figure 2=`무엇으로`, Algorithm 1=`언제/누가`라는 역할 분담.
+  현재 두 figure의 시각적 구상과도 정합되고 각 자산이 표나 산문으로 대체되지 않는 이유가 생긴다.
+- **조건부 채택:** Introduction을 다섯 개의 완전히 분리된 문단으로 재편하는 안. Conceptual
+  ownership은 유용하지만 실제 문단 수와 길이는 최종 prose rhythm에 따라 합칠 수 있다. 중요한
+  것은 `problem → waiting → information → online payoff`의 순서이지 숫자 5가 아니다.
+- **조건부 채택:** §4.2의 순서를 A→C→quality로 바꾸는 제안. Online need를 먼저 세우는 장점이
+  있지만, 표준적인 experimental section에서 competitive final quality를 먼저 고정하는 현재
+  구조도 강한 독해 anchor다. 결과를 뒤로 미루면 HPT 자체의 분석처럼 읽힐 위험도 있다. 다음
+  라운드에서 전체 quality anchor, A/C process evidence, repeat-prompt analysis와 cross-domain
+  evidence의 최적 순서를 별도로 검증한다.
+- **조건부 채택:** Repeat-prompt analysis를 한 문장으로 줄이고 Appendix로 강등하는 제안.
+  세부 수치를 반복하지 않는 것은 맞지만, expert effect가 직접 routed prompt에만 갇히지 않고
+  acquisition과 retention 전반에 나타났다는 결과는 단순 HPT 분석을 넘어 shared policy
+  learning의 의미를 보여줄 수 있다. 중앙 thesis를 전진시키는 정확한 한 문장을 남길지 다음
+  라운드에서 판정한다.
+- **주의:** `persistent expert channel이 generation workload를 바꾼다`는 문구는 run-level
+  joint observation과 architecture pressure로는 강하지만, expert supervision이 길이를
+  보편적으로 인과 증가시킨다는 문장으로 확대하지 않는다. 주장을 약하게 만들기 위해서가 아니라
+  E가 소유해야 할 architecture payoff를 다른 인과 논쟁에 빼앗기지 않기 위해서다.
+
+#### 다음 라운드의 반론
+
+다음 라운드는 §4.2–§4.3에 집중한다. Competitive final quality를 먼저 보일지 A/C를 먼저 보일지,
+repeat-prompt와 cross-domain evidence를 어느 수준으로 남길지, A/C가 HPT 자체의 분석으로
+흡수되지 않고 StreamWeave architecture의 online necessity를 어떻게 증명할지 판정한다. Table과
+Figure가 숫자를 소유하고 prose는 구조가 이득을 만든 이유를 해석한다는 기존 원칙도 함께
+강제한다.
+
+### Round 05 — §4.2와 §4.3의 evidence narrative
+
+- **질문 목적:** Competitive final quality와 A/C process evidence의 최적 순서, A/C를
+  HPT 자체의 분석이 아니라 StreamWeave의 online architecture 필요성으로 읽히게 하는 연결,
+  Table 1의 comparison별 단일 역할, repeat-prompt와 cross-domain의 지위, 표·그림·산문의
+  소유권, §4.2→§4.3 transition과 E의 논증 순서를 판정하게 했다.
+- **최종 순서 판정:** §4.2는 `짧은 quality gate → A → C → learning effect의 범위`가 가장
+  강하다. Table 1을 먼저 보여 실제 viability와 HPT (sync) performance level의 유지를 빠르게
+  확인하되 짧은 문단으로 끝낸다. A와 C가 절의 해석적 중심이 되고, repeat-prompt 한 문장과
+  cross-domain 표가 효과의 범위를 닫는다.
+- **Quality-first만 길게 설명할 때의 위험:** A와 C가 `HPT가 어떤 prompt에서 유용한가`라는
+  사후 분석으로 보이고 §4.3의 architecture payoff와 분리된다.
+- **A→C를 quality보다 먼저 둘 때의 위험:** Reviewer가 system의 경쟁력을 확인하기 전에
+  selective expert learning 분석을 길게 읽어야 하므로, StreamWeave보다 HPT mechanism 분석으로
+  먼저 분류할 수 있다. Compact quality gate가 이 두 위험을 동시에 막는다.
+- **A의 단일 역할:** All-failure group은 relative signal이 사라지는 지점인 동시에 더 길고
+  불균등한 generation의 완료를 기다려 source decision을 내려야 하는 지점이다. 따라서 A는
+  expert의 일반적 유용성이 아니라 **complete-group source decision이 completion pressure가 큰
+  hard region에서 발생한다**는 architecture condition을 소유한다.
+- **C의 단일 역할:** Routing tail은 source decision이 학습 후반에도 계속 발생함을 보이고,
+  expert-on/off의 quality와 failure behavior 분리는 그 decision이 기록상 남아 있기만 한 것이
+  아니라 learning-relevant하다는 해석을 지지한다. A와 C를 합치면 local source resolution이
+  드문 예외 처리가 아니라 관측된 training regime의 지속적인 operating condition이 된다.
+- **Table 1의 세 역할:** 전체 비교군 대비는 end-to-end system의 competitive math quality만,
+  HPT (sync) 대비는 fully-asynchronous realization에서도 해당 performance level을 반납하지
+  않았다는 점만, Async RL (expert-off) 대비는 online expert channel을 유지한 run과 끈 run의
+  final endpoint가 달랐다는 점만 소유한다. Temporal divergence는 Figure가 소유하고 같은
+  final score를 두 번 낭독하지 않는다.
+- **Repeat-prompt 최종 지위:** 상세 stratification과 uncertainty는 Appendix로 내리고, 본문에는
+  `후속 차이는 직접 expert input이 선택된 prompt에만 국한되지 않았으며 shared policy의 더 넓은
+  behavior와 연결되는 해석에 부합한다`는 한 문장만 남긴다. 이는 architecture를 증명하는
+  evidence가 아니라 `expert channel은 routed prompt의 국소 암기 장치다`라는 좁은 오독을 막는다.
+- **Cross-domain 최종 지위:** §4.2의 마지막 empirical asset으로 유지한다. 단 하나의 역할은
+  math-focused expert contribution이 broader reasoning의 뚜렷한 축소를 대가로 하지 않았음을
+  확인하는 것이다. Cross-domain superiority, expert의 general-reasoning 향상, asynchrony의
+  generalization 효과는 주장하지 않는다.
+- **§4.2 마지막 질문:** Expert channel이 후반까지 learning-relevant하게 남는다면 complete-group
+  source decision도 training loop 안에서 계속 내려져야 한다. 이 지속적인 decision을 group
+  completion이 pipeline clock이 되지 않게 처리할 수 있는가?
+- **§4.3 첫 답:** 이 질문은 중립적 workload에서 평가되지 않는다. Expert source가 계속
+  참여한 run에서는 group이 더 길고 늦게 완성되며 일부 group은 refresh boundary를 가로질러
+  남는다. §4.3은 이 operating condition에서 source-decision waiting이 unresolved group에만
+  남는지를 평가한다.
+- **§4.3 최종 순서:** `변화한 workload → synchronous dependency exposure → localized waiting
+  → hardware-level concurrency signature → end-to-end throughput payoff`.
+- **Synchronous contrast의 역할:** Slowest trajectory가 source decision의 필요를 넘어 다음
+  rollout 공급과 model training 시작까지 늦출 때 complete-group dependency가 pipeline 전체로
+  전파되는 모습을 보여준다. 단순히 synchronous가 느리다는 비교가 아니다.
+- **Architecture response의 역할:** 아직 완성되지 않은 group만 source decision을 기다리고,
+  완료된 slot은 다음 attempt를 받으며 다른 generation과 ready training은 계속된다는 설명을
+  한 번만 둔다. One primary update, source-fixed record와 trainer-side conversion은 §3이
+  소유하므로 §4.3에서 재생하지 않는다.
+- **Efficiency figure의 역할:** Local waiting이 sustained concurrent GPU work와 동일 wall-clock의
+  더 많은 completed prompt-group work라는 hardware signature를 남긴다는 것을 소유한다. Scalar
+  throughput을 다시 그린 그림이 아니라 architecture와 end-to-end result 사이의 과정 증거다.
+- **Table 2의 역할:** 상단 workload block은 online composition이 generation-side operating
+  condition까지 바꾼다는 점을, 하단 execution block은 동일 GPU 예산의 end-to-end payoff를
+  소유한다. 두 block을 정확한 causal breakdown으로 합산하지 않는다.
+- **두 execution effect의 지위:** Generation과 training의 stage concurrency, 완료된 attempt가
+  sibling tail을 기다리지 않는 slot concurrency를 유지한다. 둘은 complete-group waiting이
+  pipeline 전체로 전파되지 않은 데서 함께 나타나는 연결된 결과이며, 각 효과가 speedup의 몇
+  퍼센트를 만들었는지는 주장하지 않는다.
+
+#### 표·그림·산문의 소유권 잠금
+
+- **Table 1:** Fixed-checkpoint quality. 산문은 comparison별 단 하나의 역할만 해석한다.
+- **Hard-region 표:** Group 빈도, token burden, generation length와 completion spread.
+  산문은 source decision이 더 길고 불균등한 group이 끝나는 지점에서 내려진다는 판단만 회수한다.
+- **Learning-dynamics Figure:** Normalized progress의 routing persistence와 두 run의 trajectory
+  separation. 산문은 cold-start stage가 아닌 persistent online channel이라는 의미만 해석한다.
+- **Repeat-prompt:** 본문 한 문장, 상세는 Appendix. Shared-policy scope만 회수한다.
+- **Cross-domain 표:** Math-focused learning의 선택성 guardrail. 숫자 낭독 없이 broader
+  reasoning level의 유지만 해석한다.
+- **Table 2 상단:** Workload와 route-specific async exposure. Speedup 성분으로 사용하지 않는다.
+- **Efficiency Figure:** Activity trace, active-GPU coverage, matched-wall-clock cumulative work.
+  산문은 localized waiting과 sustained concurrent work의 정합성만 해석한다.
+- **Table 2 하단:** Cycle time과 prompt-group throughput의 end-to-end payoff. 마지막 산문은
+  숫자를 다시 읽기보다 dependency-localization의 결과라는 판단만 회수한다.
+
+#### 우리의 재판정
+
+- **가장 강하게 채택:** `Compact quality gate → A → C → scope`라는 제3의 순서. 사용자가
+  우려한 competitive final quality anchor를 보존하면서도 A/C가 절의 과학적 중심이 되게 한다.
+- **강하게 채택:** A를 `source decision이 completion pressure가 큰 곳에서 발생한다`, C를
+  `그 decision이 online으로 계속 발생하고 learning-relevant하다`로 제한하는 역할 배분.
+  HPT의 일반적 효용 분석으로 빠지지 않고 StreamWeave가 처리해야 할 operating condition을
+  직접 규정한다.
+- **강하게 채택:** Table 1의 세 reference를 서로 다른 역할에 고정하고, HPT (sync) 수치는
+  quality gate에서, expert-off endpoint는 dynamics 뒤에서 해석하는 방식. 하나의 숫자에 여러
+  소유권을 부여하지 않는다.
+- **강하게 채택:** Repeat-prompt는 통찰 한 문장만 본문에 남기고 세부는 Appendix로 보내는
+  판정. Policy-level scope는 보존하면서 architecture thesis를 prompt-level 인과 논쟁으로
+  확장하지 않는다.
+- **강하게 채택:** Cross-domain 표를 §4.2의 마지막 guardrail로 두어 math-focused expert
+  contribution의 선택성을 닫는 방식. 별도 성능 자랑으로 읽히지 않는다.
+- **강하게 채택:** §4.2 마지막의 question과 §4.3 첫 문단의 answer를 직접 맞물리게 하는 구조.
+  이는 A–C–quality와 E가 두 실험 묶음이 아니라 하나의 논증으로 읽히게 한다.
+- **강하게 채택:** §4.3을 ordinary overlap이 아닌 `persistent complete-group decision이 만드는
+  waiting의 허용 범위`에 대한 평가로 정의하고, synchronous contrast를 dependency exposure로,
+  GPU figure를 architecture signature로, Table 2를 payoff로 배치하는 순서.
+- **조건부 주의:** `expert-on/off trajectories diverge later`처럼 학습 절대 길이를 암시하는
+  표현은 공개 원고의 규모 비공개 규율에 맞춰 normalized progress의 초기 유사 구간 이후
+  점진적 분리로만 쓴다. 특정 cycle 수나 전체 학습 길이를 노출하지 않는다.
+- **조건부 주의:** Workload difference를 online composition이 `만들었다`고 단정하기보다,
+  expert source를 지속적으로 포함한 StreamWeave run에서 관측된 operating condition으로
+  제시한다. 이 제한은 주장을 약하게 만들기 위한 caveat이 아니라 §4.3의 중심을 불필요한
+  causal debate에서 architecture payoff로 지키기 위한 것이다.
+
+#### 다음 라운드의 반론
+
+Claim ladder와 evidence chain은 이제 충분히 구체적이다. 다음 라운드는 적대적인 senior reviewer가
+여전히 `boundary placement는 당연한 engineering choice`, `HPT 한 사례에만 맞춘 narrow system`,
+`두 부모의 값을 보존했다는 것만으로 새 연구는 아니다`라고 공격한다고 가정한다. 새로운
+mechanism이나 실험 없이, 현재 decomposition이 왜 비자명하고 어떤 범위에서 일반적인
+algorithm-system 판단인지, 원고가 그 가치를 어디에서 입증해야 하는지 최종 stress test한다.
+
+### Round 06 — 적대적 senior-reviewer stress test
+
+- **질문 목적:** `AReaL + HPT를 잘 붙인 integration`, `숙련된 engineer에게 당연한 boundary
+  placement`, `all-failure selector에 한정된 사례 연구`, `여러 올바른 구현 중 하나`,
+  `한 training regime의 quality와 throughput만으로는 decomposition을 입증하지 못함`이라는
+  가장 현실적인 reject 논리를 정면으로 검토했다. 새 실험이나 새 mechanism을 만들지 않고,
+  부모 자산을 모두 돌려준 뒤에도 남는 연구 판단과 현재 evidence의 정확한 책임을 요구했다.
+- **최종 위험 판정:** 가장 치명적인 공격은 `당연한 placement`와 `두 부모의 성능 보존`의
+  결합이다. 원고가 accumulator–queue–trainer의 시간 순서와 competitive quality/throughput을
+  앞세우면 reviewer는 이를 자연스러운 integration으로 분류할 수 있다. 반대로 개별 mechanism이
+  아니라 **서로 다른 의존성의 수명을 분리한 end-to-end decomposition**을 먼저 세우면 이
+  분류는 논문의 연구 객체를 소진하지 못한다.
+
+#### 다섯 공격의 재판정
+
+1. **`AReaL류 asynchrony와 HPT류 quality를 보존했을 뿐` — 부분 타당, 현재 서사에 가장
+   치명적.** Quality와 throughput은 integration의 성공을 증명할 뿐 novelty를 생성하지 않는다.
+   Novelty는 Method가 독립적으로 소유하고, 실험은 그 판단이 실제 workload에서 작동했음을
+   회수해야 한다.
+2. **`두 종료점은 당연한 engineering placement` — 부분 타당.** Queue의 정확한 앞뒤와 module
+   배치는 자연스러운 realization일 수 있다. 그러나 complete-group decision에 필요한 기다림과,
+   결정된 source를 정확한 learner input으로 재현하는 데 필요한 정보가 서로 다른 시점에서
+   끝난다는 관계는 물리적 placement와 구별된다.
+3. **`HPT all-failure 사례 연구` — 부분 타당.** 현재 실증은 two-source, all-failure-conditioned
+   math RLVR에 묶인다. 이 사실을 숨기지 않되, Method의 적용 범위는 HPT 이름이 아니라
+   group-conditioned source choice가 learner-input semantics를 바꾸는 구조로 좁게 정의한다.
+4. **`한 regime으로 decomposition의 과학적 가치를 증명하지 못함` — 타당하지만 중앙 thesis를
+   무너뜨리지 않음.** 실험은 유일성·최적성·보편성을 증명하지 않는다. 대신 decomposition이
+   지속적으로 사용되는 online workload에서 learning meaning과 asynchronous payoff를 함께
+   유지했다는 end-to-end witness다.
+5. **`one update, source-before-transport, group reconstruction은 여러 올바른 구현 중 하나`
+   — 타당하며 비치명적.** 이들을 primitive novelty로 세우면 공격이 맞다. 하나의 decomposition이
+   요구하는 성질을 구체적으로 실현한 witness로 두면 alternative의 존재는 contribution을
+   무효화하지 않는다.
+
+#### 부모 자산을 모두 뺀 뒤 남는 연구 문제
+
+기존 fully-asynchronous RL은 attempt를 독립적으로 실행하고 complete group을 다시 모아
+group statistics를 계산할 수 있다. 기존 group-conditioned expert method는 complete-group
+outcome으로 policy data와 expert data 중 무엇을 사용할지 정할 수 있다. StreamWeave가 처음
+group을 복원하거나 처음 source를 선택했다는 주장은 하지 않는다.
+
+두 계보를 직접 병치해도 다음 관계는 자동으로 정해지지 않는다.
+
+```text
+independently completed attempts + generation context
+→ complete-group source decision
+→ source-resolved state
+→ learner-entry training input
+→ source-independent learner consumption
+```
+
+Complete group이 갖춰지면 **무엇을 학습할지** 정할 수 있다. 그러나 policy route의 group
+context와 generation provenance, expert route의 target과 source identity는 source가 정해진
+순간 모두 소진되지 않는다. 선택된 학습 역할을 정확한 input으로 표현할 때까지 남아야 한다.
+반대로 source가 정해진 뒤에도 sibling attempts나 pipeline 전체가 계속 함께 기다릴 이유는
+없다.
+
+따라서 StreamWeave가 정한 것은 물리적 queue 위치가 아니라 다음의 비대칭이다.
+
+- **Waiting의 종료:** complete group이 source를 확정하면 해당 group을 위한 cross-attempt
+  waiting은 끝난다. 다른 rollout slot은 다음 작업을 받고, 다른 generation과 준비된 training은
+  계속된다.
+- **Information의 종료:** 확정된 source와 그 역할을 learner input으로 재현하는 데 필요한
+  context는 input construction까지 남는다.
+- **Source-specific control의 종료:** source 차이가 input에 모두 표현된 뒤에는 generator와
+  learner의 core path가 source를 다시 판단하거나 별도 source-specific execution을 유지하지
+  않는다.
+
+이 관계는 queue 위치나 transport 구현을 바꾸어도 남는다. 정확한 realization이 달라져도
+`source를 complete group에서 한 번 확정함`, `그 뒤 waiting을 unresolved group 밖으로
+확장하지 않음`, `필요한 context를 learner entry까지 보존함`, `input 뒤 source-specific
+control을 끝냄`을 만족하면 같은 상위 decomposition이다.
+
+#### HPT 이름을 지운 뒤의 적용 범위
+
+가장 좁고 방어 가능한 범위는 다음 네 조건을 모두 만족하는 learning program이다.
+
+1. 동일 prompt 또는 task에서 여러 policy attempts를 만들고 source decision이 complete group에
+   정의된다.
+2. Group outcome이 policy-generated group과 외부 target 중 학습 source를 선택하며, 이 선택이
+   sequence cardinality, signal, reference 또는 asynchronous correction 조건 중 적어도 하나를
+   바꾼다.
+3. Attempts는 trajectory 수준에서 독립적으로 실행된다.
+4. Source별 endpoint는 source-appropriate learner input으로 표현되어 하나의 policy learner에서
+   소비될 수 있다.
+
+고정 비율의 offline mixture, sample별 source choice, 처음부터 group-synchronous한 program,
+source마다 별도 model·optimizer·training stage가 본질적으로 필요한 경우까지 일반화하지 않는다.
+현재 실험은 이 범위의 한 구체적이고 demanding한 사례이며, 적용 범위 전체의 empirical
+generality를 주장하지 않는다.
+
+#### 여러 올바른 구현 중 하나여도 contribution이 되는 이유
+
+StreamWeave는 유일한 구현이나 최적 배치를 주장하지 않는다. Publishable한 가치는 부모
+방법을 상속한 뒤에도 남는 네 결정을 하나의 architecture로 닫았다는 데 있다.
+
+- Complete-group waiting을 어느 downstream 연산까지 전파할 것인가.
+- Source decision 뒤 어떤 group·generation context를 이동시킬 것인가.
+- Source-specific 판단을 어느 시점에 끝낼 것인가.
+- Generator와 learner 중 누가 group-level source semantics를 알아야 하는가.
+
+StreamWeave의 답은 generator를 generation에, learner를 준비된 input의 consumption에 집중시키고,
+group-level source semantics를 두 engine 사이의 경계 처리에서 닫는다. Source resolution에는
+충분한 group context를 사용하고, 그 뒤에는 필요한 정보만 운반하며, input construction 뒤에는
+ordinary asynchronous flow와 learner path로 되돌아간다. 우아함은 mechanism 수가 적다는 데
+있지 않고 **필요한 결합을 필요한 범위에만 남긴 일관성**에 있다.
+
+#### Claim–evidence 책임 지도
+
+| 자산 | 실제로 갚는 것 | 갚지 않는 것 |
+|---|---|---|
+| §3.1 구성적 유도 | Source decision 뒤 보존한 정보로 policy/expert의 intended endpoint를 learner input에서 재현하고, source 차이가 input에 표현된 뒤 common objective로 합류할 수 있음 | Architecture 효율, decomposition의 유일성, HPT 밖 empirical generality |
+| Figure 1 | Complete-group decision의 logical waiting span과 계속되는 다른 rollout/training의 physical span이 다름 | Endpoint의 수학적 정확성, speedup 인과 분해 |
+| Figure 2 | Source-resolved record가 source-specific input으로 바뀌고 source-specific control이 common learner tail 전에 끝남 | 실제 concurrency와 alternative 대비 우월성 |
+| Algorithm 1 | Independent completion, local source resolution, downstream input construction, shared learner tail이 하나의 concurrent control flow에서 함께 성립함 | 최적성이나 유일성 |
+| A | Source decision이 generation pressure가 큰 hard region에서 실제로 필요함 | Expert mechanism의 인과 효과 |
+| C | Source decision이 warm start 뒤 사라지지 않고 online으로 반복되며 learning-relevant함 | 보편적 장기 수렴 |
+| Table 1 quality | Asynchronous realization이 intended learning level을 실용적으로 반납하지 않음 | Novelty나 HPT 대비 우월성 |
+| E | 지속적인 complete-group decision 아래 local waiting이 concurrent work와 end-to-end payoff로 이어짐 | `1.64×`의 정확한 성분별 인과 분해와 architecture optimality |
+
+Figure 1은 **왜 기다림을 분리하는가**, Figure 2는 **source decision 뒤 무엇이 남고 어디서
+사라지는가**, Algorithm 1은 **누가 언제 이를 실행하는가**만 소유한다. Algorithm이 상위 판단보다
+먼저 보이면 implementation recipe로 읽히므로 산문과 두 figure가 decomposition을 먼저 확정해야
+한다.
+
+#### 가장 현실적인 reject 문장
+
+> The paper presents a careful integration of a complete-group expert-selection method with an
+> existing fully asynchronous RL stack and demonstrates competitive quality and throughput, but
+> its main design choices appear to be natural implementation decisions, and the manuscript does
+> not sufficiently separate a generalizable algorithm-system contribution from the capabilities
+> inherited from the two parent lines of work.
+
+이를 원고 구조만으로 뒤집는 leverage가 가장 큰 조치는 세 가지다.
+
+1. **문제를 두 기능의 결합에서 두 시점 사이의 미결정 관계로 바꾼다.** 부모 방법의 자산을 먼저
+   돌려주고, source가 처음 정의되는 시점, waiting이 끝나는 시점, input 재현을 위해 정보가
+   남는 시점, source-specific control이 끝나는 시점을 StreamWeave의 연구 객체로 세운다.
+2. **Method를 module 둘이 아니라 한 decision의 두 보존 결과로 읽히게 한다.** C1은 information
+   scope와 source-specific control의 종료를, C2는 waiting scope와 asynchronous flow의 재개를
+   소유한다. Accumulator, source-before-transport, one primary update는 각각 그 결과의
+   realization 또는 witness다.
+3. **Experiments를 novelty의 대리물이 아니라 Method의 약속을 회수하는 증거로 정렬한다.**
+   A와 C는 decomposition이 필요한 persistent operating condition을, quality는 C1의 실용적
+   보존을, E는 C2의 execution payoff를 닫는다.
+
+#### 우리의 최종 재판정
+
+- **Thesis는 충분히 강하다.** 단, `좋은 위치를 골랐다`거나 `두 부모의 장점을 유지했다`는
+  문장으로 분류되면 borderline reject다. **Complete-group decision의 논리적 원자성을 보존하면서,
+  그 원자성이 pipeline-wide barrier나 source-specific core-engine structure로 확장되지 않게
+  한 end-to-end decomposition**으로 분류되어야 한다.
+- **가장 강하게 채택:** `waiting scope`, `information scope`, `source-specific control의
+  종료`를 물리적 module보다 위에 놓는 판정. 특히 C1은 information이 어디까지 남는지, C2는
+  waiting이 어디서 끝나는지를 맡아 동등한 contribution이 된다.
+- **가장 강하게 채택:** 부모 자산을 명시적으로 돌려준 뒤 `independently arriving attempts →
+  complete-group decision → source-resolved state → learner input → ordinary learner
+  consumption` 사이의 미결정 관계를 잔여 연구 문제로 세우는 방식.
+- **가장 강하게 채택:** 여러 올바른 implementation의 존재를 숨기지 않고, StreamWeave가 만든
+  engine-preserving 성질과 end-to-end 완결성을 contribution으로 소유하는 방식.
+- **강등:** One primary update 자체, source-before-queue의 정확한 위치, accumulator와 group
+  reconstruction 자체, 부모 방법의 quality·throughput 보존 자체의 novelty.
+- **주의:** `source-specific information은 input construction에서 끝난다`는 말은 source
+  identity가 물리적으로 즉시 삭제된다는 구현 주장이 아니다. 이후 core learning path가 source를
+  다시 판정하거나 별도 loss path를 선택할 필요가 없다는 architecture-level 의미로 쓴다.
+- **주의:** 현재 실험은 적용 범위의 한 사례다. 이를 모든 group-conditioned expert program의
+  실증으로 넓히지 않되, 사실 caveat을 본문 전면에 세워 thesis를 약화시키지도 않는다.
+- **기각:** General principle을 새 이름으로 branding하거나 `first`, `only`, `optimal`,
+  `minimal`을 붙이는 방식. 지금의 강점은 과장된 보편성이 아니라 부모 요소를 제거한 뒤에도
+  남는 관계를 정확히 정의하고 끝까지 실현한 데 있다.
+
+#### 다음 라운드의 질문
+
+이제 새로운 공격을 더 늘리기보다 지금까지의 여섯 라운드를 editorial board 관점에서 통합한다.
+실제 accept 확률을 가장 크게 올릴 다섯 조치, 유혹적이지만 버려야 할 변경, 섹션별
+`keep / rewrite / delete / do not claim`, 최종 revision order와 구조 개정 범위를 잠근다.
+완성 prose를 다시 쓰기보다, 이후 수정이 일관되게 따를 최종 개선 docket을 만든다.
+
+### Round 07 — 최종 editorial board와 improvement docket
+
+- **질문 목적:** Round 01--06에서 살아남은 판단을 더 확장하지 않고 하나의 편집 실행안으로
+  수렴했다. 독자 기억 문장, 논증 헌법, P0--P2, 섹션별 조치, asset ownership, 용어 예산,
+  revision order와 GO/NO-GO를 요구했다.
+- **외부 모델의 최종 독자 기억 문장:** Self-generated signal이 사라지는 어려운 group에 expert
+  supervision이 후반까지 필요할 때, StreamWeave는 source가 정해질 때까지만 complete group을
+  기다리고 그 learning role을 정확한 input으로 만드는 데 필요한 context만 더 이어서,
+  reasoning quality와 fully-asynchronous prompt-group-throughput payoff를 함께 회수한다.
+- **우리의 압축:** 이 문장의 핵심은 `hard region → persistent complete-group decision →
+  기다림과 정보의 서로 다른 종료 → quality와 execution payoff`다. Accumulator, queue, PPO,
+  HPT와 one primary update는 이 한 문장의 주어가 아니다.
+
+#### 최종 논증 헌법
+
+**Umbrella thesis.** Complete-group decision의 학습 의미를 보존하는 데 필요한 정보와 그 결정을
+내리기 위해 함께 기다려야 하는 실행은 같은 지점까지 지속될 필요가 없다. StreamWeave는
+complete-group source decision의 원자성을 유지하되, 기다림은 source resolution에서 끝내고
+선택된 learning role은 training-input construction에서 완성하여 heterogeneous learning과 기존
+asynchronous engines의 자유를 함께 유지한다.
+
+- **C1 — Learning composition:** Complete-group decision이 정한 policy 또는 expert role을
+  source에 맞는 sequence, signal, reference와 correction으로 input에 재현한다. Input이 완성된
+  뒤에는 source-specific learner control이 끝난다. One primary update는 이 종료의 구조적
+  결과다.
+- **C2 — Asynchronous architecture:** Complete-group source decision을 위해 해당 group이 함께
+  기다리는 일은 source가 정해질 때 끝난다. 그 뒤의 transport, parameter refresh, 다른
+  generation과 ready training은 기존 fully-asynchronous flow를 계속한다.
+- **C3 — Empirical recovery:** A는 decision이 필요한 영역의 generation pressure를, C는 그
+  decision의 지속성을, quality는 C1의 practical preservation을, E는 C2의 execution payoff를
+  각각 닫는다.
+
+§3.1이 먼저 읽히는 것은 무엇을 보존할지 먼저 알아야 하기 때문이다. 이는 독해 순서이며
+`C1 정의 → C2 하위 구현`이라는 contribution hierarchy가 아니다.
+
+#### 최종 P0--P2
+
+**P0 — Front matter에서 reviewer의 분류를 바로잡는다.**
+
+- **실패 모드:** `Async가 비용을, HPT가 신호를 해결하므로 둘을 통합했다`로 기억됨.
+- **핵심 위치:** TL;DR, Introduction, Contributions, Related Work 마지막 문단. Abstract는 이미
+  중앙 thesis를 담고 있으므로 전면 교체보다 mechanism chronology의 종속화가 우선이다.
+- **변경 판단:** 두 부모 기능의 상보성보다 complete-group decision 뒤 waiting과 필요한 context가
+  서로 다른 지점에서 끝나야 한다는 잔여 관계를 먼저 세운다.
+- **삭제 대상:** `integrates X into Y`, `두 역량을 함께 사용해야 한다`, pipeline 단계의 반복
+  walkthrough.
+- **종료 기준:** Blind reviewer가 AReaL, HPT, queue나 accumulator 없이도 논문을
+  `source가 정해지면 해당 group의 기다림은 끝나고, 정확한 input을 만드는 데 필요한 context만
+  더 남기는 architecture`로 요약한다.
+
+**P1 — Method에서 C1과 C2의 동등한 소유권을 구조로 보인다.**
+
+- **실패 모드:** §3.1은 HPT endpoint 재서술, §3.2는 queue plumbing으로 읽힘.
+- **핵심 위치:** §3 도입부 전면 재작성, §3.1 opening/closing 국소 교정, §3.2의 개념적 주어와
+  중복 flow 정리, Figure 1--2 caption과 Algorithm 주변 산문.
+- **변경 판단:** §3.1은 `source-defined role → exact input → source-specific learner control
+  종료`, §3.2는 `complete-group waiting → source resolution → existing async flow 재개`를
+  각각 소유한다.
+- **종료 기준:** HPT, AReaL, queue와 accumulator의 이름을 가려도 두 절의 서로 다른 연구 판단이
+  남고, 어느 한 절을 빼면 learning meaning 또는 engine freedom의 설명이 실제로 결손된다.
+
+**P2 — A--C--quality--E를 한 evidence chain으로 읽히게 한다.**
+
+- **실패 모드:** §4.2는 HPT hard-prompt 분석, §4.3은 ordinary async overlap, 전체는 quality와
+  speed의 병렬 scorecard로 읽힘.
+- **최종 reader order:** `compact quality gate → A → C → learning effect의 범위 → E`.
+- **종료 기준:** A와 C는 persistent online operating condition을, quality는 C1, E는 C2를
+  회수한다. §4.2 마지막 질문과 §4.3 첫 답이 직접 맞물리고, 각 asset은 한 판단만 소유한다.
+- **현 원고 대조 교정:** 현재 §4.2와 §4.3은 이미 이 구조의 대부분을 갖췄다. 따라서 두 절의
+  자산과 문단 순서를 다시 허무는 전면 재작성은 기각한다. 남은 일은 §4.2의 마지막에서 persistent
+  decision을 execution question으로 넘기는 연결, §4.3의 one-primary-update/§3 replay 삭제,
+  표·그림 수치 낭독 압축이다.
+
+#### 섹션별 최종 조치
+
+| 위치 | 최종 조치 | 남겨야 할 것 | 실제 남은 변화 |
+|---|---|---|---|
+| Abstract | **KEEP CORE + LOCAL REORDER** | Compute--signal tension, complete-group boundary, quality와 `1.64×` | Mechanism chronology와 one-primary-update 비중을 줄이고 중앙 판단을 더 앞세움 |
+| TL;DR | **REWRITE** | 연구 객체, 판단, 대표 payoff | `integrates` 삭제, one primary update 생략 |
+| Introduction | **STRUCTURAL REWRITE** | Hard-region 사실, 두 종료점, persistent need와 payoff | capability-combination opening과 pipeline walkthrough를 claim ladder로 재배치 |
+| Contributions | **REWRITE** | 3항 구조 | Umbrella thesis 아래 C1/C2 동등 배치, C3 evidence recovery |
+| Related Work 앞 두 계보 | **KEEP** | 부모 계보의 실제 성과 | 결함 목록이나 과도한 인정문을 추가하지 않음 |
+| Related Work 마지막 문단 | **REWRITE** | 두 계보가 만나는 잔여 문제 | StreamWeave Method recipe 삭제 |
+| §3 intro | **FULL REWRITE** | Figure 2와 Algorithm 예고 | Component inventory와 `§3.1 defines, §3.2 realizes` 제거; 두 질문만 제시 |
+| §3.1 | **KEEP CORE + REFRAME** | Source-specific input 식, common objective, endpoint 해석 | HPT-first opening과 마지막 bridge 교정; formalism 추가 금지 |
+| §3.2 | **KEEP CORE + PROSE REORGANIZATION** | Independent completion, reconstruction, source-fixed record, engine roles | Queue chronology보다 waiting 종료와 async flow 재개를 주어로; 반복 결론 압축 |
+| Figure 1 | **KEEP + CAPTION TIGHTEN** | 해당 group만 기다리고 다른 work가 계속됨 | Queue와 input 설명을 Figure 2로 돌림 |
+| Figure 2 | **KEEP + OWNERSHIP TIGHTEN** | Source-specific input과 common learner tail | 시간축·slot reuse를 소유하지 않음 |
+| Algorithm 1 | **KEEP** | Concurrent control flow | §3.1 수식과 source semantics 재설명 금지 |
+| §4 intro | **COMPRESS/ALIGN** | 필요성, learning preservation, execution payoff의 세 질문 | Method mechanism과 결과 수치 선점 삭제 |
+| §4.1 | **KEEP + LIGHT COMPRESS** | Control, evaluation protocol, common work unit | 결과 해석을 넣지 않음 |
+| §4.2 | **KEEP STRUCTURE + COMPRESS** | Quality gate, hard-region asset, dynamics, repeat-prompt 한 문장, cross-domain guardrail | 수치 낭독·원인 재설명 축소, §4.3로 넘기는 질문 강화 |
+| §4.3 | **KEEP STRUCTURE + COMPRESS** | Changed workload, sync exposure, local execution, hardware signature, payoff | One primary update와 §3 pipeline replay 삭제, exact causal decomposition 금지 |
+| Conclusion | **REWRITE/COMPRESS** | Thesis, A/C, quality/E, empirical scope | Mechanism chronology와 component 목록 삭제 |
+
+#### 가장 높은 leverage의 다섯 조치
+
+1. **TL;DR과 Introduction의 첫 분류를 바꾼다.** `두 방법의 결합`보다 complete-group decision이
+   남기는 두 의존성 범위를 먼저 보인다.
+2. **Introduction--Contributions--Related Work를 하나의 ownership chain으로 정렬한다.**
+   Introduction은 residual problem, Contributions는 동등한 C1/C2, Related Work는 부모 자산을
+   돌려준 뒤 남는 관계를 맡는다.
+3. **§3 도입부를 전면 재작성하고 §3.1/§3.2의 개념적 주어를 교정한다.** 기술 자산은 대부분
+   보존하되 contribution hierarchy를 바로잡는다.
+4. **Figure 1--Figure 2--Algorithm의 단일 책임을 잠근다.** 각각 `왜 기다림을 제한하는가`,
+   `무엇이 input으로 변하는가`, `누가 언제 실행하는가`만 소유한다.
+5. **§4의 기존 강한 구조를 보존하면서 ownership만 정제한다.** Quality는 viability gate, A/C는
+   online condition, cross-domain은 guardrail, E는 architecture payoff다.
+
+#### 유혹적이지만 거부할 다섯 조치
+
+1. **순수 A/C-first 구성:** 경쟁력을 확인하기 전에 긴 process analysis가 나오면 HPT 사례 연구로
+   먼저 분류된다. 짧은 quality gate는 유지한다.
+2. **두 종료점에 새 principle/theorem/contract 이름 부여:** 새 용어가 구체적인 연산 관계보다
+   앞서고 paper를 과장된 principle branding으로 바꾼다.
+3. **One primary update, source-before-transport, reconstruction을 headline novelty로 승격:**
+   각각은 중요한 결과/witness지만 여러 올바른 realization 중 하나다.
+4. **모든 heterogeneous learning이나 모든 async system으로 확대:** 방어 가능한 범위는
+   complete-group source choice가 learner-input semantics를 바꾸고 두 endpoint가 한 policy
+   learner의 input으로 표현되는 경우다.
+5. **추가 diagnostic과 baseline을 본문으로 끌어와 novelty를 방어:** 현재 병목은 증거량이 아니라
+   연구 판단의 가시성이다. 표를 늘리면 component ablation이 필요한 integration paper라는
+   잘못된 분류를 강화한다.
+
+#### 용어와 강조 예산
+
+공개 원고에서는 다음의 평이한 표현을 반복 가능한 핵심 어휘로 사용한다.
+
+- `complete-group decision`
+- `source가 정해질 때까지만 함께 기다린다`
+- `source와 필요한 group·generation context를 training-input construction까지 남긴다`
+- `source에 맞는 training input`
+- `one primary update`
+- `Generator는 생성하고 learner는 준비된 input을 소비한다`
+
+`composition contract`, `interface mismatch`, `closure`, `information lifetime`, `blocking scope`,
+`seamless integration`, `not just`, `more than`, `first/only/optimal/minimal`은 피한다.
+`decomposition`도 Abstract·Introduction·Method의 상위 판단에서 제한적으로만 사용한다.
+
+One primary update의 전체 설명은 §3.1 한 곳만 소유한다. Abstract에는 필요하면 종속절 한 번,
+Introduction C1 문단과 Contribution 1에는 결과로 한 번, Figure 2와 Algorithm에는 endpoint로 한
+번씩만 남긴다. TL;DR, §3 도입부, §4, Conclusion에서는 exact phrase를 제거한다.
+
+#### Claim--asset ownership
+
+| Asset | 단 하나의 소유 주장 |
+|---|---|
+| Figure 1 | 한 incomplete group은 그 group의 source decision만 늦추며 다른 rollout과 ready training은 계속된다. |
+| Figure 2 | Source가 정한 learning role은 source-specific input으로 표현되고 input construction 뒤 common learner tail로 합류한다. |
+| Algorithm 1 | 두 종료점이 concurrent Generator--Trainer control flow에서 함께 성립한다. |
+| §3.1 수식 | 주어진 source decision을 source에 맞는 input으로 구성하면 inherited policy/expert endpoint가 같은 objective에서 재현된다. |
+| Table 1 | Fully-asynchronous realization이 competitive reasoning performance와 HPT (sync)의 learning level을 유지한다. |
+| Hard-region asset | Self-generated signal이 사라지는 group에 generation과 completion pressure도 집중된다. |
+| Learning-dynamics figure | Expert demand는 감소하지만 후반에도 남고 expert-on/off behavior는 이후 분리된다. |
+| Cross-domain table | Math-focused expert contribution이 broader reasoning을 뚜렷하게 좁히지 않았다. |
+| Efficiency figure | Local waiting은 sustained concurrent activity와 더 많은 누적 prompt-group work로 나타난다. |
+| Table 2 | 관측된 expert-supervised condition에서 동일 GPU 예산의 synchronous execution보다 높은 end-to-end prompt-group throughput을 달성한다. |
+
+표와 그림은 exact value와 pattern, caption은 모집단·축·reference·metric 정의, 산문은 그 asset이
+지지하는 한 판단만 소유한다. 산문은 row와 panel을 다시 읽지 않는다.
+
+#### 최종 revision order와 exit criteria
+
+1. **한 페이지 claim ledger 잠금:** Umbrella thesis, C1/C2/C3, asset별 한 주장, 금지 claim을
+   확정한다. 모든 핵심 claim의 primary home이 하나이고 C1→C2의 위계가 없으면 종료한다.
+2. **§3 truth source 정렬:** §3 도입부, §3.1 frame, §3.2 prose를 고친다. HPT·queue 명칭을 가려도
+   두 contribution이 구별되면 종료한다.
+3. **Figure 1--2와 Algorithm 역할 분리:** Figure 1=`waiting`, Figure 2=`input transformation`,
+   Algorithm=`concurrent order`가 서로 대체 불가능하면 종료한다.
+4. **§4 ownership 정제:** 현재 구조를 보존하면서 §4.2→§4.3 연결, 수치 중복과 mechanism replay만
+   정리한다. 각 asset이 한 판단만 소유하면 종료한다.
+5. **Contributions와 Related Work 마지막 문단:** Component subtraction 뒤에도 C1/C2가 남고
+   Related Work가 결함 목록이나 Method walkthrough로 끝나지 않으면 종료한다.
+6. **Introduction 구조 개정:** 각 문단이 `hard region → residual problem → C2 → C1 →
+   persistent need/payoff`의 한 단계만 전진하고 queue/accumulator가 없으면 종료한다.
+7. **Abstract와 TL;DR 최종 압축:** `integrates`가 중심 동사가 아니고 첫 독자가 독자 기억 문장을
+   복원하면 종료한다.
+8. **Conclusion 압축:** Mechanism을 재생하지 않고 thesis와 A/C/quality/E 및 검증 범위로 끝나면
+   종료한다.
+9. **전역 compression·terminology·Appendix handoff:** 모든 central claim과 숫자의 primary
+   home이 하나이고, Appendix만 읽어야 알 수 있는 central insight가 없으면 종료한다.
+
+독자는 `thesis → Method → evidence` 순서로 읽지만 저자는 `Method truth source → evidence
+ownership → front matter → conclusion` 순서로 고친다.
+
+#### GO / NO-GO
+
+- **Method와 evidence package: GO.** C1의 구성적 유도, C2의 end-to-end architecture, A의
+  operating need, C의 persistence, competitive quality, E의 hardware signature와 `1.64×`
+  payoff가 모두 존재한다.
+- **현재 서사를 수정 없이 제출: NO-GO.** 이미 중앙 thesis가 여러 곳에 존재하지만 TL;DR,
+  Introduction 초반, Contributions, Related Work 마지막 문단과 §3 도입부가 이를 integration과
+  component chronology 쪽으로 다시 끌어내린다.
+- **가장 현실적인 accept 이유:** Complete-group source decision과 trajectory-level asynchrony
+  사이의 미결정 관계를 식별하고, decision의 두 효과를 서로 다른 지점에서 끝내는 learning
+  composition과 engine-preserving architecture를 제시하며, demanding online regime에서
+  learning quality와 execution payoff를 함께 회수했다.
+- **가장 현실적인 reject 이유:** Inherited expert selector와 inherited async stack을 자연스러운
+  queue boundary에서 연결하고 competitive quality/throughput을 보인 careful integration으로
+  보이며, engineering execution을 넘어선 연구 판단이 분명히 분리되지 않는다.
+- **결정적 편집 차이:** 부모 부품을 소개한 뒤 novelty를 방어하지 않는다. 먼저 complete-group
+  decision 뒤 waiting과 learning meaning의 범위를 별도로 끝내야 하는 문제를 세우고, C1/C2와
+  A--C--quality--E가 그 문제의 두 약속을 각각 완결하도록 ownership을 재배치한다.
+
+#### 우리의 최종 재판정
+
+- 외부 모델이 제시한 **논증 헌법, P0/P1, asset ownership, 용어 예산과 revision order는 강하게
+  채택**한다.
+- 외부 모델의 초기 표에 있는 `Abstract 전면 재작성`, `§4.2·§4.3 구조적 재작성` 판정은
+  **현재 공개 원고와 대조하여 완화**한다. Abstract는 이미 중앙 판단을 갖고 있고, §4.2·§4.3은
+  합의한 evidence order를 대부분 구현했다. 이들을 다시 허물면 오히려 잠긴 증거 구조가 흔들린다.
+- 현재 실질적인 구조 개정의 중심은 **TL;DR, Introduction, Contributions, Related Work 마지막
+  문단, §3 도입부**다. §3.1/§3.2는 core content를 보존한 framing/prose 교정, §4는 ownership과
+  transition의 국소 정렬, Conclusion은 mechanism replay를 걷는 압축이 적절하다.
+- 이 원장은 공개 본문 수정 명령이 아니다. 이후 실제 개정은 사용자가 명시적으로 승인할 때만
+  수행한다.
+
+#### 마지막 검증 라운드의 목적
+
+최종 docket은 충분히 수렴했지만, 현재 공개 원고와 비교했을 때 `이미 충족된 조치`와 `실제로 남은
+delta`를 한 번 더 분리할 필요가 있다. 마지막 라운드는 새로운 아이디어를 금지하고, 각 P0/P1/P2
+조치가 현재 문장에 이미 반영됐는지 확인하여 불필요한 재작성을 막는 delta-only audit으로 끝낸다.
+
+### Round 08 — 현재 공개 원고와의 delta-only audit
+
+- **질문 목적:** 최초 첨부한 현재 공개 본문을 Round 07 docket과 다시 대조하여 `이미 충족`,
+  `국소 교정`, `실제 잔여`를 분리했다. 새 아이디어, 새 실험, 새 asset과 대규모 구조 변경을
+  금지하고, 이후 개정이 이미 강한 부분을 다시 흔들지 않도록 freeze list와 mechanical exit
+  checks를 요구했다.
+- **최종 종료 판정:** 추가 GPT brainstorming은 종료한다. 남은 문제는 thesis의 부재가 아니라,
+  이미 존재하는 thesis를 일부 문장이 integration과 definition→implementation 위계로 다시
+  낮추는 것이다.
+
+#### 현재 상태의 재판정
+
+**완전히 동결할 주요 위치**
+
+- Abstract 전체: Compute--signal tension, complete-group outcome의 이중 역할, learning-decision
+  boundary와 pipeline-wide barrier의 분리, source-specific input, concurrent execution,
+  competitive quality와 `1.64×` payoff가 이미 한 문단에서 닫힌다.
+- Introduction 2--5문단: Residual problem, C2 handoff, C1 composition, persistent need와 payoff가
+  이미 각각 기능한다.
+- Contribution 2와 3.
+- §3.1의 source-selection rule, policy/expert input 설명, 세 display equation, common objective와
+  endpoint derivation.
+- §3.2 overview와 네 control-flow 문단의 핵심 논리.
+- §4 도입부와 §4.1 전체.
+- §4.2의 현재 순서와 자산: compact quality gate → hard-region A → persistent C →
+  repeat-prompt 한 문장 → cross-domain guardrail.
+- §4.3의 현재 순서와 자산: changed workload → version-span exposure → synchronous tail →
+  immediate refill/local waiting → GPU signature → `1.64×` payoff.
+- Table 1, hard-region table, learning-dynamics figure, cross-domain table, Table 2, efficiency
+  figure와 Appendix handoff.
+
+Round 07의 `Abstract 전면 재작성`, `§4 intro 재작성`, `§4.1 대폭 압축`,
+`§4.2 재배열/구조적 재작성`, `§4.3 구조적 재작성`, `§3.2 전체 재작성`,
+`Figure 2/Algorithm 역할 재설계`, `Contribution 2 전면 재작성`은 현재 원고에 이미 반영된
+작업이므로 최종 backlog에서 삭제한다.
+
+#### 실제로 남은 P0 — 여덟 개
+
+| 우선순위 | 위치 | 현재 역행 | 최소 수정 목표 | 동결할 내용 |
+|---:|---|---|---|---|
+| 1 | TL;DR 첫 문장 | `integrates`가 논문을 component integration으로 먼저 분류 | 주동사를 complete-group decision 뒤 waiting과 input formation을 다르게 끝내는 판단으로 교체 | Complete-group boundary, independent attempts, quality와 `1.64×` |
+| 2 | Introduction 1문단 마지막 | `두 역량을 함께 다뤄야 한다`가 research problem을 capability combination으로 축소 | Complete-group source decision과 independent attempts 사이의 잔여 문제로 다음 문단에 연결 | `22.4%/26.8%` hook과 compute--signal concentration |
+| 3 | Contributions 도입과 C1 마지막 | Umbrella thesis가 없고 C1이 one-update formulation의 새로움처럼 읽힘 | C1/C2를 묶는 한 판단을 먼저 두고, C1을 input construction 뒤 source-specific learner control의 종료로 닫음 | 3-bullet 구조, source-specific inputs, common objective/averaging, 구성적 유도 |
+| 4 | Related Work 마지막 문단 후반 | Composition gap 뒤 다시 reconstruction–record–one-update walkthrough로 끝남 | 첫 두 문장은 유지하고, 후반만 두 계보가 waiting 종료와 required context의 범위를 자동으로 정하지 않는다는 판단으로 닫음 | 앞의 두 lineage 문단 전체 |
+| 5 | §3 도입부 마지막 roadmap | `§3.1 defines, §3.2 realizes`가 C2를 C1의 하위 구현으로 만듦 | §3.1은 source-defined role의 input completion, §3.2는 waiting 종료와 async freedom을 각각 답하는 병렬 질문으로 교체 | 앞의 attempt/group/input 구분과 두 종료점 |
+| 6 | §3.1 opening | HPT가 절의 개념적 주어라 C1이 inherited endpoint 재서술처럼 보임 | C1 판단을 첫 문장에 놓고 HPT는 concrete learning program attribution으로 이동 | Selector 식과 complete-group requirement |
+| 7 | §3.1 closing | §3.2를 `이 composition의 asynchronous 실현`로 규정 | `source decision을 위한 waiting은 어디에서 끝나는가`라는 C2의 독립 질문만 넘김 | Source가 sequence와 update contribution을 함께 정한다는 C1 결론 |
+| 8 | Conclusion 첫 문단 가운데 | Thesis 사이에 reconstruction–context–one-update chronology를 재생 | 첫 문장과 boundary/barrier 결론 사이를 C1/C2 달성 판단으로 압축 | 둘째 문단의 A--C--quality--E와 empirical scope |
+
+#### 남은 P1
+
+1. **Figure 1 caption:** Source-fixed record, shared queue와 training-input construction을 삭제한다.
+   Figure 1은 incomplete group의 local waiting과 그동안 계속되는 다른 rollout/ready training만
+   소유한다.
+2. **§4.2 expert-on/off 문단:** `matched expert contribution을 primary update에 추가한다`는
+   Method replay를 제거한다. Same-stack control과 초기 유사 이후 quality/failure behavior가 함께
+   분리된 empirical meaning만 남긴다.
+3. **§4.3 opening:** `one primary update`를 삭제하고 persistent expert workload 아래의 execution
+   question만 남긴다.
+4. **§4.3 immediate-refill 문단:** `record를 §3.1의 primary update로 전달한다`를 삭제한다.
+   Immediate slot refill, group identity/provenance 보존과 다른 generation/ready training의
+   계속 진행은 유지한다.
+
+#### 남은 P2
+
+1. §3.2 마지막의 `주변 asynchronous flow의 핵심 interface`를 `기존 engine 역할과 실행 흐름`처럼
+   평이하게 바꿀 수 있다. Waiting과 context의 두 종료점은 그대로 둔다.
+2. 지면이 필요할 때만 Conclusion 둘째 문단의 acquisition/retention 세부를 persistent expert
+   channel과 policy-level scope 한 절로 압축한다. A, C, quality, cross-domain guardrail,
+   `1.64×`와 empirical scope는 유지한다.
+
+#### Freeze list
+
+- **Front matter:** Abstract 전체, Introduction 2--5문단, Contribution 2와 3.
+- **Related Work:** Fully-asynchronous lineage, expert-trajectory lineage, 마지막 문단 첫 두 문장.
+- **Method:** §3 도입부의 세 단위와 두 종료점, §3.1의 selector/inputs/equations/objective,
+  §3.2 overview와 네 문단의 core flow, Figure 2의 source-specific inputs/common learner tail,
+  Algorithm 1의 immediate refill–group decision–trainer conversion–shared tail 골격.
+- **Experiments:** §4 도입부, §4.1, §4.2/§4.3의 현재 asset 순서, 모든 main table/figure의 수치와
+  역할, 현재의 Appendix C handoff.
+- **Conclusion:** 첫 문장, 첫 문단 마지막의 learning-boundary/execution-barrier 판단, 둘째
+  문단의 empirical scope.
+
+이 목록의 자산은 내용이 약해서가 아니라 이미 최종 논증과 정합되므로 다시 열지 않는다.
+
+#### Mechanical exit checks
+
+1. **Integration framing:** TL;DR에 `integrates`가 없고 Introduction 1문단이 `두 역량을 함께`
+   사용한다는 결론으로 끝나지 않는다.
+2. **Contribution ownership:** Contributions 앞 umbrella thesis가 한 번 있고, C1은
+   `source-defined role → exact input → source-specific control 종료`, C2는
+   `complete-group waiting → source resolution → existing async flow`를 각각 소유한다.
+3. **Related Work ownership:** 마지막 문단에 accumulator, queue와 one-primary-update의 Method
+   chronology가 없고 부모 계보의 병치가 정하지 않는 관계에서 끝난다.
+4. **Definition→realization 제거:** §3 도입부와 §3.1 closing에 §3.1이 정의하고 §3.2가 이를
+   실현한다는 위계가 없다.
+5. **One-primary-update 예산:** TL;DR, §3 도입부, §4 전체와 Conclusion에 exact phrase가 없다.
+   전체 설명은 §3.1이 소유하고 Figure 2/Algorithm에는 endpoint로만 남는다.
+6. **Figure ownership:** Figure 1 caption에는 queue, training input과 one primary update가 없다.
+   Figure 2가 source-specific input과 common update를 소유한다.
+7. **§4 무이동:** §4.2와 §4.3의 현재 asset 순서가 그대로이며 새 분석·표·그림이 추가되지 않는다.
+8. **Conclusion chronology:** Conclusion 첫 문단에 accumulator, queue, reconstruction과
+   one-primary-update의 pipeline sequence가 없다.
+
+#### 최종 발견과 종료
+
+이번 상호작용이 발견한 가장 중요한 개선은 새 thesis가 아니다. **현재 공개 원고에는 이미 강한
+thesis와 이를 지지하는 Method·evidence가 존재하지만, `integrates`, capability-combination 결론,
+`§3.1 정의 → §3.2 실현`, Conclusion의 Method replay 같은 소수 문장이 reader의 최종 분류를 다시
+integration paper로 되돌린다.** 따라서 남은 작업은 새 내용을 보강하는 대규모 개정이 아니라,
+이 역행 문장을 제거하여 C1과 C2의 동등한 소유권을 원고 표면과 일치시키는 정밀한 개정이다.
+
+**추가 GPT brainstorming 종료: YES.** 이후에는 이 여덟 P0와 네 P1, 선택적인 두 P2만 실제
+개정 후보로 사용하며, 사용자의 명시적 승인 전에는 공개 본문·Appendix·TeX/PDF를 수정하지 않는다.

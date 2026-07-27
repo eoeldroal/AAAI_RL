@@ -151,3 +151,11 @@ docs/papers_RL/The Entropy Mechanism of Reinforcement Learning for Reasoning Lan
 # generated slide decks (source generator make_asynchpt_slides.py is tracked)
 docs/papers_RL/AsyncHPT_Figure.pptx
 docs/papers_RL/AsyncHPT_Slides.pptx
+
+# LaTeX build products (submission sources and figure PDFs remain tracked)
+docs/papers_RL/final/*.aux
+docs/papers_RL/final/*.fdb_latexmk
+docs/papers_RL/final/*.fls
+docs/papers_RL/final/*.log
+docs/papers_RL/final/*.synctex.gz
+docs/papers_RL/final/streamweave.pdf
