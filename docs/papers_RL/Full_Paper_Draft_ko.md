@@ -74,13 +74,9 @@ asynchronous training stream이 그대로 소비할 수 있는 형태로 옮기�
 다음과 같다. **Complete-group decision을 보존하면서 trajectory-level fully-asynchronous
 execution을 유지할 수 있는가?**
 
-그림 1은 StreamWeave가 이때 필요한 두 의존성을 어디까지 유지하고 어디에서 끝내는지를 요약한다.
-
-[그림 1 위치: `figures/Figure1.pdf`]
-
-*그림 1: 하나의 complete group을 기다리는 범위는 해당 group에 국소화된다. Group이 아직 완성되지
-않은 동안에도 다른 rollout generation과 이미 준비된 training은 계속되며, all-failure group은 expert
-source를 선택하고 성공을 포함한 group은 policy rollout을 유지한다.*
+<!-- 편집 결정 (2026-07-28): 기존 timeline Figure 1은 source routing을 현행 data-state figure와
+중복하고, 나머지는 상속한 asynchronous scheduling을 재진술하므로 본문에서 제거했다. Local waiting
+판단은 Introduction·§3.2 산문과 Algorithm 1이 소유하며, 이 timeline을 독립 figure로 복원하지 않는다. -->
 
 우리는 이를 위해 **StreamWeave**를 제안한다. StreamWeave는 trajectory attempt를 독립적으로
 실행하고 source decision에 필요한 시점에만 complete group을 복원하며, 확정된 source와 생성 맥락을
@@ -173,12 +169,12 @@ source가 확정되면 끝나지만, source와 필요한 group context는 input 
 handoff 바깥에서 Generator는 rollout generation을 계속하고 learner는 준비된 input을 학습한다.
 §3.1은 complete-group decision이 선택한 역할을 learner가 재현하려면 어떤 정보를 training input까지
 전달해야 하는지를 묻는다. §3.2는 그 decision을 기다리는 실행의 범위가 어디까지여야 하는지를 묻는다.
-그림 2는 queue handoff의 세 data-state boundary를, Algorithm 1은 concurrent control flow를
+그림 1은 queue handoff의 세 data-state boundary를, Algorithm 1은 concurrent control flow를
 요약한다.
 
-[그림 2 위치: `figures/Figure2.pdf`]
+[그림 1 위치: `final/figures/figure2.pdf`]
 
-*그림 2: StreamWeave의 세 data-state 경계(실험의 $\gamma=0$ source rule). Complete group은
+*그림 1: StreamWeave의 세 data-state 경계(실험의 $\gamma=0$ source rule). Complete group은
 $n$-sequence policy record 또는 singleton expert record 중 하나를 만들고, 서로 다른 prompt의
 source-fixed record(A--C)는 하나의 queue를 공유한다. Trainer는 source에 맞는 signal, reference와
 correction을 구성하며, policy provenance는 rollout-to-entry correction으로, expert는 identity
@@ -358,16 +354,18 @@ asynchronous correction, loss averaging과 정확한 optimization 설정은 Appe
 명세한다.
 
 **Quality evaluation.** 각 모델은 AIME24, AIME25, AMC(83), MATH500, Minerva(272),
-Olympiad(674)의 여섯 수학 추론 benchmark에서 fixed-checkpoint evaluation을 수행한다. AIME24,
+Olympiad(674)의 여섯 수학 추론 benchmark에서 fixed-checkpoint evaluation을 수행한다. 보고하는 모든
+checkpoint는 동일한 sampling configuration, Math-Verify grader와 반올림 절차로 직접 평가하며,
+SRFT, ReLIFT, Oat-Zero와 LUFFY에는 각 연구가 공개한 공식 checkpoint를 사용한다. AIME24,
 AIME25와 AMC에는 32개 stochastic generation의 평균 pass@1인 mean@32를, 나머지 benchmark에는
 mean@8을 사용한다. Math Avg.는 반올림
 전 여섯 점수의 동일 가중 macro-average다. Training reward와 자체 수학 평가는 동일한 Math-Verify
 grader를 사용한다. 같은 checkpoint의 cross-domain reasoning은 ARC-Challenge, GPQA-Diamond와
 MMLU-Pro에서 별도로 평가하고 세 점수의 macro-average를 보고한다. 비교군은 base와 instruct model,
 Async RL (expert-off), RL 및 expert-trajectory 활용 방법을 포함하며, HPT (sync)는 같은 all-failure 기준으로
-expert trajectory를 선택하는 동기식 quality reference다. 원 논문에서 인용한 행은 $\dagger$로
-구별하여 자체 평가 결과와 분리한다. Appendix C.2는 mean@$k$, 반올림과 checkpoint provenance를
-명세하여 Table 1을 선택된 peak가 아닌 fixed-checkpoint evaluation으로 검증한다.
+expert trajectory를 선택하는 동기식 quality reference다. Appendix C.2는 benchmark별 sample count와 checkpoint
+provenance를 명세하여 이 공통 protocol과 Table 1을 선택된 peak가 아닌 fixed-checkpoint evaluation으로
+검증한다.
 
 **Learning-process analysis.** Expert channel이 필요한 영역과 학습 과정에서의 역할은 세 층위에서
 살펴본다. 먼저 generator-side census에서 complete generated group을 all-failure와 any-success로 나누어
@@ -384,7 +382,7 @@ step 수 대신 routing 이전의 고유 prompt group으로 둔다. Throughput�
 제외한 training-loop wall-clock 동안 소비한 prompt group으로 계산한다. GPU activity와 동일
 wall-clock에서 누적된 prompt-group work를 함께 측정하고, source에 따른 sample 수의 차이가 고정된
 prompt-group input budget 안에서 처리되는지도 확인한다. 정확한 hardware 배치, run identifier,
-work-weighted throughput estimator와 telemetry normalization은 Appendix C.4에서 정의하고, 같은 작업량
+work-weighted throughput estimator와 telemetry normalization은 Appendix C.5에서 정의하고, 같은 작업량
 비교와 telemetry sensitivity로 headline의 matched-budget 해석을 검산한다.
 
 ### 4.2 Learning Effectiveness
@@ -394,23 +392,25 @@ fully-asynchronous execution으로 옮겨도 수학 추론 성능을 반납하�
 38.5를 달성하여 HPT (sync)의 37.7 수준을 유지하고, 평가한 RL 및 expert-trajectory 방법들 사이에서
 경쟁력 있는 성능을 보인다.
 
-| Model | AIME24 | AIME25 | AMC (83) | MATH500 | Minerva | Olympiad | **Avg.** |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Base | 6.6 | 3.5 | 31.2 | 43.3 | 10.9 | 24.9 | **20.1** |
-| Instruct | 10.6 | 9.4 | 47.0 | 75.5 | 29.5 | 40.4 | **35.4** |
-| SFT$^{\dagger}$ | 11.7 | 13.2 | 37.8 | 70.6 | 26.8 | 31.3 | **31.9** |
-| RL-only$^{\dagger}$ | 11.8 | 7.7 | 40.2 | 61.8 | 26.8 | 32.0 | **30.1** |
-| Async RL (expert-off) | 12.9 | 7.9 | 44.9 | 75.8 | 28.8 | 39.5 | **35.0** |
-| HPT (sync) | 15.4 | 12.6 | 45.8 | 78.0 | 31.3 | 43.2 | **37.7** |
-| SRFT | 12.3 | 10.4 | 43.0 | 71.6 | 26.1 | 38.4 | **33.7** |
-| ReLIFT | 12.6 | 8.1 | 40.3 | 74.6 | 28.6 | 39.4 | **34.0** |
-| Oat-Zero | 17.2 | 12.6 | 49.6 | 73.7 | 30.1 | 38.1 | **36.9** |
-| LUFFY | 15.1 | 14.0 | 46.0 | 77.5 | 30.0 | 43.5 | **37.7** |
-| **StreamWeave** | 16.1 | 13.0 | 47.0 | 78.5 | 33.0 | 43.2 | **38.5** |
+| Type | Model | Async | Expert | AIME24 | AIME25 | AMC | MATH500 | Minerva | Olympiad | Avg. |
+|---|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
+| Basic | Base | -- | -- | 6.6 | 3.5 | 31.2 | 43.3 | 10.9 | 24.9 | 20.1 |
+|  | Instruct | -- | -- | 10.6 | 9.4 | <u>47.0</u> | 75.5 | 29.5 | 40.4 | 35.4 |
+| Expert | HPT | -- | ✓ | 15.4 | 12.6 | 45.8 | <u>78.0</u> | <u>31.3</u> | <u>43.2</u> | <u>37.7</u> |
+|  | SRFT | -- | ✓ | 12.3 | 10.4 | 43.0 | 71.6 | 26.1 | 38.4 | 33.7 |
+|  | ReLIFT | -- | ✓ | 12.6 | 8.1 | 40.3 | 74.6 | 28.6 | 39.4 | 34.0 |
+|  | LUFFY | -- | ✓ | 15.1 | **14.0** | 46.0 | 77.5 | 30.0 | **43.5** | <u>37.7</u> |
+| Fully Async | Async RL | ✓ | -- | 12.9 | 7.9 | 44.9 | 75.8 | 28.8 | 39.5 | 35.0 |
+| Ours | **StreamWeave** | ✓ | ✓ | <u>16.1</u> | <u>13.0</u> | <u>47.0</u> | **78.5** | **33.0** | <u>43.2</u> | **38.5** |
+| External RL | Oat-Zero | -- | -- | **17.2** | 12.6 | **49.6** | 73.7 | 30.1 | 38.1 | 36.9 |
+|  | ExGRPO | -- | -- | 12.1 | 9.0 | 46.3 | 73.2 | 27.2 | 37.3 | 34.2 |
+|  | EMPO | -- | -- | 14.1 | 8.0 | 45.5 | 72.5 | 25.1 | 35.8 | 33.5 |
 
-*Table 1: Fixed-checkpoint mathematical reasoning results. Scores are rounded to one decimal place. Avg. is the
-unweighted macro-average computed from unrounded benchmark scores. $^{\dagger}$ Results reported by the original
-source.*
+*Table 1: Fixed-checkpoint mathematical reasoning results. Type은 비교 범주를 나타내며 행 배경도
+동일한 범주를 따른다. Async는 rollout generation과 training의 fully-asynchronous execution을,
+Expert는 외부 expert trajectory 사용을 뜻한다. Scores are rounded to one decimal place. Avg. is the unweighted
+macro-average computed from unrounded benchmark scores. 각 열의 최고값은 bold, 차선값은 underline으로
+표시하며 동률은 같은 서식을 공유한다.*
 
 **A costly hard region.** StreamWeave가 expert source를 선택하는 $0/8$ all-failure group은
 policy branch에 reward-derived group-relative signal을 제공하지 않는다. Generator-side census를
@@ -447,11 +447,13 @@ expert access를 공유하며, all-failure outcome이 선택한 expert input을 
 신호가 이 영역으로 전이되는 데 의존한다. 두 run은 초기에 유사하게 개선된 뒤 분리되며, 평균
 benchmark 성능과 held-out all-failure rate가 같은 방향으로 갈라진다.
 
-같은 prompt와 첫 encounter의 성공 수를 맞춘 뒤, StreamWeave는 $k=0,\ldots,8$의 모든 구간에서 더
-높은 후속 성과를 보였고 가장 큰 차이는 partial-success 영역에서 나타났다. 이 pattern은 selective
-expert contribution이 대응 prompt뿐 아니라 shared policy의 acquisition과 retention에도 연결된다는
-해석을 지지한다. Appendix C.3은 전체 층화 결과, 불확실성과 후속 encounter를 제시하여 이 pattern이
-직접 routing된 prompt를 넘어섬을 보이되, 증거 범위를 matched longitudinal comparison으로 한정한다.
+같은 prompt와 첫 encounter의 성공 수를 맞춘 비교에서, first-to-second encounter improvement의
+run 간 가중 평균 차이는 8개 attempt group당 성공 rollout **$+0.169$개**였다. 이 차이는
+$k=0,\ldots,8$의 모든 구간에서 양수이고 partial-success 영역에서 가장 크며, third encounter에서도
+**$+0.159$**로 유지됐다. 이 pattern은 selective expert contribution이 대응 prompt뿐 아니라 shared
+policy의 acquisition과 retention에도 연결된다는 해석을 지지한다. Appendix C.3은 matched population,
+전체 stratum별 estimate와 standard error, 후속 encounter를 제시하여 이 해석을 검산하되, 증거 범위를
+matched longitudinal comparison으로 한정한다.
 
 **Cross-domain reasoning.** 수학 중심의 selective expert supervision이 cross-domain reasoning을
 좁히는지 확인하기 위해 ARC-Challenge, GPQA-Diamond와 MMLU-Pro에서 같은 checkpoint를
@@ -461,13 +463,15 @@ fixed-checkpoint evaluation으로 평가한다.
 |---|---:|---:|---:|---:|
 | Base | 5.7 | 3.6 | 3.3 | **4.2** |
 | Instruct | 54.6 | 27.7 | 30.3 | **37.5** |
-| Async RL (expert-off) | 60.8 | 30.6 | 31.7 | **41.1** |
-| HPT (sync) | 60.5 | 28.8 | 33.9 | **41.1** |
+| HPT | 60.5 | 28.8 | 33.9 | **41.1** |
 | SRFT | 48.0 | 24.2 | 28.0 | **33.4** |
 | ReLIFT | 52.8 | 24.5 | 30.2 | **35.8** |
-| Oat-Zero | 41.9 | 13.5 | 21.5 | **25.6** |
 | LUFFY | 56.5 | 27.0 | 34.5 | **39.3** |
+| Async RL | 60.8 | 30.6 | 31.7 | **41.1** |
 | **StreamWeave** | **60.2** | **30.3** | **33.2** | **41.2** |
+| Oat-Zero | 41.9 | 13.5 | 21.5 | **25.6** |
+| ExGRPO | 58.7 | 28.3 | 29.2 | **38.7** |
+| EMPO | 24.8 | 12.3 | 16.2 | **17.8** |
 
 *표 X: Fixed-checkpoint cross-domain reasoning results. Avg.는 ARC-C, GPQA-D와 MMLU-Pro의 동일 가중
 macro-average다.*
@@ -692,7 +696,10 @@ Attempt generation이나 infrastructure가 실패하면 그 group을 gate와 que
 
 ## Appendix C. Experimental and Evaluation Details
 
-### C.1 Main training configuration
+각 하위절은 하나의 본문 주장을 지지하며 같은 순서를 따른다. 무엇을 모집단으로 삼았는지, 어떤 양을
+어떻게 정의했는지, 관측값이 무엇인지, 그리고 그 관측이 무엇을 지지하지 않는지다.
+
+### C.1 Training configuration
 
 | Item | Main configuration |
 |---|---|
@@ -710,13 +717,21 @@ Attempt generation이나 infrastructure가 실패하면 그 group을 gate와 que
 
 AIME24, AIME25, AMC(83)은 각 problem에 32 stochastic generations를 사용한 mean@32를 보고한다.
 MATH500, Minerva(272), Olympiad(674)는 mean@8을 사용한다. 여기서 mean@$k$는 $k$개 generation의
-평균 pass@1이며 pass@$k$가 아니다. 자체 평가 score는 원시 binary correctness에서 계산한 뒤 소수점 한
+평균 pass@1이며 pass@$k$가 아니다. Training reward와 자체 수학 평가는 동일한
+Math-Verify grader~\citep{kydlicek2025mathverify}를
+사용한다. 자체 평가 score는 원시 binary correctness에서 계산한 뒤 소수점 한
 자리로 한 번만 반올림한다. Avg.는 표시된 점수를 다시 평균하지 않고, 반올림 전 여섯 benchmark score의
-동일 가중 macro-average를 계산한 뒤 반올림한다. 원 논문 수치를 인용한 SFT와 RL-only 행은 자체 평가
-행과 구별하고 출처의 수치를 같은 표시 정밀도로만 맞춘다. 최종 제출본에는 각 자체 평가 행의 checkpoint, grader와 decoding configuration,
+동일 가중 macro-average를 계산한 뒤 반올림한다. 보고하는 모든 fixed-checkpoint 행은 같은 sampling
+configuration, Math-Verify grader와 반올림 절차로 직접 평가한다. SRFT, ReLIFT, Oat-Zero와
+LUFFY에는 각 연구가 공개한 공식 checkpoint를
+사용한다. 최종 제출본에는 직접 평가한 각 행의 checkpoint, grader와 decoding configuration,
 evaluation-seed manifest, raw result artifact identifier를 하나의 provenance manifest로 연결한다.
+이 provenance는 각 reported row를 하나의 명시된 checkpoint에 연결하여, 여러 checkpoint 중 최고값을
+선택한 selected-peak reporting과 구분한다.
 
-### C.3 Learning dynamics and matched process analysis
+### C.3 Learning dynamics and matched comparison
+
+#### C.3.1 Interim validation dynamics
 
 Expert channel의 역할은 같은 fully-asynchronous execution stack에서 expert routing만 비활성화한 control과
 비교한다. Figure의 metric은 final fixed-checkpoint Table 1과 별개인 interim
@@ -725,7 +740,9 @@ step 130--160 평균은 각각 38.6과 35.2다. 서로 다른 step에서 얻은 
 expert channel의 후반 보완 역할을 해석하기 위한 것이며, final mean@32 ranking이나 보편적인 long-run
 convergence 주장을 대신하지 않는다.
 
-**Matched control.** 두 run은 같은 prompt population, group size와 data-source composition을
+#### C.3.2 Matched control
+
+두 run은 같은 prompt population, group size와 data-source composition을
 사용하며 모든 prompt에 동일한 expert trajectory가 제공된다. 차이는 all-failure outcome에서 이
 trajectory를 training input으로 사용하는지 여부다.
 
@@ -742,7 +759,9 @@ StreamWeave census의 126,498개 group 가운데 126,465개가 complete group이
 비교가 가능하다. 이 matching은 prompt difficulty 차이를 줄이지만, shared policy를 통한 spillover와
 서로 다른 이전 training history까지 제거하는 randomized intervention은 아니다.
 
-**Repeat encounters.** 두 run에서 first-encounter \(k\)가 같은 17,938개 prompt를 층화하고,
+#### C.3.3 Repeat encounters
+
+두 run에서 first-encounter \(k\)가 같은 17,938개 prompt를 층화하고,
 second encounter에서 나타난 성공 수 변화의 run 간 차이
 \(\Delta_{\mathrm{SW}}-\Delta_{\mathrm{off}}\)를 계산한다. 단위는 한 prompt에서 생성한 여덟 응답 중
 성공한 응답 수다.
@@ -772,7 +791,9 @@ all-failure는 prompt의 고정된 성공 확률이 아니므로 이 변화에�
 해석하지 않는다. 전체 패턴은 selective expert contribution이 shared policy를 통해 acquisition과
 retention 양쪽에 연결된다는 해석을 지지한다.
 
-**Signal accounting and late-process diagnostics.** \(1\le k\le7\)인 group은 reward-derived
+#### C.3.4 Signal accounting and late-process dynamics
+
+\(1\le k\le7\)인 group은 reward-derived
 group-relative contrast를 만들고, \(k=0\)은 StreamWeave에서 expert source로 전환된다.
 
 | Run | Informative \(k=1\ldots7\) | Expert \(k=0\) | Zero-signal | Effective contribution |
@@ -799,7 +820,115 @@ endogenous outcome이므로 이를 독립 원인으로 통제하거나 entropy c
 않는다. 이 분석은 하나의 training run pair에 대한 prompt-level longitudinal evidence이며,
 표의 uncertainty를 training-seed uncertainty로 확대하지 않는다.
 
-### C.4 Resource-matched efficiency protocol
+### C.4 Group completion tail
+
+#### C.4.1 Cost of holding slots to group completion
+
+Main run `oki4kv8u`의 generator census를 사용한다. 한 group의 여덟 attempt는 서로 `0.05`초 안에
+dispatch되므로 group이 완결되는 시각은 가장 느린 attempt의 완료 시각과 같다. 따라서 각 attempt의
+실행 slot을 자기 group이 완결될 때까지 붙잡는 규율이 요구하는 slot-초는 attempt duration
+\(d_i\)만으로 정해진다.
+
+$$
+S_{\mathrm{pinned}}=8\max_i d_i,
+\qquad
+S_{\mathrm{executed}}=\sum_i d_i
+$$
+
+이 반사실은 규율의 가격을 매긴 것이며 그 규율 아래의 실행을 모사한 것이 아니다. Pinning에서 달라졌을
+admission 시점, backlog 동역학과 batching은 모형에 포함하지 않는다.
+
+**Capacity accounting.** 전체 group에 대해 두 양을 합산한 비와, 그 차이가 뜻하는 예약량은 다음과 같다.
+
+| Run | \(\sum S_{\mathrm{pinned}}\big/\sum S_{\mathrm{executed}}\) | 생성 없이 예약될 slot-시간 |
+|---|---:|---:|
+| Main (`oki4kv8u`) | **1.798$\times$** | 1,595 |
+| Expert-off (`qzsnwc08`) | 1.528$\times$ | 648 |
+| M5 variant | 1.779$\times$ | 940 |
+
+배수는 group 내 최장 attempt와 평균 attempt duration의 비와 같다. Main의 `12.79` 대 `7.11`초,
+expert-off의 `6.59` 대 `4.31`초가 공개 §4.3 표의 두 행과 같은 값이므로 이 배수는 본문 표에서 직접
+검산된다. 절대 slot-시간은 run 길이에 비례하므로 run 간 비교에는 배수만 사용한다.
+
+**Discriminating test.** 두 규율은 서로 반대를 예측한다. Attempt 단위 재사용에서는 실행 점유가
+pinning이 예약했을 slot-초와 무관해야 하고, slot을 붙잡는 규율에서는 그 양과 함께 올라가야 한다.
+190개 parameter version을 pinning이 예약했을 slot-초의 비중으로 순위 매겨 사분위로 나눈다. 이 비중
+자체가 `0.257`에서 `0.650`까지 약 2.5배 변동하므로, 상수 누출이 있었다면 방향이 드러나야 한다.
+
+| 사분위 | 실행 점유 (concurrent attempts) | Pinning이 예측하는 점유 |
+|---|---:|---:|
+| Q1 (최저) | 363 | 521 |
+| Q4 (최고) | **372** | **850** |
+| Pearson \(r\) | **+0.055** | **+0.559** |
+
+둘 중 하나만 고정된 물리적 자원 풀일 수 있다. 점유를 \(\sum_i d_i+\lambda\cdot(\text{예약분})\)으로
+맞추면 \(\hat\lambda=-0.08\)이며, resume cycle을 제외한 민감도 검사에서 \(+0.24\pm0.19\)로 이동한다.
+따라서 방어 가능한 구간은 \(\lambda\in[-0.2,+0.4]\)이고, 재사용이 전혀 없는 \(\lambda=1\)은 이 구간
+밖이다. 190개 version은 독립적인 반복 실험이 아니므로 \(r\)과 \(\hat\lambda\)는 기술 통계로만
+제시하며 유의성 판정에 사용하지 않는다.
+
+**Admission budget.** 동시 attempt 예산은 run config의 `max_inflight_prompt_groups=96`과
+`rollout.n=8`이 정하는 `768`이다. 실행 점유는 190개 version 전부에서 이 예산을 넘지 않으며 최대값은
+`507`이다. Pinning이 예측하는 점유는 `37`개 version에서 예산을 초과한다. 다만 pinning의 총량
+이용률은 `65.3%`로 예산 안에 들어간다. 따라서 이 절이 보이는 것은 그 규율이 불가능했다는 것이
+아니라 그 대가를 치르지 않았다는 것이다.
+
+**Where the cost lands.** 완료된 attempt의 저장 예산은 완결 prompt group `384`개에 대응하는
+`3,072` attempts다. 시간 평균 점유는 다음과 같다.
+
+| 저장 게이트 점유 (시간 평균) | Attempts | 예산 대비 |
+|---|---:|---:|
+| 트레이너 대기 중인 완결 group | 2,128.8 | 69.3\% |
+| 불완결 group 안에 갇힌 완료 attempt | 222.5 | **7.2\%** |
+| 합 | 2,351.3 | 76.5\% |
+
+Complete-group 요건이 실제로 소비하는 것은 실행 slot이 아니라 이 `7.2%`다. 같은 기간 rollouter는
+새 작업 제출을 벽시계의 `23%` 동안 보류하고 트레이너의 차단 대기는 `2%`이므로, 압력은 group
+재구성이 아니라 트레이너의 소비 속도를 따른다. Rollouter 값은 `fully_async/rollouter/idle_ratio`를
+지속시간 가중으로 집계한 것이다(\(1-\sum A/\sum V\)). 스텝별 비율을 단순 평균하면 `19.95%`가 되지만,
+벽시계의 몇 퍼센트냐는 지속시간 질문이므로 지속시간 가중을 사용한다. 완결 group 항목은 평균 queue
+길이를 attempt로 환산한 것과 같은 양이다(\(\mathrm{mq\_len}/384\equiv 8\,\mathrm{mq\_len}/3072\)).
+두 표현을 독립적인 증거로 제시하지 않는다.
+
+**Scope.** Rollouter는 점유 카운터를 내보내지만 Ray worker에 있어 로그에 남지 않으므로, 실행 점유는
+census의 attempt duration에서 재구성한 값이다. \(\lambda\)는 version 간 변동에서만 식별된다. Version
+단위 귀속은 11-version 블록 이상에서만 사용하며, 단일 version 상관은 `+0.41`이고 group의 `7.0%`가
+version 경계를 걸친다(C.4.3). 이 절은 slot 재사용이 실행 용량을 절약했음을 보이되, 그 절약분을
+`1.64×`의 가산적 성분으로 분해하지 않는다.
+
+#### C.4.2 Synchronous phase exposure
+
+Request-level timing과 generation-phase timing이 함께 존재하는 104개 synchronous cycles를 짝지어
+분석한다. 개별 request의 평균 완료 시간은 7.61초지만, cycle별 가장 느린 request의 평균 완료 시간은
+23.69초이고 generation phase는 평균 25.13초에 종료된다. Phase time과 slowest-request time의 비율은
+평균 1.062이며 두 값의 cycle-level correlation은 \(r=0.996\)이다. 또한 104개 cycle 모두에서 가장
+느린 request의 response가 8,192-token limit에 도달했다. 따라서 synchronous generation phase는
+평균적인 request가 아니라 completion tail에 사실상 고정된다. 이 관측은 request completion과 GPU
+idle의 일대일 대응이나 \(1.64\times\) speedup의 가산적 성분 분해를 제공하지 않는다.
+
+#### C.4.3 Version span across the tail
+
+Generator census는 126,498개 StreamWeave group 가운데 126,465개 complete group을 포함한다. Complete
+group의 93.00\%는 하나의 policy version에서 생성된 rollout만 포함하고, 7.00\%는 인접한 두 policy
+version에서 생성된 rollout을 함께 포함한다. Expert-off run의 대응 비율은 각각 97.97\%와 2.03\%이며,
+두 run 모두 세 개 이상의 policy version에서 생성된 rollout을 포함한 group은 관찰되지 않았다.
+
+| StreamWeave route | Complete groups | Adjacent-version groups (\%) |
+|---|---:|---:|
+| Zero-variance policy | 23,080 | 1.87 |
+| Informative policy | 75,081 | 7.45 |
+| Expert | 28,304 | **10.00** |
+| **All routes** | **126,465** | **7.00** |
+
+인접한 policy version의 rollout을 함께 포함한 StreamWeave group은 same-version group보다 generation time이 길고
+(`12.43` 대 `6.71`초), 평균 response도 길다(`2,116` 대 `1,377` tokens). 이 결과는 version span이
+낮은 성공률의 원인이라는 뜻이 아니다. 오래 걸리는 group일수록 refresh boundary와 겹칠 가능성이
+높으며, StreamWeave는 continuation 이후에도 group identity와 rollout을 생성한 policy 정보를 유지해
+같은 complete-group decision과 하나의 training path로 연결한다.
+
+### C.5 Throughput and its sources
+
+#### C.5.1 Runs, work unit, and estimator
 
 동기식 reference와 StreamWeave는 동일한 8$\times$B200 예산을 사용한다. 전자는 colocated synchronous
 execution, 후자는 2-GPU trainer와 6-GPU rollouter partition을 사용한다. Run identifier는 각각
@@ -810,16 +939,36 @@ $$
 \operatorname{Throughput}=\frac{\sum_i G_i}{\sum_i T_i},
 $$
 
-여기서 $G_i$는 소비된 고유 prompt group 수, $T_i$는 evaluation을 제외한 training-loop time이다.
+여기서 $G_i$는 소비된 고유 prompt group 수, $T_i$는 validation과 checkpointing을 제외한
+training-loop time이다.
 Synchronous run은 13,312 groups를 4,780.2초에, StreamWeave는 86,174 groups를 18,828.4초에 처리한다.
 이는 2.78 대 4.58 groups/s, 또는 128 groups당 46.0 대 28.0초다. 첫 13,312 groups로 작업량을 맞춘
 StreamWeave window도 4.66 groups/s를 기록하므로 더 긴 async history가 headline을 만든 것은 아니다.
+이 비교는 end-to-end prompt-group throughput이며 time-to-quality가 아니다.
+
+#### C.5.2 Token-based recount
+
+같은 실행 결과를 token 단위로 다시 세어도 방향은 유지된다. 공개 원고는 prompt group 기준
+`1.64×`와 함께 트레이너가 소비한 response token 기준 `1.302×`를 제시한다.
+
+| Token 정의 | 배수 |
+|---|---:|
+| 트레이너 소비 response token (**공개 채택**) | **1.302$\times$** |
+| 생성 response token | 1.32$\times$ |
+| Prompt와 response 합산 | 1.50$\times$ |
+| Policy-gradient row만 | 1.55$\times$ |
+| 일곱 정의 $\times$ 일곱 시간창의 최저 | **1.20$\times$** |
+
+채택 정의는 검토한 일곱 정의 가운데 가장 보수적이며, 일곱 정의와 일곱 시간창의 모든 조합에서
+하한이 `1.20×`이므로 어떤 절단에서도 방향이 바뀌지 않는다. 두 수치는 같은 실행 결과를 서로 다른
+work unit으로 센 것이다. Response length는 각 학습 방법이 만든 결과이므로 어느 work unit도
+architecture만의 효과를 분리하지 않는다.
+
+#### C.5.3 Where the gain comes from
 
 동기식 pipeline은 128 groups의 generation에 25.1초, 전체 generation과 training에 46.0초가 든다.
 StreamWeave는 두 작업을 포함한 전체 pipeline을 28.0초에 처리한다. Async learner의 acquisition/assembly
-share와 sync generation share는 서로 다른 timer이므로 하나의 stall 감소율로 합치지 않는다. 이 비교는
-end-to-end prompt-group throughput이며 token-normalized architecture-isolated speedup이나 time-to-quality가
-아니다.
+share와 sync generation share는 서로 다른 timer이므로 하나의 stall 감소율로 합치지 않는다.
 
 이 차이는 generation과 training의 overlap만으로는 산술적으로 모두 설명되지 않는다. Synchronous
 implementation은 8개 GPU를 generation에 사용하므로 128 groups당 유효 generation rate는
@@ -855,6 +1004,8 @@ Training interval의 전체 GPU busy가 65.5\%에서 84.6\%로 높아진 사실�
 성분 분해는 아니므로, 약 20\%를 barrier 제거 하나의 독립적인 인과 효과로 부르지 않는다. Partial-rollout
 recovery 역시 불필요한 prefix 재생성을 줄이는 보조 요인이지만, 그 기여율은 별도로 분리하지 않는다.
 
+#### C.5.4 Hardware activity and energy
+
 GPU-activity 분석은 validation cycle을 제외한 training interval의 15초 W\&B system telemetry를
 사용한다. 각 device에서 `smActive`가 20\%를 초과했는지를 계산하며, synchronous run은 94 cycles의
 287 rows, StreamWeave는 152 cycles의 974 rows를 포함한다. Threshold를 10--50\%로 바꾸거나 첫
@@ -863,47 +1014,6 @@ training cycle을 제외해도 전역적으로 낮은 activity interval이 줄�
 0--100\%로 정규화하고, panel (c)는 synchronous full-run 79.7분과 StreamWeave의 동일 wall-clock
 prefix를 비교한다. Telemetry row는 독립적인 반복 실험이 아니며, threshold 아래의 activity를 GPU
 idle이나 stall로 바꾸어 해석하지 않는다.
-
-### C.5 Execution interaction diagnostics
-
-#### C.5.1 Groups containing rollouts from adjacent policy versions
-
-Generator census는 126,498개 StreamWeave group 가운데 126,465개 complete group을 포함한다. Complete
-group의 93.00\%는 하나의 policy version에서 생성된 rollout만 포함하고, 7.00\%는 인접한 두 policy
-version에서 생성된 rollout을 함께 포함한다. Expert-off run의 대응 비율은 각각 97.97\%와 2.03\%이며,
-두 run 모두 세 개 이상의 policy version에서 생성된 rollout을 포함한 group은 관찰되지 않았다.
-
-| StreamWeave route | Complete groups | Adjacent-version groups (\%) |
-|---|---:|---:|
-| Zero-variance policy | 23,080 | 1.87 |
-| Informative policy | 75,081 | 7.45 |
-| Expert | 28,304 | **10.00** |
-| **All routes** | **126,465** | **7.00** |
-
-인접한 policy version의 rollout을 함께 포함한 StreamWeave group은 same-version group보다 generation time이 길고
-(`12.43` 대 `6.71`초), 평균 response도 길다(`2,116` 대 `1,377` tokens). 이 결과는 version span이
-낮은 성공률의 원인이라는 뜻이 아니다. 오래 걸리는 group일수록 refresh boundary와 겹칠 가능성이
-높으며, StreamWeave는 continuation 이후에도 group identity와 rollout을 생성한 policy 정보를 유지해
-같은 complete-group decision과 하나의 training path로 연결한다.
-
-#### C.5.2 Synchronous completion-tail exposure
-
-Request-level timing과 generation-phase timing이 함께 존재하는 104개 synchronous cycles를 짝지어
-분석한다. 개별 request의 평균 완료 시간은 7.61초지만, cycle별 가장 느린 request의 평균 완료 시간은
-23.69초이고 generation phase는 평균 25.13초에 종료된다. Phase time과 slowest-request time의 비율은
-평균 1.062이며 두 값의 cycle-level correlation은 \(r=0.996\)이다. 또한 104개 cycle 모두에서 가장
-느린 request의 response가 8,192-token limit에 도달했다. 따라서 synchronous generation phase는
-평균적인 request가 아니라 completion tail에 사실상 고정된다. 이 관측은 request completion과 GPU
-idle의 일대일 대응이나 \(1.64\times\) speedup의 가산적 성분 분해를 제공하지 않는다.
-
-## Appendix D. Secondary Diagnostics and Scope
-
-Main은 vanilla clipped PPO를 사용한다. 같은 StreamWeave stack에서 CISPO를 사용한 secondary arm의
-macro-average는 36.8로, main의 38.5보다 낮았다. 이 결과는 StreamWeave의 새로운 algorithmic component를
-주장하기 위한 ablation이 아니라, StreamWeave architecture의 base policy objective로 vanilla PPO를 선택한
-근거다. Learner-entry reference와 rollout correction을 분리한 decoupling도 main realization에 포함되지만,
-관찰된 regime에서는 correction weight가 1 근처에 집중되고 truncation이 거의 활성화되지 않아 핵심
-novelty나 성능 원인으로 해석하지 않는다.
 
 ![Work-normalized GPU energy](figures/execution_efficiency/outputs/execution_energy_candidate.png)
 
@@ -917,12 +1027,104 @@ telemetry를 여덟 GPU에 합산한 sample-based estimate다.*
 activity가 더 많은 prompt-group work로 이어진다는 본문의 해석과 일치하지만, node 전체 에너지나
 독립 전력계 측정, 또는 architecture만의 독립적인 에너지 절감 효과로 해석하지 않는다.
 
-§3.1의 endpoint 유도는 fixed complete group, admitted batch, learner-entry parameters, objective와
-reduction 아래에서 source-conditioned inputs가 의도한 policy 및 supervised contribution을 복원한다는
-주장이다. 전체 optimizer trajectory의 동등성, 임의 routing policy, 무제한 source mixture, 보편적
-convergence를 뜻하지 않는다. §3.2의 실행 결과 역시 한 backbone과 group-conditioned two-source RLVR
-instantiation에서의 end-to-end demonstration이다. 이 범위를 넘어서는 일반화보다, 필요한 dependency가
-어디에서 소비되고 어디에서 끝나는지를 명시한 decomposition이 본 연구의 주된 결과다.
+## Appendix D. Ablations and Proximal-Update Diagnostics
+
+### D.1 Ablating expert use and the proximal update rule
+
+Fully-asynchronous policy learning에서는 rollout을 생성한 behavior policy와 learner-entry policy 사이의
+staleness, 그리고 learner-entry policy에서 현재 policy까지의 optimization movement를 구분해야 한다.
+StreamWeave의 policy route는 AReaL식 Decoupled PPO를 사용해 policy token의 비율을
+
+$$
+\bar w_t
+=
+\min\!\left(
+C_w,
+\frac{\pi_{\mathrm{entry}}(a_t\mid s_t)}
+     {\pi_{\mathrm{behav}}(a_t\mid s_t)}
+\right),
+\qquad
+r_t(\theta)
+=
+\frac{\pi_\theta(a_t\mid s_t)}
+     {\pi_{\mathrm{entry}}(a_t\mid s_t)}
+$$
+
+로 분리한다. \(\bar w_t\)는 rollout-to-entry staleness를 보정하고, \(r_t\)에 적용되는 proximal rule은
+learner-entry 이후의 movement를 제한한다. Main과 CISPO-style variant는 같은 learner-entry
+reference와 token-level truncated correction \((C_w=2)\)을 사용한다. Main은 \(r_t\)에 PPO
+Clip-Higher와 dual-clip을 적용하는 반면, variant는 lower bound를 비활성화하고
+\(\operatorname{sg}[\min(r_t,1.28)]\)을 coefficient로 사용해 PPO clip 경계 밖의 active policy-token
+gradient도 유지한다. 이는 Decoupled PPO를 CISPO로 교체한 비교가 아니라, 공통 Decoupled-PPO
+factorization 안에서 proximal gate만 바꾼 비교다.
+
+HPT의 expert input은 stale behavior-policy rollout이 아니라 외부에서 주어진 target sequence다. 따라서
+두 realization 모두 expert row에는 rollout correction을 적용하지 않고, \(w=1\), self-detached
+\(r=1\)과 동일한 \(\beta\)-weighted supervised endpoint를 사용한다. 다만 all-failure 영역의 target을
+직접 학습하는 expert contribution은 shared policy에 강한 correction을 줄 수 있으므로, staleness를
+분리한 뒤에도 PPO proximal gate가 유효한 policy-row gradient를 지나치게 일찍 차단하는지 시험할
+동기가 된다.
+
+이 구조에서 Main을 기준으로 expert-input use와 proximal-update rule을 각각 한 축씩 통제한다. 모든
+score는 동일한 fixed-checkpoint evaluation protocol로 얻었다.
+
+| Variant | Expert input | Behavior correction | Proximal update rule | Math Avg. | Cross-domain Avg. |
+|---|---|---|---|---:|---:|
+| **StreamWeave Main** | On | Rollout-to-entry token TIS | PPO Clip-Higher / dual-clip | **38.5** | **41.2** |
+| Expert-off | Off | Rollout-to-entry token TIS | PPO Clip-Higher / dual-clip | 35.0 | 41.1 |
+| CISPO-style gate | On | Rollout-to-entry token TIS | Detached upper-capped coefficient | 36.8 | 38.9 |
+
+Main과 expert-off는 asynchronous stack, behavior correction과 proximal rule을 유지하고, all-failure
+outcome이 선택한 expert input의 소비 여부만 바꾼다. Expert input을 끄면 math 평균은 38.5에서
+35.0으로 낮아지는 반면 cross-domain 평균은 41.2와 41.1로 같은 aggregate 수준에 머문다. 이는 §4.2의
+학습 동역학과 matched longitudinal analysis가 보인 차이를 fixed-checkpoint 결과에서도 확인한다.
+
+Main과 CISPO-style gate의 비교는 expert routing·endpoint, rollout-to-entry correction과 asynchronous
+stack을 유지하고 learner-entry ratio의 proximal rule만 바꾼다. Gradient-preserving variant는 math
+36.8과 cross-domain 38.9로 PPO-gated Main보다 낮다. 이 tested regime에서는 PPO Clip-Higher가
+Decoupled PPO의 staleness correction과 중복되는 제약이라기보다 learner-side movement를 제한하는
+유효한 경계였다는 해석과 일치한다. 이는 original CISPO의 보편적 열위나 expert input이 policy
+movement를 증가시켰다는 인과효과를 뜻하지 않는다. 또한 표는 완전한 \(2\times2\) factorial design이
+아니며, fixed-checkpoint 차이를 동일 training horizon의 순수 효과나 두 축의 interaction·additivity로
+해석하지 않는다.
+
+### D.2 Queue freshness and proximal-update behavior
+
+Behavior-policy staleness와 learner-side movement를 구분하기 위해 먼저 CISPO-style proximal gate를
+유지한 채 completed-group queue budget을 768에서 384로 줄였다. 더 최신의 rollout을 공급하자 초기
+위험 구간의 peak rollout KL은 9.21에서 0.124로 낮아지고 ESS는 0.20에서 0.95--0.99로 회복됐다.
+Queue freshness는 초기 staleness amplification을 크게 완화했지만, 더 최신의 queue에서도 후반의 큰
+training-history 이탈은 남았다.
+
+| 검산 | 고정한 조건 | 개입 또는 대조 | 관측된 의미 |
+|---|---|---|---|
+| Queue freshness | CISPO-style proximal gate | Completed-group queue budget \(768\rightarrow384\) | 초기 rollout KL·ESS 악화를 크게 완화 |
+| Unchanged continuation | CISPO-style gate와 동일 설정 | 동일 checkpoint에서 설정 변경 없이 resume | 같은 유형의 후반 이탈이 다시 나타남 |
+| Robustness bundle | CISPO-style gate 계열 | 여러 stabilizer를 함께 적용 | 후반 이탈이 남음 |
+| PPO-gated Main | Final asynchronous stack과 behavior correction | Proximal gate를 PPO Clip-Higher로 변경 | 더 긴 관측 이력에서 대응하는 큰 event 없이 더 높은 fixed-checkpoint 품질 |
+
+이 비교 순서는 두 편차의 역할을 분리한다. Queue intervention은 behavior policy와 learner-entry policy
+사이의 초기 staleness를 줄인다. 그 뒤에도 CISPO-style history의 후반 이탈이 남고, 같은 final stack과
+behavior correction에서 PPO-gated Main은 더 안정적인 history와 높은 fixed-checkpoint 품질을 보인다.
+따라서 현재 증거는 이 regime에서 PPO-gated Decoupled PPO를 canonical realization으로 선택한 근거를
+제공한다. 다만 unchanged continuation은 독립 seed 반복이 아니고 robustness bundle은 여러 변경을
+포함한다. Final-stack expert-off+CISPO arm도 없으므로, 이 결과를 CISPO의 보편적 불안정성, 각
+stabilizer의 독립 효과 또는 HPT와 proximal gate 사이의 interaction으로 확대하지 않는다.
+
+Learner-entry reference와 rollout-to-entry correction은 두 proximal-gate realization이 공유한다.
+관찰된 Main에서는 upper-cap activation \(P(w_t>C_w)\)의 중앙값이 0.10\%이고 평균 correction
+weight가 0.954로, correction은 대부분 identity 근처에서 작동했다. 이는 해당 run에서 강한
+behavior-policy staleness가
+지속적으로 실현되지 않았다는 scope diagnostic이며, decoupling이 불필요하다는 ablation이나
+Main--variant 품질 차이의 원인은 아니다.
+
+**Scope.** §3.1의 endpoint 유도는 fixed complete group, admitted batch, learner-entry parameters,
+objective와 reduction 아래에서 source-conditioned inputs가 의도한 policy 및 supervised contribution을
+복원한다는 주장이다. 전체 optimizer trajectory의 동등성, 임의 routing policy, 무제한 source mixture,
+보편적 convergence를 뜻하지 않는다. §3.2의 실행 결과 역시 한 backbone과 group-outcome-based
+two-source RLVR instantiation에서의 end-to-end demonstration이다. 이 범위를 넘어서는 일반화보다,
+필요한 dependency가 어디에서 소비되고 어디에서 끝나는지를 명시한 decomposition이 본 연구의 주된
+결과다.
 
 ---
 
@@ -944,16 +1146,22 @@ instantiation에서의 end-to-end demonstration이다. 이 범위를 넘어서�
 
 | 항목 | Cold-start 기준 |
 |---|---|
-| **원고 상태** | Abstract부터 Conclusion까지 공개 한국어 원고의 중심 논증을 정렬했다. §3은 `queue 앞의 source decision → queue 뒤의 training-input construction → one primary update`로 잠겼고, Related Work, Introduction과 세 Contributions 및 Conclusion이 같은 composition thesis를 회수한다. English Abstract와 TL;DR도 동기화했다. 공개 원고 전문의 canonical vocabulary, 의미 중복과 Appendix handoff 최종 검사를 완료했다. 현재 작업은 provenance manifest와 Table 1 각주의 확정이며, 이후의 정확한 실행 순서는 `PAPER_PLAN.md`의 P0만 소유한다. |
-| **Canonical thesis** | Source decision에 필요한 complete-group waiting을 해당 group에 국소화하고, 확정된 source와 필요한 group context를 queue 뒤의 learner-ready input construction까지 보존하면, group-conditioned heterogeneous learning을 pipeline-wide execution barrier나 source별 engine 없이 fully asynchronous하게 실현할 수 있다. |
+| **원고 상태** | Abstract, Introduction, Related Work와 §3.1의 English v2 개정을 완료했다. 현재는 §3.1이 확립한 learning contract와 §3.2가 푸는 systems problem의 관계를 정확히 정렬하면서 §3.2의 opening과 산문을 정제하는 단계다. §4의 evidence order와 핵심 수치, 현행 Figure 1--3의 역할은 유지한다. 이후 작업 순서는 `PAPER_PLAN.md`의 현행 backlog를 따른다. |
+| **Canonical thesis** | Source decision에 필요한 complete-group waiting을 해당 group에 국소화하고, 확정된 source와 필요한 group context를 queue 뒤의 training-input construction까지 보존하면, group-conditioned heterogeneous learning의 의미를 유지하면서 pipeline-wide execution barrier나 source별 engine을 만들지 않을 수 있다. |
 | **소유하는 novelty** | Complete-group outcome이 정한 source를 learner-ready input과 one-path primary update로 닫는 learning composition, 그리고 source-decision waiting만 국소화하면서 source-fixed group을 기존 asynchronous stream의 queue와 core engines 사이에 연결하는 architecture. |
 | **독립 novelty가 아닌 것** | Fully-asynchronous RL, expert trajectory, HPT learning program, PPO·GRPO·IS·decoupling, unified estimator, accumulator·queue·self-detach 각각과 특정 framework의 batching 절차. |
-| **Canonical main** | `M5abl_nocispo`, W&B `oki4kv8u`: vanilla clipped PPO, learner-entry reference, token IS, 0/8 expert routing, constant $\beta=0.3$. CISPO는 Appendix의 rejected ablation이다. |
-| **잠긴 evidence** | Fixed-checkpoint evaluation 평균 38.5와 HPT (sync) 37.7, expert-off learning dynamics, expert input을 사용한 run에서 관찰된 generation workload 변화와 3.46$\times$ 높은 adjacent-version group 비율, 동일 8$\times$B200의 2.78→4.58 groups/s 및 1.64$\times$ prompt-group throughput. |
-| **보조 평가 상태** | ARC-Challenge, GPQA-Diamond, MMLU-Pro의 cross-domain reasoning 결과 수집과 §4.2 benchmark-level 표 반영을 완료했다. Async RL (expert-off)과 HPT (sync)는 각각 Table 1의 동일 모델에 대한 추가 평가이며, CISPO는 Appendix의 ablation으로 유지한다. |
+| **Canonical main** | `M5abl_nocispo`, W&B `oki4kv8u`: AReaL식 behavior/proximal 분리를 따르는 Decoupled PPO, learner-entry reference, token-level truncated IS, PPO Clip-Higher proximal gate, 0/8 expert routing, constant $\beta=0.3$. CISPO는 canonical method가 아니라 Appendix D가 소유하는 CISPO-style proximal-gate variant다. |
+| **잠긴 evidence** | Fixed-checkpoint evaluation 평균 38.5와 HPT (sync) 37.7, expert-off learning dynamics, 같은 stack의 CISPO variant 36.8, expert input을 사용한 run에서 관찰된 generation workload 변화와 3.46$\times$ 높은 adjacent-version group 비율, 동일 8$\times$B200의 2.78→4.58 groups/s 및 1.64$\times$ prompt-group throughput. |
+| **보조 평가 상태** | ARC-Challenge, GPQA-Diamond, MMLU-Pro의 cross-domain reasoning 결과 수집과 §4.2 benchmark-level 표 반영을 완료했다. Async RL (expert-off)과 HPT (sync)는 각각 Table 1의 동일 모델에 대한 추가 평가이며, CISPO와 관련 stability diagnostics는 Appendix D의 ablation 원장으로 분리한다. |
 | **통합 evidence 서사** | A는 all-failure 영역에 generation workload와 signal scarcity가 함께 집중됨을, C는 expert channel이 그 residual hard region에 후반까지 필요함을, E는 그 channel을 fully-asynchronous execution 안에 유지하면서 phase serialization과 completion-tail exposure를 회수함을 보인다. 셋은 별도 novelty가 아니라 하나의 architecture thesis를 닫는 증거다. |
 | **주장하지 않는 것** | LUFFY +0.8 headline, quality-versus-wall-clock, architecture-isolated speedup, `54.7%→3.25%` stall 감소, universal correctness·convergence·optimizer-trajectory equivalence. |
-| **현재 next** | Main/sync checkpoint, cross-domain 결과, grader·decoding config, evaluation seed와 raw result artifact를 provenance manifest에 연결하고 Table 1 각주를 확정한다. 이어서 그림·표 번호와 caption을 닫고 AAAI-27 LaTeX로 이관한다. 새로운 RL training은 필수 gate가 아니다. |
+| **현재 next** | §3.2의 systems-problem-first opening과 본문 흐름을 확정하고, Figure 1·Algorithm 1과의 중복을 점검한 뒤 English v2를 렌더한다. 이후 Method 전체와 contribution promise의 대응을 검토한다. 새로운 RL training은 필수 gate가 아니다. |
+
+**Figure retirement lock (2026-07-28).** 기존 timeline Figure 1은 source routing을 현행
+data-state figure와 중복하고, 그 중복을 제거하면 상속한 asynchronous scheduling만 남으므로
+공개 원고에서 제거했다. 현행 data-state figure가 새 Figure 1이며, local waiting과 slot reuse는
+Introduction·§3.2 산문과 Algorithm 1이 소유한다. Historical ledger의 과거 `KEEP Figure 1`
+판정은 이 결정을 덮어쓰지 않으며, 새롭고 비중복적인 claim 없이는 timeline을 복원하지 않는다.
 
 작업 중 충돌이 생기면 권한은 `공개 원고와 이 내부 메모 → PAPER_PLAN.md → evidence ledger →
 historical documents` 순서다. 코드가 문서와 다르면 구현 사실을 먼저 확인하되, 그 사실을 어떤 공개
@@ -979,7 +1187,7 @@ Introduction과 contribution의 회수, §4는 design ledger, §5는 positioning
 | **연구 문제** | 실행 시점의 자유와 학습 source의 자유를, 서로의 의미를 바꾸지 않고 함께 실현할 수 있는가? |
 | **핵심 통찰** | 비동기화는 학습 경계를 지우는 일이 아니다. 필요한 학습 의존성이 그것을 실제로 소비하는 연산을 넘어 pipeline 전체의 실행 제약으로 번지지 않게 하는 일이다. |
 | **우리의 방법** | StreamWeave는 queue 앞에서 complete group을 복원해 source를 확정하고, queue 뒤에서 source와 policy-side group context를 learner-ready input으로 변환한다. Generator는 독립 attempt를 생성하고 learner는 준비된 input에 하나의 primary objective를 적용한다. |
-| **구성적 근거** | §3.1은 source별 learner-ready input이 하나의 primary objective에서 의도한 policy·expert contribution으로 환원됨을 보이고, §3.2는 그 input을 pipeline-wide group barrier나 별도 source-specific engine 없이 구성하는 asynchronous realization을 제시한다. |
+| **구성적 근거** | §3.1은 source별 training input이 하나의 policy objective에서 의도한 policy·expert contribution으로 환원됨을 보여, asynchronous handoff가 보존해야 할 learning contract를 확립한다. §3.2는 이 contract를 제약으로 받아들이되, complete-group waiting을 source decision에 국소화하고 필요한 context만 input construction까지 운반하는 별도의 systems problem을 푼다. |
 | **실증과 범위** | Group-conditioned policy/expert learning을 사용하는 RLVR에서 선언한 learning composition, model quality, resource-matched execution efficiency를 함께 보인다. |
 
 **Canonical thesis, 핵심 철학과 novelty kernel:** 이 논문의 모든 positioning과 Method 판단은 다음
@@ -1029,7 +1237,7 @@ StreamWeave의 소유점은 이 두 의존성을 새로 발명했다는 데 있�
 |---|---|
 | **필드에 남길 판단** | 비동기성은 learning structure의 부재가 아니라, 국소적인 학습 의존성이 전역 실행 의존성으로 증식하지 않는 상태다. |
 | **StreamWeave thesis** | Source decision을 위한 cross-attempt dependency는 complete-group reconstruction에서 끝내고, source dependency는 learner-ready input construction에서 끝낼 수 있다. Policy-side group context는 source가 확정된 record 안에 보존되므로 queue 뒤의 converter가 다른 record를 기다리지 않고 relative signal을 구성한다. |
-| **구성적 실현** | Independent attempts, local group reconstruction, source-before-queue, source-fixed group record, trainer-side input conversion과 one-path update가 blocking과 source-specific control flow의 범위를 실제 architecture에서 제한한다. |
+| **StreamWeave architecture** | Independent attempts, local group reconstruction, source-before-queue, source-fixed group record와 trainer-side input conversion이 learning contract를 지키면서 blocking과 source-specific control flow의 범위를 실제 architecture에서 제한한다. |
 | **실증** | A는 결합된 compute--signal pressure를, C는 persistent expert channel의 학습 가치를, E는 국소화가 회수한 실행 payoff를 보이며, endpoint 유도와 fixed-checkpoint quality가 construction의 학습 측면을 닫는다. |
 
 | 피해야 할 잘못된 등치 | StreamWeave의 설계 판단 | 도출되는 architecture |
@@ -1044,11 +1252,11 @@ algorithm-system decomposition**에 있다. 이를 `minimal`, `optimal`, 유일�
 주장하지 않는다. 세 물리적 단위나 shared objective 자체도 novelty가 아니다. 이들은 complete-group
 dependency와 source dependency가 실제로 필요한 연산에서 끝난다는 상위 판단의 constructive witness다.
 
-이 위치에서 StreamWeave는 기존 async method와 expert-guided method의 단순한 교집합이 아니다. 두
-연구 방향이 만날 때 새로 생기는 learning–execution boundary를 정의하고 end-to-end로 닫는
-algorithm-system architecture다. Composition problem의 정식화, boundary와 barrier를 분리하는 설계
-판단, engine-preserving realization, 공동 실증은 서로 경쟁하는 별도 novelty가 아니라 이 하나의
-contribution을 완성하는 네 단계다.
+이 위치에서 StreamWeave는 두 연구 방향이 만날 때 생기는 learning--execution boundary를
+end-to-end로 닫는 algorithm-system architecture다. §3.1의 learning contract와 §3.2의 architecture는
+서로 무관한 병렬 부품도, 정의와 하위 구현의 관계도 아니다. 전자는 어떤 학습 의미를 보존해야 하는지
+확립하고, 후자는 그 제약 아래 complete-group waiting의 범위를 제한하는 독립적인 systems problem을
+푼다. 두 기여와 공동 실증은 하나의 composition thesis를 서로 다른 층위에서 완성한다.
 
 **향후 서술의 즉시 판정 규칙:** 새로운 문장, mechanism, figure element를 본문에 올리기 전에 아래 세
 질문에 답한다.
@@ -1097,8 +1305,9 @@ Learning-input specification은 보존할 composition을 압축하는 명세이�
 - **Claim before component list.** StreamWeave를 소개할 때 scheduler, accumulator, queue를 순서대로
   열거하지 않는다. 먼저 complete-group decision을 learner-ready input으로 변환하고 그 경계를
   global barrier로 만들지 않는다는 판단을 밝힌다. 이어서 이를 가능하게 하는 architecture의 핵심
-  동작을 설명한다. Abstract에는 §5의 전용 논증 법칙을 적용하고, Method의 논증 순서는 `§3.1
-  definition → §3.2 realization`으로 유지한다.
+  동작을 설명한다. Abstract에는 §5의 전용 논증 법칙을 적용한다. Method는 §3.1에서 보존할 learning
+  contract를 먼저 확립하고, §3.2에서 그 contract를 지키면서 complete-group waiting을 국소화하는
+  systems design을 제시한다. 이 논리적 연결을 숨기지 않되 §3.2를 §3.1의 구현 세부로 낮추지 않는다.
 - **Define and scope before abstracting.** `adaptive heterogeneous learning`, `source-selection rule`
   같은 포괄어를 정의 없이 사용하지 않는다. 먼저 policy-generated rollout, expert-provided trajectory,
   완성된 group의 결과가 학습 data를 정하는 **group-conditioned setting**을 설명한다. 이 조건을 모든
@@ -1179,19 +1388,20 @@ Learning-input specification은 보존할 composition을 압축하는 명세이�
 
 #### 2.1 공개 본문 개정 잠금
 
-현행 공개 원고는 §3의 architecture 주체 교정과 로그 분석을 마쳤다. §4.2의 A+C learning 서사와 §4.3의 E 서사 및
-선택된 figure composition까지 정리했다. §4.1과 세 결과 질문만 예고하는 §4 도입부도 갱신했으며,
-공개 본문·표·caption·learning figure의 핵심 용어를 canonical vocabulary에 맞춰 정렬했다. Problem
-framing, Related Work와 §3--§4의 중심 논증을 다시 열지 않는다. 이후의 구체적인 실행 순서와 진행
-상태는 `PAPER_PLAN.md`의 P0만 소유한다.
+현행 공개 원고는 §4.2의 A+C learning 서사와 §4.3의 E 서사 및 선택된 figure composition을
+정리했다. §3의 core dataflow와 수식은 안정적이며, English v2에서는 §3.1의 learning contract와
+§3.2의 systems problem 사이의 관계를 정제하고 있다. 이 작업은 중심 설계나 evidence order를 다시
+여는 일이 아니라, architecture를 하위 구현으로 낮추거나 두 절을 무관한 병렬 부품으로 만드는
+표현을 제거하는 국소 Method refinement다. 이후의 구체적인 실행 순서와 진행 상태는
+`PAPER_PLAN.md`의 현행 backlog를 따른다.
 
 | 분류 | 잠긴 결정 |
 |---|---|
 | **구조 동결** | Related Work의 두 계보와 §3의 `Learning Composition → Fully-Asynchronous Execution` 구조, complete-group selector와 one-path primary-update 유도, learning-decision boundary와 execution barrier의 분리 |
 | **완료된 본문 통합** | §4.2에서 A의 compute--signal concentration, C의 persistent expert channel과 matched repeat-prompt 해석을 하나의 learning finding으로 연결하고, Appendix C.3이 matching·전체 strata·uncertainty·process diagnostics를 소유하도록 정렬. §4.3은 expert-supervised run의 generation-side workload 변화와 completion-tail pressure를 GPU activity·prompt-group throughput으로 회수하며, Appendix C.4--C.5가 telemetry scope·route별 version span과 paired completion-tail timing을 소유하도록 연결. `verl` fixed-grain alignment와 carryover는 공개 원고에서 제외 |
 | **완료된 도입부와 용어 정렬** | §4 도입부는 완료된 §4.1--§4.3이 실제로 답하는 세 질문만 예고하며 결과나 재현 세부를 선행 반복하지 않음. 공개 원고는 `Async RL (expert-off)`, `HPT (sync)`, `training input`, `one primary update`, `policy objective`, `same averaging rule`, `fully-asynchronous execution`, `generation workload`, `prompt-group throughput`을 일관되게 사용 |
-| **Method 잠금** | §3 도입부·§3.1·§3.2와 Algorithm 1을 `queue 앞의 source decision → queue 뒤의 training-input construction → one-path update`로 정렬했다. Generator와 learner는 각각 generation과 준비된 input의 update를 담당한다. |
-| **후속 정렬** | Introduction·Contributions·Conclusion과 Abstract의 상위 서사를 정렬하고 공개 원고 전문의 용어·중복·Appendix handoff 검사를 완료했다. 두 실증 그림의 렌더·시각적 QA도 완료했다. Provenance와 Table 1 각주를 확정한 뒤 최종 그림 번호와 배치를 LaTeX 이관에서 닫는다. 정확한 순서는 `PAPER_PLAN.md`의 P0를 따른다. |
+| **Method 상태** | §3의 수식, `queue 앞의 source decision → queue 뒤의 training-input construction → one primary update` dataflow와 Algorithm 1의 control flow는 유지한다. §3.1은 learning contract를 확립하고 §3.2는 그 제약 아래 waiting을 국소화하는 systems problem을 푼다는 관계를 English v2에서 정제 중이다. |
+| **후속 정렬** | Introduction·Contributions·Related Work와 Abstract의 상위 서사를 English v2에 반영했다. 현재 §3.2를 닫은 뒤 Method 전체, Figure 1·Algorithm 1과 contribution promise의 대응을 검토하고 PDF를 다시 렌더한다. |
 | **Related Work 본문 정렬 완료** | Laminar를 fully-asynchronous 계보 안에 담백하게 배치하고, 마지막 문단에서 source가 확정된 training record의 필요성을 회수했다. Accepted-conference citation metadata의 최종 closure만 남음 |
 
 개정의 성공 기준은 문장 수가 아니라 reviewer classification이다. 첫 독자가 StreamWeave를 새로운
@@ -1203,8 +1413,8 @@ learner-ready input까지 운반해 하나의 update에서 소비하고, 그 dec
 ### 3. Introduction 서사와 기여 회수
 
 아래 표는 논문 헌법을 세 개의 공개 contribution으로 투영한다. Learning composition은 무엇을
-보존해야 하는지를, execution architecture는 그 조건을 full asynchrony 아래에서 어떻게 실현하는지를,
-공동 실측은 두 목표가 실제로 함께 달성되었는지를 담당한다.
+보존해야 하는지를 확립하고, execution architecture는 그 제약 아래 complete-group waiting의 범위를
+제한하는 별도의 systems problem을 푼다. 공동 실측은 두 목표가 실제로 함께 달성되었는지를 담당한다.
 
 | 기여 축 | 핵심 주장 | 본문 회수 | 주된 evidence |
 |---|---|---|---|
@@ -1214,8 +1424,9 @@ learner-ready input까지 운반해 하나의 update에서 소비하고, 그 dec
 
 Learning-input specification은 독립 기여나 정리가 아니라 기여 1의 learning composition을 압축하는 명세다.
 §3.1은 source별 learner-ready inputs가 같은 objective와 averaging rule에서 의도한 두 endpoint로 환원됨을
-보이고, §3.2는 그 구성을 serialized group barrier 없이 실현한다. Unit·contract test는 implementation
-QA로만 남긴다. 공개 핵심 약속은 `preserve the intended learning composition without turning its
+보여 learning contract를 확립한다. §3.2는 이 contract를 지키면서 complete-group waiting을 source
+decision에 국소화한다. Unit·contract test는 implementation QA로만 남긴다. 공개 핵심 약속은
+`preserve the intended learning composition without turning its
 boundaries into execution barriers`로 고정하고, 최적성을 요구하는 `maximize` 대신 `retain`, `realize`,
 `without giving back`을 사용한다.
 Headline은 quality SOTA가 아니라, 필요한 학습 결합을 보존하면서 그 결합이 pipeline 전체의 실행
@@ -1388,7 +1599,7 @@ TL;DR은 위 논증을 다시 요약하지 않는다. **연구 객체, 소유하
 | **Method: Learning Composition** | HPT learning-program attribution과 정확한 routing rule, source별 training input, one primary objective와 같은 averaging rule, 두 learning role의 좁은 구성적 유도 |
 | **Method: Execution Architecture** | Trajectory-level execution 안의 prompt별 group reconstruction, source-before-queue, source-fixed record와 trainer-side conversion; queue와 flow control은 end-to-end realization으로만 언급 |
 | **Experiments** | Row별 평가 protocol의 출처를 명시한 fixed-checkpoint quality, expert-off 대비 generation workload 변화, end-to-end throughput, 정의가 분리된 execution breakdown, 학습 동역학 해석 |
-| **Appendix** | One-path learning composition의 exact singleton·pseudo-reward·self-detach 구성과 전체 미분, `seq-mean-token-sum-norm`의 식과 선택 이유, route별 version-span·completeness·partial-rollout 회계, queue configuration과 보조 분석 |
+| **Appendix** | One-path learning composition의 exact singleton·pseudo-reward·self-detach 구성과 전체 미분, `seq-mean-token-sum-norm`의 식과 선택 이유, route별 version-span·completeness·partial-rollout 회계, queue configuration, controlled learning variants와 stability·realization-scope 진단 |
 
 Aliasing lemma, n-source 일반화, necessity/sufficiency/selectivity 서사, CISPO·decoupling의 부정
 결과는 Introduction과 공개 contribution에서 제외한다.
@@ -1401,14 +1612,21 @@ headline에 사용할 수 없는 결과, `APPENDIX`는 본문 논증을 보조�
 
 | Claim | Status | Source | Public home | 허용 문구 | Caveat |
 |---|---|---|---|---|---|
-| **Fixed-checkpoint quality** | `LOCKED` | §6.1의 반올림 전 score 원장과 고정 checkpoint 평가 | Table 1, Abstract, Introduction | 비교한 방법 중 평균 38.5의 경쟁력 있는 품질; 같은 group-success selector를 사용하는 synchronous HPT quality reference는 37.7 | `\dagger` 외부 인용 행은 동일 protocol ranking의 근거에서 제외. 정확한 checkpoint와 raw evaluation artifact ID는 Table 1 확정 전에 provenance manifest에 등록 |
-| **Cross-domain reasoning robustness** | `RESULTS COMPLETE; PUBLIC TABLE INTEGRATED` | Table 1과 동일한 StreamWeave·Async RL·HPT(sync) 모델 및 외부 비교군의 ARC-Challenge, GPQA-Diamond, MMLU-Pro fixed-checkpoint evaluation; §8.6의 10-row result table | §4.2의 benchmark-level result table; CISPO는 Appendix | StreamWeave는 cross-domain 평균 41.2로 Async RL과 same-selector HPT(sync)의 41.1과 같은 aggregate 수준을 보인다. 허용되는 중심 해석은 policy-generated learning의 broader reasoning 수준을 유지하면서 추가 학습 이득이 residual math-hard region에 집중되고, full asynchrony에서도 same-selector synchronous quality reference의 수준을 유지했다는 것 | 공개 명칭은 formal `OOD`가 아니라 `cross-domain reasoning`으로 제한. `0.1` point를 우위·통계적 동등성으로 부르지 않음. 반올림 전 원장과 checkpoint·grader·decoding provenance는 Appendix·submission 정합 작업이며 §4.2 집필 gate가 아님. Per-cell `tr`은 내부 진단으로만 유지 |
+| **Fixed-checkpoint quality** | `LOCKED` | §6.1의 반올림 전 score 원장과 고정 checkpoint 평가 | §4.1은 Table 1의 모든 checkpoint를 같은 sampling configuration, Math-Verify grader와 rounding으로 직접 평가했음을 명시하고, SRFT·ReLIFT·Oat-Zero·LUFFY에는 각 연구가 공개한 공식 checkpoint를 사용했음을 밝힌다. Table 1·Abstract·Introduction이 결과를 회수 | 비교한 방법 중 평균 38.5의 경쟁력 있는 품질; 같은 group-success selector를 사용하는 synchronous HPT quality reference는 37.7 | 직접 평가한 각 행의 정확한 checkpoint와 raw evaluation artifact ID는 Table 1 확정 전에 provenance manifest에 등록 |
+| **Cross-domain reasoning robustness** | `RESULTS COMPLETE; PUBLIC TABLE INTEGRATED` | Table 1과 동일한 StreamWeave·Async RL·HPT(sync) 모델 및 외부 비교군의 ARC-Challenge, GPQA-Diamond, MMLU-Pro fixed-checkpoint evaluation; §8.6의 12-row result table | §4.2의 benchmark-level result table; CISPO는 Appendix D.1 | StreamWeave는 cross-domain 평균 41.2로 Async RL과 same-selector HPT(sync)의 41.1과 같은 aggregate 수준을 보인다. 허용되는 중심 해석은 policy-generated learning의 broader reasoning 수준을 유지하면서 추가 학습 이득이 residual math-hard region에 집중되고, full asynchrony에서도 same-selector synchronous quality reference의 수준을 유지했다는 것 | 공개 명칭은 formal `OOD`가 아니라 `cross-domain reasoning`으로 제한. `0.1` point를 우위·통계적 동등성으로 부르지 않음. 반올림 전 원장과 checkpoint·grader·decoding provenance는 Appendix·submission 정합 작업이며 §4.2 집필 gate가 아님. Per-cell `tr`은 내부 진단으로만 유지 |
+| **Expert-input ablation** | `LOCKED; MAIN RESULT, APPENDIX D SUMMARY` | Main `oki4kv8u`와 expert-off `qzsnwc08`: 같은 asynchronous stack에서 source threshold sentinel만 바꾸어 expert input을 봉인 | §4.2의 Table 1·learning dynamics·matched process analysis가 결과를 소유하고, Appendix D.1은 controlled-variant 표에서 비교 축만 요약 | Expert input을 사용하는 main은 math 평균 38.5, expert-off는 35.0이며, 차이는 후반 dynamics와 repeat-prompt comparison에서도 같은 방향이다 | 단일 training seed의 controlled run이다. 보편적 collapse prevention이나 개별 prompt rescue의 인과효과로 확대하지 않고, Appendix D에서 §4.2·C.3의 분석을 중복 전개하지 않음 |
+| **Proximal-update rule ablation** | `LOCKED SCORES; PUBLIC APPENDIX D INTEGRATED; FINAL PROVENANCE PENDING` | Main `oki4kv8u`와 CISPO-style arm `f5ugxklh`: AReaL식 Decoupled PPO의 learner-entry reference, rollout-to-entry token correction, expert routing·endpoint와 asynchronous stack을 고정하고, learner-entry ratio $r$의 gate만 PPO Clip-Higher/dual-clip에서 detached upper-capped CISPO-style coefficient rule로 교체 | §4.2에는 대표 fixed-checkpoint 차이 한 문장까지 허용하고 Appendix D.1이 math·cross-domain 결과와 정확한 변경 축을 소유 | 같은 evaluation protocol에서 PPO-gated main은 math 38.5·cross-domain 41.2, gradient-preserving proximal-gate variant는 36.8·38.9다. 이 tested regime에서 PPO-gated Decoupled PPO를 canonical realization으로 선택한 근거 | 독립적인 `PPO 대 CISPO` 비교나 original CISPO의 완전한 재현이 아니다. 공통 behavior-correction $w$는 유지되고 proximal gate $g(r)$만 바뀐다. CISPO의 보편적 열위, HPT가 실제 policy movement를 키웠다는 인과효과, CISPO instability가 HPT 때문에 발생했다는 interaction을 주장하지 않음 |
+| **Queue-freshness intervention** | `DERIVED; PUBLIC APPENDIX D INTEGRATED; FINAL QA PENDING` | CISPO-style proximal gate를 공유하는 M4→M5의 completed-group queue budget `768→384`와 process histories | Appendix D.2의 첫 비교 | 같은 proximal-update rule에서 queue를 더 최신 상태로 유지하자 초기 위험 구간의 peak rollout KL이 `9.21→0.124`로 낮아지고 ESS가 `0.20→0.95--0.99`로 회복됐다. Freshness는 초기 behavior-policy lag amplification을 크게 완화했다 | 이 비교는 queue freshness의 초기 효과를 진단하며, 이것만으로 후반 instability의 제거 또는 proximal gate의 효과를 주장하지 않음 |
+| **Proximal-gate stability triangulation** | `DERIVED; PUBLIC APPENDIX D INTEGRATED; FINAL QA PENDING` | CISPO-style arm `f5ugxklh`, unchanged resume `2hz6tp01`, multi-delta stabilized variant `4wl3f5do`, PPO-gated main `oki4kv8u`의 W&B histories와 as-run configs | Appendix D.2. 최종 provenance와 공통 event criterion이 닫힌 뒤 §4.2 handoff 확장을 검토 | 이 tested regime에서 CISPO-style proximal-gate run의 후반 불안정성은 unchanged resume에서 재현되고 separately stabilized variant에서도 해소되지 않았으며, PPO-gated main은 같은 final stack에서 대응하는 큰 event 없이 더 긴 이력을 유지했다 | M5R은 fresh seed replication이 아니라 unchanged resume이고, M7은 여러 delta가 함께 바뀐 robustness check다. `CISPO가 collapse를 보편적으로 유발한다`거나 HPT와의 interaction이 식별됐다고 쓰지 않음 |
+| **Decoupled behavior-correction scope** | `APPENDIX D` | Main의 rollout-correction history: $P(w>C_w=2)$ 중앙값 0.10%, 평균 $w=0.954$와 truncation activation | Appendix D.2의 closing scope note | Learner-entry proximal reference와 rollout-to-entry correction은 Main과 CISPO-style variant가 공유하는 Decoupled-PPO 기반이며, 관찰된 regime에서는 $w$가 대부분 identity 근처에서 작동했다 | Decoupling이 불필요하거나 효과가 없다는 ablation이 아니다. 이 run에서 강한 behavior-policy staleness stress가 실현되지 않았다는 scope diagnostic이며 Main–variant 품질 차이의 원인으로 사용하지 않음 |
+| **Source-decision invariant audit** | `INTERNAL EVIDENCE RESERVE` | M′ pre-fix/post-fix 500-group replay와 `rm_scores[-1]→sum(-1)` 수정, 회귀·통합 테스트 | 현 공개 Appendix D에는 넣지 않음. Exact asset이 복원되고 지면상 필요할 때만 별도 implementation audit로 재검토 | Complete-group source decision은 terminal reward의 tensor 위치나 right padding에 의존해서는 안 된다. 해당 replay에서는 policy-routed group 비율이 0에서 23.6%로 복구됐다 | 성능 ablation이나 M′ 전체 학습 개선으로 부르지 않음. 23.6%는 500-group implementation audit의 routing 복구율이며, 공개하려면 수정 전후 commit·replay artifact·집계 script를 연결해야 함 |
+| **Historical D0--M bundle** | `INTERNAL; OPTIONAL HISTORICAL NOTE` | 같은 pre-fix routing generation의 D0 `gvqi3cgq`와 M `uvbi7wq3`; `Ablation_RL.md` §13--14와 `Improvement_RL.md` §5.9 | 기본적으로 공개하지 않으며, 초기 failure-mode의 역사적 맥락이 꼭 필요할 때만 Appendix D 말미의 짧은 note로 검토 | 내부적으로 matched policy-version 부근에서 truncation-dominated group이 D0 약 42%, M 약 82%로 관찰되어 C1+C2 bundle이 기존 failure mode를 제거하지 못했음을 보여준다 | D0→M은 decoupling과 CISPO뿐 아니라 세대·설정 차이가 얽힌 bundle이며 단일요인 ablation이 아니다. 내부 permissive validation 34.04/33.76은 최종 fixed protocol이 아니므로 공개 성능 표에 사용하지 않음. 현 migration bundle은 D0·M·M′·M7 checkpoint 전체를 보존하지 않으므로 asset recovery가 제출 gate가 아님 |
 | **LUFFY 대비 +0.8 points** | `PENDING` | Main 38.4910, LUFFY 37.6678의 문항별 결과 | Experiments 본문만 | Paired uncertainty analysis가 닫힌 뒤 제한적으로 해석 | Abstract·Introduction headline 금지 |
 | **Compute--signal concentration** | `DERIVED; 본문 반영 승인` | Main generator census: 126,465 complete groups와 pre-routing response-token count | §4.2가 전체 census를 소유. Introduction에는 concentration을 보이는 **압축 수치 하나**까지 허용한다(예: group 점유율 대 token 점유율). Rollout 길이, 완료 편차, route별 분해는 §4.2에 둔다 | All-failure group은 22.38%지만 response tokens의 26.83%를 차지하고 any-success group보다 평균 27.2% 더 길다. Signal scarcity와 generation burden이 같은 어려운 영역에 집중되는 경향 | Response tokens를 FLOPs·GPU-hours·wall time 또는 waste로 부르지 않음. Proposal C의 86,174 learner-consumed groups와 모집단을 합치지 않음. Repository manifest와 재생성 script를 공개 asset 확정 전에 등록 |
 | **All-failure generation-time spread** | `DERIVED; 본문 보조 승인` | 같은 generator census의 group별 per-attempt `generation_time` range | §4.2에서 §4.3으로 넘어가는 한 문장; exact 값은 Appendix | All-failure group은 any-success group보다 같은 group 내 generation-time range가 약 `1.4x` 크다. Expert source가 필요한 영역에 generation burden과 completion-tail pressure가 함께 집중되는 경향 | Async generator trace의 duration spread이며 synchronous GPU idle, phase wall time 또는 `1.64x`의 독립적인 speedup 성분으로 해석하지 않음 |
 | **Persistent expert channel** | `DERIVED; 본문 반영 승인` | Main `oki4kv8u`와 expert-off `qzsnwc08`의 routing history, prompt-aligned validation panel과 matched generator census | §4.2 figure와 본문 | Expert routing은 후반에도 약 20%로 유지되고, 초반에는 유사하던 quality와 held-out all-failure rate가 후반에 함께 분리된다. Expert supervision은 cold-start-only가 아니라 residual hard region에 지속되는 channel이라는 해석과 일치 | `mechanism-consistent longitudinal evidence`로 한정. 개별 prompt rescue, 평균 인과효과, 보편적 수렴 우위, multi-seed uncertainty로 확대하지 않음 |
-| **Matched process census and repeat-prompt dynamics** | `DERIVED; PUBLIC INTERPRETATION INTEGRATED; DETAILS IN APPENDIX C.3` | Main과 expert-off의 generator census: 동일한 45,764개 prompt, 동일 source composition과 expert-trajectory availability, initial-\(k\)-matched repeat encounters | §4.2의 핵심 수치와 해석; exact accounting·stratified table·uncertainty는 Appendix C.3. **지지하는 기여는 3이다.** 기여 1의 구성적 주장에 대한 증거로 사용하지 않는다 — 이 관측은 expert supervision이 무슨 일을 하는지에 대한 것이고, 기여 1에 배정하면 selector 계열 선행연구의 기여로 읽힌다 | 같은 prompt를 다시 만났을 때 StreamWeave의 후속 결과는 모든 initial-\(k\) strata에서 expert-off보다 높고, 차이는 expert가 직접 선택되는 \(k=0\)에 국한되지 않고 partial-success region에서 더 크다. Selective expert contribution이 같은 policy update를 통해 broader learning과 retention으로 이어졌다는 해석을 지지 | Prompt-level matched longitudinal evidence이지 randomized treatment effect가 아님. \(k=0\) 차이를 expert의 순수 인과효과로 부르거나, 결과를 local prompt rescue·보편적 collapse prevention·training-seed uncertainty로 확대하지 않음. **또한 이 관측은 one-path primary update와 별도 learner path를 구별하지 않는다** — 별도 path도 같은 parameter를 갱신하므로 동일한 전파를 예측한다. 구별되는 것은 `국소 교정 대 policy 수준 기여`이며, §4의 architecture 중립 규정(`별도 RL/SFT learner가 모든 경우에 수학적으로 틀렸다고 주장하지 않는다`)과 정합하게 사용한다 |
-| **Resource-matched execution efficiency** | `LOCKED` | W&B full history: sync `v96fvd0p` 13,312 groups / 4,780.2 s, main `oki4kv8u` 86,174 groups / 18,828.4 s | Abstract, Introduction, Execution Efficiency; exact hardware는 Appendix | Abstract·Introduction은 synchronous implementation 대비 `1.64×`와 128 groups `46→28초`만 사용. Execution Efficiency는 `2.78→4.58 groups/s`와 함께, speedup을 generation--training overlap과 complete-group tail idle에서의 유효 rollout-capacity 회수라는 두 연결된 효과로 해석한다. 본문은 이 해석이 overlap만으로 닫히지 않음을 **이미 본문에 있는 두 측정치의 병치**로 보인다: 동기식은 8개 GPU로 generation만 `25.1초`, StreamWeave는 generation에 6개 GPU를 배정하고 generation과 model training을 합쳐 `28.0초`. 새 비율이나 단위를 도입하지 않고 부등식만 남긴다. Appendix는 `0.637→0.763 groups/(GPU·s)`, same-rate counterfactual `33.5초`, 보수적 하한 `1.12×`와 비교 가능성의 단서로 이 해석을 닫는다 | Throughput은 `∑groups / ∑time`의 work-weighted aggregate다. `46→28초`와 resource-normalized rate는 같은 실행 결과에서 유도한 해석이며 독립 speedup이 아니다. Exact 20\%를 barrier 제거의 인과 효과로 분해하거나 token-normalized architecture speedup으로 부르지 않는다. Sync generation share `54.7%`와 async learner-side acquisition·assembly share `3.25%`를 하나의 stall 감소율로 합치지 않는다. exact `8×B200`와 topology는 Appendix에서만 명시하고, 기존 CISPO run의 `1.54×`와 섞지 않는다 |
+| **Matched process census and repeat-prompt dynamics** | `DERIVED; PUBLIC INTERPRETATION INTEGRATED; DETAILS IN APPENDIX C.3` | Main과 expert-off의 generator census: 동일한 45,764개 prompt, 동일 source composition과 expert-trajectory availability, initial-\(k\)-matched repeat encounters | §4.2는 weighted mean `+0.169`, 모든 strata의 같은 방향과 third-encounter `+0.159`를 대표 수치로 소유한다. Exact accounting·stratified table·standard error는 Appendix C.3이 소유한다. **지지하는 기여는 3이다.** 기여 1의 구성적 주장에 대한 증거로 사용하지 않는다 — 이 관측은 expert supervision이 무슨 일을 하는지에 대한 것이고, 기여 1에 배정하면 selector 계열 선행연구의 기여로 읽힌다 | 같은 prompt를 다시 만났을 때 StreamWeave의 후속 결과는 모든 initial-\(k\) strata에서 expert-off보다 높고, 차이는 expert가 직접 선택되는 \(k=0\)에 국한되지 않고 partial-success region에서 더 크다. Selective expert contribution이 같은 policy update를 통해 broader learning과 retention으로 이어졌다는 해석을 지지 | Prompt-level matched longitudinal evidence이지 randomized treatment effect가 아님. \(k=0\) 차이를 expert의 순수 인과효과로 부르거나, 결과를 local prompt rescue·보편적 collapse prevention·training-seed uncertainty로 확대하지 않음. **또한 이 관측은 one-path primary update와 별도 learner path를 구별하지 않는다** — 별도 path도 같은 parameter를 갱신하므로 동일한 전파를 예측한다. 구별되는 것은 `국소 교정 대 policy 수준 기여`이며, §4의 architecture 중립 규정(`별도 RL/SFT learner가 모든 경우에 수학적으로 틀렸다고 주장하지 않는다`)과 정합하게 사용한다 |
+| **Resource-matched execution efficiency** | `LOCKED` | W&B full history: sync `v96fvd0p` 13,312 groups / 4,780.2 s, main `oki4kv8u` 86,174 groups / 18,828.4 s | Abstract, Introduction, Execution Efficiency; exact hardware는 Appendix | Abstract·Introduction은 synchronous implementation 대비 `1.64×`와 128 groups `46→28초`만 사용. Execution Efficiency는 `2.78→4.58 groups/s`와 함께, speedup을 generation--training overlap과 complete-group tail idle에서의 유효 rollout-capacity 회수라는 두 연결된 효과로 해석한다. 본문은 이 해석이 overlap만으로 닫히지 않음을 **이미 본문에 있는 두 측정치의 병치**로 보인다: 동기식은 8개 GPU로 generation만 `25.1초`, StreamWeave는 generation에 6개 GPU를 배정하고 generation과 model training을 합쳐 `28.0초`. 새 비율이나 단위를 도입하지 않고 부등식만 남긴다. Appendix C.5.3은 `0.637→0.763 groups/(GPU·s)`, same-rate counterfactual `33.5초`, 보수적 하한 `1.12×`와 비교 가능성의 단서로 이 해석을 닫는다 | Throughput은 `∑groups / ∑time`의 work-weighted aggregate다. `46→28초`와 resource-normalized rate는 같은 실행 결과에서 유도한 해석이며 독립 speedup이 아니다. Exact 20\%를 barrier 제거의 인과 효과로 분해하지 않는다. Token 기준 재집계는 트레이너 소비 response token 기준 `1.302×`로 함께 제시하되(C.5.2, 하한 `1.20×`), response length가 각 학습 방법이 만든 결과이므로 어느 work unit도 architecture만의 효과를 분리하지 않는다. 따라서 `architecture-isolated speedup`으로 부르지 않는다. Sync generation share `54.7%`와 async learner-side acquisition·assembly share `3.25%`를 하나의 stall 감소율로 합치지 않는다. exact `8×B200`와 topology는 Appendix에서만 명시하고, 기존 CISPO run의 `1.54×`와 섞지 않는다 |
 | **Concurrent GPU activity distribution** | `LOCKED` | 같은 두 run의 15초 W&B system telemetry; validation cycle을 제외한 94 sync cycles/287 rows와 152 StreamWeave cycles/974 rows | §4.3 통합 효율성 그림 | 20% SM-active 기준으로 아무 GPU도 threshold를 넘지 않은 interval은 `27.9%→4.7%`, 평균 active GPU 수는 `5.40→6.92`; StreamWeave는 전역적으로 낮은 activity를 줄이고 더 많은 GPU에서 concurrent work를 유지한다 | 10–50% threshold와 first-cycle exclusion에서도 방향이 유지됨. Telemetry row는 독립 실험 반복이 아니며 `zero active`를 idle, stall, 0% utilization로 바꾸어 부르지 않음. `1.64×`의 가산적·인과적 분해로 사용하지 않음 |
 | **Expert-supervised workload and policy-refresh continuation** | `DERIVED; PUBLIC INTERACTION EVIDENCE INTEGRATED` | Main과 expert-off generator census의 pre-routing response length, group별 최장 generation time, attempt-level `min_global_steps`·`max_global_steps`, partial-rollout 구현 경로 | §4.3의 통합 Table 2와 해석; exact route breakdown·absolute count·completeness는 Appendix | 같은 asynchronous stack에서 expert input을 사용한 run은 expert-off보다 response가 1.59$\times$, group별 최장 rollout이 1.94$\times$ 길고, 인접한 두 policy version의 rollout을 포함한 group 비율이 3.46$\times$ 높다. 이 비율은 최종적으로 expert source가 선택되는 all-failure group에서 가장 높다. **Group-relative 학습은 group 구성원이 비교 가능하다는 것을 전제하지만, trajectory 단위 독립 실행은 그것을 보장하지 않는다.** 이 측정이 그 조건이 실제로 발생함을 보이며, 따라서 §4 상속 표의 `Prompt-단위 group identity`가 부기가 아니라 요건임을 지지한다. StreamWeave는 generation state, group identity와 rollout-policy 정보를 복원 시점까지 보존해 version이 섞인 group에서도 row별 correction이 정의되게 하고, complete group을 같은 source-decision 경로로 연결한다 | Run-level matched comparison에서 관찰된 workload 변화이며 expert supervision의 보편적 causal effect로 확대하지 않음. Version span은 낮은 success의 원인이나 독립 speedup이 아니고, partial continuation 자체도 StreamWeave의 고유 primitive가 아니다. Same-version-only discard 반사실과 IS·KL 기반 `objective distortion 감소` 주장은 본문에서 사용하지 않음 |
 | **Shared loss averaging** | `LOCKED; APPENDIX A.3` | Main config와 `core_algos.py::agg_loss`: `seq-mean-token-sum-norm`, $L_{\max}=8192$ | §3.1은 같은 averaging rule만 명시하고 Appendix A.3이 정확한 식과 선택 이유를 소유 | 각 sequence의 token loss를 합산해 고정 $L_{\max}$로 나눈 뒤 sequence 차원에서 평균한다. 실제 response length나 source별 denominator를 사용하지 않으며 expert strength는 $\beta$가 명시적으로 정한다 | 두 source의 gradient 크기나 prompt별 총기여가 같다는 뜻이 아니다. Effective mixture는 routing, sequence 수, token volume과 $\beta$가 함께 결정 |
@@ -1429,10 +1647,17 @@ counterfactual은 조기 판정이 설계 대안으로 존재하지 않으므로
 | 위치 | 소유하는 내용 | 금지되는 확장 |
 |---|---|---|
 | **§4.3 Table 2와 본문** | Expert-off 대비 response length `1.59x`, group별 최장 rollout `1.94x`, adjacent-version group `3.46x`; all-failure route의 `10.0%`; synchronous 대비 `46→28초`와 `1.64x`; generation phase가 slowest request에 사실상 고정된다는 해석 | Table 2에 MFU, queue depth, blocking이나 framework-specific learner accounting을 추가하지 않음. 다섯 지표를 exact speedup decomposition이나 하나의 causal chain으로 합치지 않음 |
-| **Appendix C.4--C.5 execution evidence** | `PUBLIC INTEGRATED`: telemetry population과 threshold sensitivity; total/complete census population과 route별 version-span breakdown; paired synchronous request/phase timing | `idle_ratio`를 idle로 부르지 않고 version span을 낮은 success의 원인이나 독립 speedup으로 해석하지 않음 |
-| **Internal-only diagnostics** | Local/global multiplier 비교, 전체 correlation audit, M5/CISPO starvation chronology, pseudo-batch max/mean 재집계, W&B와 census coverage 차이의 원인 추적 | 본문·Appendix의 독립 headline이나 새로운 기여로 승격하지 않음 |
+| **Appendix C.4 group completion tail** | `PUBLIC INTEGRATED`: slot-pinning 반사실과 per-version occupancy 비교(C.4.1); paired synchronous request/phase timing(C.4.2); total/complete census population과 route별 version-span breakdown(C.4.3) | Pinning 반사실을 `불가능했다`로 쓰지 않는다. Group-pinned 규율도 총량으로는 admission budget의 `65.3%`에 머물기 때문이다. Version span을 낮은 success의 원인이나 독립 speedup으로 해석하지 않는다 |
+| **Appendix C.5 throughput and its sources** | `PUBLIC INTEGRATED`: work unit·estimator·equal-work 검사(C.5.1); token 기준 재집계(C.5.2); generation-rate 잔차(C.5.3); telemetry population·threshold sensitivity와 energy accounting(C.5.4) | `idle_ratio`를 idle로 부르지 않는다. 계측기가 유휴 시간을 재는 것이고 그 원인을 backpressure로 귀속하지 않기 때문이다 |
+| **Internal-only diagnostics** | Local/global multiplier 비교, 전체 correlation audit, M5·M5R·M7의 absolute-step chronology와 low-level crash timeline, pseudo-batch max/mean 재집계, W&B와 census coverage 차이의 원인 추적 | 본문·Appendix의 독립 headline이나 새로운 기여로 승격하지 않음. Appendix D는 §6.2 gate를 통과한 normalized stability pattern과 variant-level conclusion만 공개하며 디버깅 연대기를 옮기지 않음 |
 
-공개 Appendix C.5는 다음 명칭과 집계 범위를 사용한다. `126,498`은 total census groups,
+**2026-07-28 Appendix C 재편 기록.** 구 `C.4 Resource-matched efficiency protocol`은 `C.5 Throughput
+and its sources`로, 구 `C.5 Execution interaction diagnostics`의 두 하위절은 신설된 `C.4 Group
+completion tail`의 `C.4.2`·`C.4.3`으로 이동했다. 재편 근거는 세 자료가 모두 group completion tail의
+결과이기 때문이다. 용량은 `C.4.1`, phase 시간은 `C.4.2`, 버전 동질성은 `C.4.3`이 소유한다. 이 날짜
+이전의 기록과 GPT 원장에 나오는 `C.4`·`C.5`는 구 번호이며 고치지 않는다.
+
+공개 Appendix C.4.3은 다음 명칭과 집계 범위를 사용한다. `126,498`은 total census groups,
 `126,465`는 complete groups로 구분한다. Synchronous completion-tail 분석은 request와 phase metric이
 함께 존재하는 104개 paired cycles를 사용한다. Fixed-grain learner alignment와 carryover 회계는
 `verl` 구현에 종속되므로 공개 본문과 Appendix에서 제외한다.
@@ -1466,12 +1691,16 @@ counterfactual은 조기 판정이 설계 대안으로 존재하지 않으므로
    기록이나 특정 peak를 선택해 얻은 수치가 아니다. 다만 같은 group 수가 같은 token 수를 뜻하지 않으므로
    공개 명칭은 `resource-matched end-to-end prompt-group throughput`으로 고정하고,
    `architecture-isolated speedup`이나 `time-to-quality`로 확대하지 않는다.
-5. **Token 정규화 요구에 미리 답한다.** 공통 작업 단위의 정당성은 위 1번의 `모든 group이 동일하게
-   8 rollout attempts를 요구한다`이며, response length는 학습 방법이 만든 endogenous outcome이므로
-   통제 변수가 아니다. 두 run의 평균 응답 길이를 그대로 나누어 token 기준으로 환산하면 `1.64×`가
-   약 `1.4×`로 줄어들지만, routing 이전 group당 생성 token을 같은 정의로 기록한 공통 원장이 없으므로
-   그 계산은 성립하지 않는다. 따라서 **동기식 run의 응답 길이는 공개 원고에 제시하지 않고**, 질의가
-   있을 때 work-unit 정당성과 공통 원장 부재를 함께 답한다.
+5. **Token 기준 재집계를 함께 제시한다.** 공통 작업 단위의 정당성은 위 1번의 `모든 group이 동일하게
+   8 rollout attempts를 요구한다`이고, 공개 headline은 prompt group 기준 `1.64×`다. 여기에 트레이너가
+   소비한 response token 기준 `1.302×`를 같은 문장에서 함께 제시한다. 검토한 일곱 정의와 일곱
+   시간창에서 하한이 `1.20×`이므로 어떤 절단에서도 방향이 바뀌지 않는다(C.5.2). 두 수치를 함께 두는
+   이유는 단위 선택에 관한 질의를 리뷰어가 계산하기 전에 닫는 것이다. 다만 `architecture-isolated
+   speedup`으로는 확대하지 않는다. Response length는 각 학습 방법이 만든 결과이므로 어느 work unit도
+   architecture만의 효과를 분리하지 않기 때문이다.
+   **미결정 사항:** 동기식 run의 평균 응답 길이를 C.5.2에 명시할지는 정하지 않았다. `1.302×`를 제시한
+   뒤에는 감추는 실익이 줄어드는 반면, 길이 자체를 정규화 인자로 제시하면 endogenous covariate를
+   통제한 것처럼 읽힐 위험이 남는다. 결정 전까지는 길이를 제시하지 않는 현행을 유지한다.
 
 효율 수치의 machine-readable 단일 원장은
 `figures/execution_efficiency/data/verified_snapshot.json`이며, run ID·metric key·default/system
@@ -1507,31 +1736,33 @@ benchmark score를 계산한 뒤 한 번만 반올림한다. `AVG`는 여섯 ben
 | Olympiad | 674 | `mean@8` | 5,392 | 0.01855 |
 
 `mean@32`는 32개 stochastic generation의 평균 pass@1이며 `pass@32`가 아니다. Experimental Setting에는
-AMC 평가본이 83문항이고 Olympiad 평가본이 674문항임을 명시한다. SFT와 RL-only의 외부 인용값은
-`\dagger`로 구별하고 출처와 원 평가 protocol을 함께 밝힌다. 외부 protocol이 다르면 통일 protocol로
-재평가한 행처럼 서술하지 않는다.
+AMC 평가본이 83문항이고 Olympiad 평가본이 674문항임을 명시한다. 공개 checkpoint를 직접 평가한
+baseline은 공통 grader, decoding과 sampling protocol을 사용하며, SRFT, ReLIFT, Oat-Zero와 LUFFY에는
+각 연구가 공개한 공식 checkpoint를 사용한다.
 
-| Model | AIME24 | AIME25 | AMC (83) | MATH500 | Minerva | Olympiad | **AVG** |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Base | 6.6 | 3.5 | 31.2 | 43.3 | 10.9 | 24.9 | **20.1** |
-| Instruct | 10.6 | 9.4 | 47.0 | 75.5 | 29.5 | 40.4 | **35.4** |
-| SFT$^{\dagger}$ | 11.7 | 13.2 | 37.8 | 70.6 | 26.8 | 31.3 | **31.9** |
-| RL-only$^{\dagger}$ | 11.8 | 7.7 | 40.2 | 61.8 | 26.8 | 32.0 | **30.1** |
-| Async RL (SFT + RL) | 12.9 | 7.9 | 44.9 | 75.8 | 28.8 | 39.5 | **35.0** |
-| HPT (sync) | 15.4 | 12.6 | 45.8 | 78.0 | 31.3 | 43.2 | **37.7** |
-| SRFT | 12.3 | 10.4 | 43.0 | 71.6 | 26.1 | 38.4 | **33.7** |
-| ReLIFT | 12.6 | 8.1 | 40.3 | 74.6 | 28.6 | 39.4 | **34.0** |
-| Oat-Zero | 17.2 | 12.6 | 49.6 | 73.7 | 30.1 | 38.1 | **36.9** |
-| LUFFY | 15.1 | 14.0 | 46.0 | 77.5 | 30.0 | 43.5 | **37.7** |
-| CISPO (ours, ablation) | 13.2 | 13.1 | 43.9 | 77.2 | 31.8 | 41.3 | **36.8** |
-| No-CISPO (ours, main) | 16.1 | 13.0 | 47.0 | 78.5 | 33.0 | 43.2 | **38.5** |
+| Model | Async | Expert | AIME24 | AIME25 | AMC | MATH500 | Minerva | Olympiad | AVG |
+|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
+| Base | -- | -- | 6.6 | 3.5 | 31.2 | 43.3 | 10.9 | 24.9 | 20.1 |
+| Instruct | -- | -- | 10.6 | 9.4 | <u>47.0</u> | 75.5 | 29.5 | 40.4 | 35.4 |
+| Async RL | ✓ | -- | 12.9 | 7.9 | 44.9 | 75.8 | 28.8 | 39.5 | 35.0 |
+| HPT | -- | ✓ | 15.4 | 12.6 | 45.8 | <u>78.0</u> | <u>31.3</u> | <u>43.2</u> | <u>37.7</u> |
+| SRFT | -- | ✓ | 12.3 | 10.4 | 43.0 | 71.6 | 26.1 | 38.4 | 33.7 |
+| ReLIFT | -- | ✓ | 12.6 | 8.1 | 40.3 | 74.6 | 28.6 | 39.4 | 34.0 |
+| Oat-Zero | -- | -- | **17.2** | 12.6 | **49.6** | 73.7 | 30.1 | 38.1 | 36.9 |
+| ExGRPO | -- | -- | 12.1 | 9.0 | 46.3 | 73.2 | 27.2 | 37.3 | 34.2 |
+| EMPO | -- | -- | 14.1 | 8.0 | 45.5 | 72.5 | 25.1 | 35.8 | 33.5 |
+| LUFFY | -- | ✓ | 15.1 | **14.0** | 46.0 | 77.5 | 30.0 | **43.5** | <u>37.7</u> |
+| **StreamWeave** | ✓ | ✓ | <u>16.1</u> | <u>13.0</u> | <u>47.0</u> | **78.5** | **33.0** | <u>43.2</u> | **38.5** |
+
+CISPO-style proximal-gate variant의 `13.2 / 13.1 / 43.9 / 77.2 / 31.8 / 41.3 / 36.8`은 공개
+Table 1의 순위 모집단에서 제외하며 Appendix D.1의 proximal-update ablation 원장이 소유한다.
 
 표시값만 다시 평균하면 SRFT와 ReLIFT는 각각 33.6과 33.9로 보이지만, 반올림 전 score의 macro-average는
 각각 33.6542와 33.9593이므로 공개 `AVG`는 33.7과 34.0이 맞다. 이 오해를 막기 위해 표 각주는 다음으로
 고정한다.
 
 > Scores are rounded to one decimal place. Avg. is the unweighted macro-average computed from
-> unrounded benchmark scores. $^{\dagger}$ Results reported by the original source.
+> unrounded benchmark scores.
 
 현재 원점수 기준 main의 macro-average는 38.4910, LUFFY는 37.6678이며 격차는 0.8233 points다. 공개
 표에는 반올림된 두 값을 그대로 제시하되, Abstract에서는 이 작은 margin을 headline으로 삼지 않는다.
@@ -1539,49 +1770,232 @@ AMC 평가본이 83문항이고 Olympiad 평가본이 674문항임을 명시한�
 reference의 품질을 함께 제시한다. `+0.8 points`의 직접 해석은 두 행이 같은 grader, decoding, sampling
 budget을 사용하고 paired uncertainty analysis까지 닫힌 경우에만 Experiments에서 허용한다.
 
+#### 6.2 Appendix D ablation 작성 계약
+
+Appendix D는 run 목록을 나열하지 않고 다음 **두 개의 큰 ablation 질문**만 소유한다.
+
+1. **무엇이 최종 품질을 만드는가?** Main을 중심으로 expert-input use와, 공통 Decoupled-PPO
+   기반 위의 proximal-update rule을 각각 한 축씩 통제한다.
+2. **Queue staleness를 줄인 뒤에도 어떤 proximal-update behavior가 남는가?** CISPO-style gate를
+   유지한 queue-freshness intervention으로 초기 behavior-policy lag를 먼저 줄이고, continuation·
+   robustness histories와 PPO-gated main을 통해 남은 장기 behavior를 검산한다.
+
+**알고리즘 맥락과 비교 단위.** AReaL의 Decoupled PPO는 rollout을 만든 behavior policy와 update
+진입 시점의 proximal policy를 분리한다. Policy token마다
+
+\[
+w_t=\frac{\pi_{\mathrm{entry}}}{\pi_{\mathrm{behav}}},
+\qquad
+r_t(\theta)=\frac{\pi_\theta}{\pi_{\mathrm{entry}}},
+\qquad
+\rho_t=w_t r_t
+\]
+
+로 두면, $w_t$는 rollout-to-entry staleness correction이고 $r_t$는 learner-entry 뒤의
+optimization movement다. Main과 CISPO-style variant는 같은 learner-entry reference와
+token-level truncated $\bar w_t$를 사용한다. 차이는 오직 $r_t$에 적용되는 proximal gate다.
+
+- **Main:** $\bar w_t\,g_{\mathrm{PPO}}(r_t,A_t)$; PPO Clip-Higher의 pessimistic min-clipping과
+  dual-clip을 사용해 improvement 방향에서 clip 경계를 넘은 일부 token gradient를 멈춘다.
+- **CISPO-style variant:** $\bar w_t\,\operatorname{sg}(\min(r_t,C_g))$; lower bound를 비활성화한
+  detached coefficient cap으로 active policy token의 advantage-direction gradient를 계속 보존한다.
+
+Original CISPO는 같은 generation batch를 여러 번 off-policy update할 때 PPO가 clip 바깥 token을
+후속 update에서 제거하는 문제를 겨냥한다. 여기서는 CISPO를 Decoupled PPO의 대안으로 통째로
+도입하지 않는다. AReaL식 behavior correction은 공통으로 유지하고, CISPO의 gradient-preserving
+coefficient rule만 proximal $r$-slot에 적용한다. 따라서 정확한 명칭은 **CISPO-style proximal-gate
+variant within a Decoupled-PPO objective**이며, 공개 표의 짧은 `CISPO variant`는 이 정의를 먼저
+제시한 뒤에만 사용할 수 있다.
+
+HPT expert trajectory는 distributionally off-policy인 external target이지만 stale behavior-policy
+rollout은 아니다. Expert input은 두 arm 모두에서 $w=1$, self-detached $r=1$과
+$\beta$-weighted NLL endpoint를 사용한다. HPT가 shared policy에 강한 correction을 줄 수 있다는
+점은 proximal gate가 지나치게 보수적인지 시험한 **설계 동기**다. 현재 증거는 HPT가 실제 policy
+movement를 증가시켰거나 CISPO-style run의 instability를 유발했다는 인과효과를 식별하지 않는다.
+
+Energy candidate는 ablation evidence가 아니므로 Appendix C.4로 이동했다. 일반적인 연구 범위는
+D.2 뒤의 짧은 closing note만 소유하며 별도 ablation으로 세지 않는다. 상단 공개 Appendix D는 아래
+두 절 구조와 표 schema로 정렬했다. 제출용 TeX 이식과 최종 provenance·history QA는 아직 남아 있다.
+
+| 절 | 최종 역할 | 현재 확보된 사실 | 최종 QA |
+|---|---|---|---|
+| **D.1 Ablating expert use and the proximal update rule** | Main-centered one-factor-at-a-time comparisons로 expert-input 축과 proximal-gate 축을 분리. 모든 row가 같은 Decoupled-PPO behavior correction을 공유함을 표에서 보이기 | Math/cross-domain macro-average는 main 38.5/41.2, expert-off 35.0/41.1, CISPO-style gate 36.8/38.9다 | 각 row의 checkpoint와 raw evaluation artifact를 provenance manifest에 연결. 완전한 \(2\times2\)가 아니므로 expert use와 proximal gate의 interaction·additivity를 주장하지 않음 |
+| **D.2 Queue freshness and proximal-update behavior** | CISPO-style proximal gate를 고정한 채 queue freshness를 높여 초기 staleness amplification을 줄인 뒤, 남은 history를 continuation·robustness checks와 PPO-gated main에 대조 | M4→M5에서 queue budget `768→384`, 초기 peak rollout KL `9.21→0.124`, ESS `0.20→0.95--0.99`; M5R·M7에서 후반 event가 남고 PPO-gated main에서는 더 긴 관측 이력 동안 대응하는 큰 event가 없음 | 공통 metric semantics, run endpoint, as-run config와 history export를 확정. coefficient audit와 event criterion이 닫히기 전에는 mechanism을 확정형으로 쓰지 않음 |
+
+**D.1 표 계약.** `Policy objective` 한 열로 Main과 variant를 `PPO 대 CISPO`처럼 보이게 하지 않는다.
+공통 Decoupled-PPO 기반과 실제로 바뀐 proximal gate를 분리해 다음 schema를 사용한다.
+
+| Variant | Expert input | Behavior correction | Proximal update rule | Math Avg. | Cross-domain Avg. |
+|---|---|---|---|---:|---:|
+| **StreamWeave Main** | On | rollout-to-entry token TIS | PPO Clip-Higher/dual-clip | **38.5** | **41.2** |
+| Expert-off | Off | rollout-to-entry token TIS | PPO Clip-Higher/dual-clip | 35.0 | 41.1 |
+| CISPO-style gate | On | rollout-to-entry token TIS | detached upper-capped coefficient | 36.8 | 38.9 |
+
+Main↔expert-off는 같은 asynchronous stack과 Decoupled-PPO realization에서 all-failure outcome이
+선택한 expert input의 소비 여부만 바꾼다. Main↔CISPO-style gate는 expert routing·endpoint,
+behavior correction과 execution stack을 유지하고 proximal $r$-gate만 바꾼다. 전자는 §4.2의
+learning dynamics와 longitudinal analysis가 주된 해석을 소유하고, D.1은 fixed-checkpoint 비교와
+통제 축만 요약한다. 후자는 이 tested regime에서 PPO-gated Decoupled PPO를 canonical realization으로
+선택한 근거이지 original CISPO의 보편적 열위나 StreamWeave의 architecture novelty가 아니다.
+
+**D.2 실험 절차.** 추상적인 `두 단계 안정성 분석`이라는 이름을 사용하지 않고 실제 비교 순서를
+그대로 쓴다.
+
+1. CISPO-style proximal gate를 고정하고 completed-group queue budget을 줄였다. 초기 위험 구간의
+   rollout KL과 ESS가 크게 개선되므로 queue freshness가 behavior-policy lag amplification을
+   완화했음을 확인한다.
+2. 더 최신의 queue에서도 후반 event가 남는지 확인하고, unchanged resume와 multi-delta stabilizer
+   run에서 같은 유형의 behavior가 남는지 검산한다.
+3. 같은 final asynchronous stack과 Decoupled-PPO behavior correction에서 proximal gate만 PPO
+   Clip-Higher로 되돌린 Main의 history와 fixed-checkpoint 품질을 대조한다.
+
+이 순서는 `staleness correction`과 `proximal movement control`을 분리한다. Queue intervention은
+초기 behavior-policy lag를 줄였고, Main–variant 비교는 그 위에 남은 learner-side gate의 차이를
+검토한다. 현재 결과는 PPO gate 선택을 지지하지만, CISPO의 보편적 instability나 HPT와 CISPO 사이의
+interaction을 식별하지 않는다.
+
+**D.2 분석 seed 원장.** 아래 값은 기존 run note에서 회수한 출발점이다. 최종 공개 자산은 raw
+signature를 모두 옮기지 않고, 각 비교가 배제하는 대안과 소수의 공통 metric만 제시한다.
+
+| 내부 arm | 현재 기록된 signature | 공개 역할 |
+|---|---|---|
+| **Deeper-queue CISPO-style gate / M4** | completed-group queue budget 768, 초기 위험 구간 peak rollout KL 9.21과 ESS 0.20 | M5와의 freshness comparison 기준 |
+| **Fresher-queue CISPO-style gate / M5** (`f5ugxklh`) | queue budget 384에서 같은 구간 peak rollout KL 0.124, ESS 0.95--0.99; 후반에는 별도 instability event가 기록됨 | Freshness가 초기 lag를 완화하지만 장기 event를 모두 제거하지 않는다는 연결점 |
+| **Unchanged resume / M5R** (`2hz6tp01`) | M5 configuration을 그대로 resume한 뒤 같은 유형의 급격한 이탈이 재현됨 | Fresh seed replication이 아닌 unchanged-continuation evidence |
+| **Stabilized CISPO-style bundle / M7** (`4wl3f5do`) | 여러 stabilizer를 함께 적용해도 후반 instability가 남음 | Multi-delta robustness check; 개별 stabilizer 효과를 분해하지 않음 |
+| **PPO-gated Main** (`oki4kv8u`) | 대응하는 큰 instability event 없이 더 긴 관측 이력을 유지 | 같은 final asynchronous stack과 behavior correction을 공유하는 canonical proximal-gate reference |
+
+**추가 분석 계획 — 새 training 불필요.**
+
+1. **Counterfactual proximal-gate audit (최우선).** Main, CISPO-style variant와 expert-off의 저장된
+   policy-token dump에 PPO와 CISPO-style gate를 모두 사후 적용한다. Policy row만을 대상으로
+   PPO에서 gradient가 0이 되는 token 비율, CISPO-style gate가 보존하는 token 비율과
+   \[
+   \frac{\sum_{\mathrm{PPO\text{-}dead}}|\bar w_t\,g_{\mathrm{CISPO}}(r_t)A_t|}
+        {\sum_{\mathrm{active}}|\bar w_t\,g_{\mathrm{CISPO}}(r_t)A_t|}
+   \]
+   로 정의한 rescued gradient mass를 계산한다. Advantage 부호, $r_t$, token position과
+   rollout-to-entry staleness별로 분해하고, CISPO-style run의 token에 PPO를 적용했을 때 멈췄을
+   counterfactual brake mass도 보고한다. 이는 CISPO-style gate가 실제로 회수할 gradient가 충분했는지,
+   또는 PPO gate가 드물지만 중요한 movement를 차단했는지를 같은 token 집합에서 판정한다.
+2. **Expert pressure와 proximal movement의 연관.** Main 안에서 normalized progress와 token volume을
+   맞춘 뒤 expert group/token 비율이 높은 update와 낮은 update의 $r_t$ 분포, `ppo_kl`, `grad_norm`,
+   PPO-dead mass를 비교하고 expert-off의 같은 진행 구간을 보조 대조한다. Routing은 난이도와 학습
+   진행에 의해 내생적으로 결정되므로 이 분석은 HPT의 causal effect가 아니라
+   mechanism-consistent association으로만 해석한다.
+3. **Event chronology.** CISPO-style history에서 counterfactual brake mass, learner-side movement,
+   entropy·response length, rollout KL·ESS의 순서를 normalized progress 또는 event-aligned axis에서
+   점검한다. M4, M5와 Main을 함께 놓아 queue freshness가 줄인 초기 staleness와 proximal gate 아래
+   남은 behavior를 분리한다. 사전에 공통 event criterion을 정하고 absolute optimizer step,
+   cycle과 consumed-group count는 공개 figure에서 사용하지 않는다.
+
+Counterfactual gate audit가 끝나기 전에는 `CISPO가 보존한 gradient가 실제 instability를 일으켰다`,
+`PPO가 제거한 gradient가 유해했다`고 확정형으로 쓰지 않는다. 현재 잠긴 것은 gate의 구조적 차이,
+fixed-checkpoint 품질 차이와 history pattern이다.
+
+Validation score는 final fixed-checkpoint protocol과 다를 수 있으므로 D.2 stability 판단의 보조축으로만
+사용하고 D.1 quality 수치와 섞지 않는다. 공개 figure나 표에서는 training scale을 노출하는 absolute
+optimizer step·cycle·consumed-group count를 사용하지 않는다.
+
+**내부 evidence reserve.** D0→M은 세대와 설정이 얽힌 historical bundle이고 M′은
+source-decision invariant audit이므로 final ablation 구조에 넣지 않는다. M2↔M3의 truncation
+semantics와 Mprime2↔Mprime3의 entropy-null result도 기록 가치가 있지만, 각각 과거 failure-mode
+진단과 짧은-regime sensitivity이므로 D.1·D.2의 독립 arm으로 승격하지 않는다. Exact artifact가
+복원되고 추가 방어가 필요할 때만 짧은 supplementary note로 재검토한다.
+
+**본문--Appendix handoff.** §4.2의 Overall Performance 문단은 Appendix를 읽지 않아도 proximal-gate
+ablation의 대표 결과를 알 수 있도록 다음 수준의 문장 하나를 소유할 수 있다.
+
+> 동일한 evaluation protocol에서 rollout-to-entry correction과 expert endpoint를 고정하고
+> learner-entry proximal gate만 CISPO-style gradient-preserving rule로 바꾼 variant는 36.8을
+> 기록하여, PPO Clip-Higher를 사용하는 Decoupled-PPO Main의 38.5보다 낮다(Appendix D).
+
+Counterfactual gate audit와 D.2의 history·criterion·provenance가 모두 닫힌 뒤에만 다음 확장 해석을
+본문 후보로 검토한다. 이 문단은 아직 공개 본문에 반영하지 않는다.
+
+> Fully-asynchronous policy update의 behavior-policy staleness와 learner-side movement는 서로 다른
+> 편차다. Main은 Decoupled PPO로 전자를 rollout-to-entry correction에 분리하고, 후자에는 PPO
+> Clip-Higher를 적용한다. HPT expert input은 stale rollout이 아니지만 shared policy에 직접적인
+> supervised correction을 제공하므로, proximal PPO gate가 유효한 policy-row gradient까지 일찍
+> 차단할 가능성을 검토했다. Behavior correction과 expert endpoint를 고정하고 proximal gate만
+> CISPO-style coefficient rule로 바꾼 variant는 Main보다 낮은 fixed-checkpoint 품질을 보였고,
+> queue freshness를 높인 history에서도 후반 instability가 남았다. 이 tested regime에서는 PPO clip
+> 경계 밖의 active policy-token gradient를 계속 보존하는 것보다 PPO gate를 유지하는 구성이 더 강한
+> 품질과 안정적인 history를 보였다(Appendix D).
+
+그 전에는 fixed-checkpoint 차이만 본문에 쓸 수 있다. Expert-off의 35.0은 이미 Table 1,
+learning-dynamics figure와 §4.2가 소유하므로 이 문장에서 반복하지 않는다.
+
+**공개 분석 규율.**
+
+1. Training scale을 유추할 수 있는 absolute optimizer step, cycle 수와 consumed-group count는 stability
+   figure와 본문에서 사용하지 않는다. X축은 normalized observed training progress로 표시하고, exact
+   run coverage와 endpoint는 reproducibility note가 소유한다.
+2. M5R을 independent seed replication으로, M7을 single-factor ablation으로 부르지 않는다. 둘은 각각
+   unchanged-resume 재현과 multi-delta robustness check다.
+3. CISPO-style 결과는 “이 tested regime에서 PPO-gated Decoupled PPO를 canonical realization으로
+   선택한 근거”로 한정한다. Original CISPO의 보편적 열위, 모든 instability의 단일 원인 또는
+   StreamWeave novelty로 확대하지 않는다.
+4. M4→M5는 queue freshness의 초기 효과를 진단한다. M′의 23.6%는 routing audit의 복구율이며
+   model-quality gain이 아니다.
+5. 새 training은 Appendix D의 필수 gate가 아니다. 필요한 작업은 기존 history·config·checkpoint
+   provenance의 복원, 공통 metric semantics 확인과 재현 가능한 집계 script 작성이다. M7·M5R
+   checkpoint가 현 migration bundle에서 제외된 사실은 기록하되, dynamics 분석에 checkpoint가
+   필요하지 않다면 W&B history와 config export로 닫는다.
+
+**현재 작업 상태.** 이 절의 내부 계약과 상단 한국어 공개 Appendix D를 Decoupled-PPO common base와
+proximal-gate ablation으로 정렬했다. 공개 §3.1, `streamweave_v2.tex`와 §4.2 본문은 이번 작업에서
+수정하지 않았다. 다음 공개 개정에서는 §3.1의 `vanilla clipped PPO` shorthand를 Decoupled-PPO
+realization으로 정확히 풀고, Appendix D를 TeX로 이식해야 한다. 남은 gate는 D.1 checkpoint·raw-result
+provenance, counterfactual gate audit, D.2 history/config export와 공통 instability criterion의 최종
+QA다. 이 gate가 닫히기 전에는 공개 Appendix D를 submission-ready
+evidence로 부르거나 본문의 stability mechanism claim을 확장하지 않는다.
+
 ### 7. Method §3 작성 헌장
 
 #### 7.1 두 subsection의 단일 역할
 
 §3은 `Learning Composition → Fully-Asynchronous Execution` 순서로 고정한다. 두 subsection은
-동등한 추상화 수준의 병렬 구성요소가 아니다. §3.1은 실행 순서와 무관하게 **무엇이 유효한 mixed
-update인지** 정의하고, §3.2는 그 학습 구성을 **global group barrier 없이 어떻게 실현하는지**
-설명한다. 즉 §3.1이 학습 구성을 정의하고 §3.2가 그 정의를 만족하는 시스템 실현을 제공한다. 두 절의
+서로 끊어진 병렬 구성요소도, 정의와 하위 구현의 관계도 아니다. §3.1은 complete-group decision이
+선택한 learning role을 재현하기 위해 training input이 만족해야 할 조건을 확립한다. §3.2는 그
+learning contract를 지키면서 complete-group waiting이 pipeline progress를 지배하지 않게 하는 별도의
+systems problem을 푼다. 따라서 §3.1이 먼저 읽히는 것은 §3.2의 제약을 이해하기 위한 논리적 순서이며,
+C2의 architecture contribution을 C1의 implementation으로 낮추는 기여 위계가 아니다. 두 절의
 경계를 다음처럼 잠근다.
 
 | 절 | 독자의 질문 | 이 절이 소유하는 답 | 넘기지 않을 내용 |
 |---|---|---|---|
-| **3.1 Learning Composition** | Complete group이 정한 source를 어떤 input으로 바꾸어 하나의 update를 구성하는가? | Complete-group decision, source별 training inputs, one-path primary update와 두 learning role의 구성적 유도 | Scheduler, accumulator, queue, backpressure와 exact tensor construction |
-| **3.2 Fully-Asynchronous Execution** | 앞서 정의한 composition을 보존하면서 어떻게 pipeline을 계속 전진시키는가? | Trajectory-level execution과 complete-group reconstruction의 결합, source-before-queue, source-fixed record와 trainer-side input conversion | Loss 유도, self-detach 증명, fixed-grain learner assembly와 개별 tensor field |
+| **3.1 Learning Composition** | Complete group이 정한 source를 어떤 training input으로 바꾸면 선택된 learning role이 하나의 policy objective에서 재현되는가? | Complete-group decision, source별 training inputs, one-path primary update와 두 endpoint의 구성적 유도 | Scheduler, accumulator, queue, backpressure와 exact tensor construction |
+| **3.2 Fully-Asynchronous Execution** | 이 learning contract를 지키면서 complete-group waiting을 source decision보다 멀리 전파하지 않으려면 pipeline을 어떻게 구성해야 하는가? | Independent attempts, local complete-group reconstruction, source-before-queue, source-fixed record와 post-queue input construction | Loss 유도, self-detach 증명, averaging 식과 개별 tensor field |
 
-#### 7.2 Method 주장 위계: definition → derivation → design → realization
+#### 7.2 Method 주장 구조: learning contract → derivation → constrained systems design → realization
 
-§3.1과 §3.2의 `정의 → 실현` 관계는 유지하되, Method 안의 개별 주장은 아래 네 수준으로 구별한다.
-이는 subsection을 하나 더 만드는 구성이 아니라, **무엇을 일반적 조건으로 주장하고 무엇을
-StreamWeave의 설계로 소유하며 무엇을 현행 시스템의 구현으로 제시할지** 정하는 지위 체계다.
+Method 안의 개별 주장은 아래 네 수준으로 구별한다. 이 순서는 learning semantics가 systems design에
+부과하는 제약을 나타내지만, contribution의 중요도나 소유권 순위를 뜻하지 않는다. 목적은
+**무엇을 보존 조건으로 확립하고, 그 조건 아래 어떤 systems problem을 StreamWeave가 소유하며,
+무엇을 현행 시스템의 구체적인 구현으로 제시할지** 구분하는 것이다.
 
 | 수준 | 핵심 질문 | 논문에서의 역할 |
 |---|---|---|
-| **Learning definition** | Fully-asynchronous execution 아래에서도 어떤 mixed update를 유지해야 하는가? | Source가 정하는 signal·reference·policy-lag correction과 하나의 objective·averaging rule을 명시하고 learning-input specification으로 압축 |
-| **Constructive derivation** | 실제 StreamWeave objective가 그 정의를 만족하는가? | 하나의 primary objective에 source별 input을 대입하면 policy와 expert가 각각 의도한 contribution을 만들고 aggregation은 source와 무관함을 직접 유도 |
-| **StreamWeave design** | 그 조건을 full asynchrony의 효율을 반납하지 않고 어떻게 만족시키는가? | 학습 경계와 실행 장벽을 분리하는 architecture와 설계 판단 |
+| **Learning contract** | Complete-group decision이 선택한 learning role을 재현하려면 training input과 shared tail이 어떤 조건을 만족해야 하는가? | Source가 정하는 signal·reference·policy-lag correction과 하나의 objective·source-independent normalization을 명시 |
+| **Constructive derivation** | 현재 objective가 그 contract의 두 endpoint를 실제로 재현하는가? | Source별 input을 primary objective에 대입하면 policy와 expert가 각각 의도한 contribution을 만들고 input construction 뒤 source-specific learner control이 끝남을 직접 유도 |
+| **Constrained systems design** | 그 contract를 지키면서 complete-group waiting이 pipeline 전체의 실행 제약으로 번지지 않게 하려면 어떻게 해야 하는가? | Waiting은 source resolution에서 끝내고 필요한 source·group context만 input construction까지 보존하는 StreamWeave architecture |
 | **Concrete realization** | 현재 실험과 코드에서 그 설계를 어떤 objective와 mechanism으로 구현했는가? | Main-run 명세와 Appendix의 구현 세부 |
 
-Learning definition은 모든 heterogeneous learning에 대한 보편 공리가 아니라 이 논문이 다루는
-**group-conditioned policy/expert composition의 정체성 조건**이다. Learning-input specification은 이
-정의를 압축하고, 구성적 유도는 source별 learner-ready inputs를 실제 primary objective에 대입해 두 역할이 선언한
-contribution으로 환원됨을 보인다.
-Architecture는 수학적으로 유일한 해법이 아니라, 이 composition과 비동기 효율을 함께 달성하기 위해
-StreamWeave가 선택하고 소유하는 design이다. 구현 테스트는 코드 품질을 관리할 뿐 수학적 유도나
-과학적 실험을 대신하지 않는다. Composition requirement, core design, inherited substrate의 지위는
-§4가 소유하며, 이 절은 현행 시스템의 concrete realization만 기록한다.
+Learning contract는 모든 heterogeneous learning에 대한 보편 공리가 아니라 이 논문이 다루는
+**group-conditioned policy/expert composition의 정체성 조건**이다. 구성적 유도는 source별 training
+input을 primary objective에 대입해 두 역할이 선언한 contribution으로 환원됨을 보인다. Architecture는
+그 유도의 단순 구현이 아니라, 이 contract와 independent execution을 동시에 만족시키기 위해
+StreamWeave가 선택하고 소유하는 systems design이다. 구현 테스트는 코드 품질을 관리할 뿐 구성적
+유도나 과학적 실험을 대신하지 않는다. Composition requirement, core design, inherited substrate의
+지위는 §4가 소유하며, 이 절은 현행 시스템의 concrete realization만 기록한다.
 
 | Concrete element | 지위 | 본문에서의 취급 |
 |---|---|---|
 | Source-before-queue와 learner-ready input construction의 분리 | **Core architectural design** | Source decision을 transport timing으로부터 고정하면서 Generator와 learner가 group-level source 판단을 맡지 않게 하는 비대칭 경계 |
 | Routed-group queue와 `AgentLoopOutput` adapter | **Concrete realization** | 위 경계를 현행 runtime과 verl interface에서 구현하는 방식 |
 | HPT selective expert-trajectory learning | **Concrete instantiation** | 실험에서 사용한 policy/expert learning program의 출처로 한 번 attribution |
-| Entry-proximal anchor, token IS, vanilla clipped PPO | **Main-run realization** | 현행 policy branch의 정확한 명세이며 StreamWeave 자체의 일반 원리는 아님 |
+| AReaL식 Decoupled PPO, token TIS와 PPO Clip-Higher proximal gate | **Main-run realization** | Behavior-policy staleness와 learner-side movement를 분리하는 현행 policy branch의 정확한 명세이며 StreamWeave 자체의 일반 원리는 아님 |
 | Self-detached expert reference | **Implementation mechanism and formal witness** | 하나의 policy-loss path에서 supervised contribution을 복원하는 exact realization이며 전체 구성과 미분은 Appendix에 둠 |
 | Shared `seq-mean-token-sum-norm` | **Main-run realization** | 본문은 같은 averaging rule을 명시하고 Appendix A.3이 exact 식, 고정 $L_{\max}$와 source별 denominator를 두지 않는 이유를 설명 |
 
@@ -1599,10 +2013,10 @@ objective-first는 HPT의 estimator를 재서술한 논문처럼 보이므로 �
 
 | 문단 | 역할 | 반드시 전달할 판단 | 이후 회수 |
 |---|---|---|---|
-| **Source selection from a completed group** | 무엇을 학습할지 정의 | Complete rollout group이 policy 또는 expert source를 선택하며, 이 결정은 개별 trajectory가 아니라 group 결과에 의존 | §3.2의 complete-group reconstruction과 arrival-order independence |
+| **Source selection from a complete group** | 무엇을 학습할지 정의 | Complete rollout group이 policy 또는 expert source를 선택하며, 이 결정은 개별 trajectory가 아니라 group 결과에 의존 | §3.2의 complete-group reconstruction과 arrival-order independence |
 | **Source-specific training inputs** | 선택된 source를 실제 update input으로 바꿈 | Source selection은 data와 함께 signal, ratio reference와 policy-lag correction을 정한다. Policy와 expert input을 각각 설명해 source별 철학을 먼저 보인다 | Learning-role derivation과 §3.2의 context-preserving handoff |
 | **One policy objective** | 두 source를 하나의 update로 닫고 역할을 복원 | Input이 준비된 뒤에는 같은 policy objective와 averaging rule을 통과한다. Policy는 group-relative contribution으로, expert는 $\beta$-weighted supervised contribution으로 환원된다 | Appendix A.2의 exact endpoint와 A.3의 loss averaging |
-| **Architecture bridge** | 앞의 구성을 압축하고 §3.2로 넘김 | Complete-group decision이 sequence와 update 의미를 함께 정하며, queue 양쪽의 경계가 이를 fully-asynchronous execution으로 옮긴다고 예고 | §3.2의 runtime realization |
+| **Information-boundary conclusion** | §3.1의 약속을 자기 절 안에서 닫음 | Endpoint identities와 source-independent normalization이 training-input construction에서 learning contract를 완성하며, 이후 learner control은 source에 따라 갈라지지 않음 | §3.2 opening이 이 contract를 systems constraint로 받아 별도의 execution question을 연다 |
 
 본문의 display 수식은 개념이 바뀌는 지점마다 분리한다. 첫째는 complete group의 success rate와
 source-selection rule이다.
@@ -1654,43 +2068,52 @@ policy input은 선언된 group-relative policy contribution으로, expert input
 contribution으로 환원되며, 두 경우 모두 같은 $\Phi$와 averaging rule을 통과한다. 이는 전체 optimizer
 trajectory의 동등성이나 임의의 SFT implementation과의 동일성을 주장하지 않는다.
 
-현행 main의 vanilla clipped PPO와 두 source가 하나의 objective에 들어가는 방식은 Method에서
-realization family로 한 번만 명세한다. Exact clipping, expert-signal scale, learner-entry reference와
-rollout-to-entry token correction 설정은 Appendix의 reproducibility block이 소유한다. 본문의 구성적
-유도는 이 realization이 두 learning role을 만족함을 보이되, 해당 장치 자체를 StreamWeave의 novelty로
-세우지 않는다.
+현행 Main의 policy route는 AReaL식 Decoupled PPO를 따른다. Rollout을 만든 behavior policy와
+learner-entry proximal policy 사이의 편차는 token-level rollout-to-entry correction으로 보정하고,
+learner-entry 뒤의 optimization movement만 PPO Clip-Higher proximal gate로 제한한다. 두 source가
+하나의 objective에 들어가는 방식은 Method에서 realization family로 한 번만 명세한다. Exact clipping,
+expert-signal scale, learner-entry reference와 rollout-to-entry token correction 설정은 Appendix의
+reproducibility block이 소유한다. 본문의 구성적 유도는 이 realization이 두 learning role을 만족함을
+보이되, Decoupled PPO나 특정 proximal gate 자체를 StreamWeave의 novelty로 세우지 않는다.
 
-Learning-input specification은 출발점이나 별도 장문의 Definition이 아니라 위 구성과 유도를 압축하는
-결론이다. Complete-group decision이 사용할 sequence와 update 의미를 함께 정하고, §3.2의 source-fixed
-record와 trainer-side conversion이 이를 training input까지 보존한다고 한 번만 회수한다. §3.1은
-다음 bridge로 닫는다.
-
-> 이 절이 complete-group decision을 하나의 update에 들어갈 input으로 바꾸는 방법을 정의했다면, 다음 절은
-> trajectory가 독립적으로 완성되는 동안에도 같은 update를 pipeline-wide execution barrier 없이 구성하는
-> 방법을 설명한다.
+Learning contract는 출발점에 별도 장문의 Definition으로 두지 않고, source별 input과 endpoint 유도를
+통해 구체적으로 확립한다. §3.1은 `endpoint identities + source-independent normalization →
+information boundary at training-input construction`이라는 자기 결론으로 닫는다. §3.1 closing에서
+§3.2를 `이 composition의 realization`로 규정하지 않는다. 두 절의 연결은 §3.2 opening이 소유하며,
+앞서 확립한 contract를 지키면서 complete-group waiting을 source decision에 국소화해야 한다는 별도의
+systems problem을 한 번만 연다.
 
 #### 7.4 Canonical main objective
 
 공개 Method와 모든 내부 요약은 아래 현행 main을 단일 기준으로 사용한다.
 
-> **Main = decoupled policy correction + vanilla clipped PPO.**
+> **Main = AReaL-style Decoupled PPO with token-level rollout-to-entry correction and a
+> PPO Clip-Higher proximal gate.**
 
 | 축 | 현행 main (`M5abl_nocispo`) |
 |---|---|
-| Policy objective | `vanilla` clipped PPO; lower `0.2`, upper `0.28` |
+| Decoupled policy roles | Behavior policy = rollout-generation policy; proximal policy = learner-entry policy; current policy = inner optimization의 $\pi_\theta$ |
+| Behavior correction $w$ | rollout-to-entry token-level truncated IS, `C_w=2.0` |
+| Proximal movement rule $g(r)$ | `vanilla` PPO Clip-Higher; lower `0.2`, upper `0.28`, dual-clip `10.0` |
 | RL signal | GRPO group-relative advantage; std normalization 활성 |
 | Proximal reference | learner-entry policy (`rl_old_logprob_source=entry`) |
-| Behavior correction | rollout-to-entry token-level truncated IS, `C_w=2.0` |
 | Rejection / learner stale-drop | rejection 비활성, `k_max=null` |
 | Expert contribution | constant `beta=0.3`, self-detached current-policy reference, IS identity |
 | Auxiliary | expert entropy 제외; KL은 main 전체에서 비활성 |
 | Composition | Source별 signal·reference·policy-lag correction + one primary policy objective + same averaging rule; effective mixture는 routing, cardinality, token volume, `beta`, aggregation이 함께 결정 |
 
-**CISPO는 Method 구성요소가 아니다.** 기각된 ablation이자 Appendix의 secondary diagnosis로만 다룬다.
-Decoupling은 main에 활성인 realization이지만 StreamWeave의 novelty가 아니며, 이 레짐에서 효과가 거의
-비활성이었다는 결과 역시 Appendix에 둔다. 효율 headline은 §6에 잠근 main-run W&B 원장의
-`1.64x`를 사용하며, 기존 CISPO arm의 `1.54x`와 혼용하지 않는다. `entropy/KL 제외`라고
-뭉뚱그리지 않고, main에서는 entropy exclusion만 활성이고 KL은 전역 비활성이라고 쓴다.
+**CISPO는 Method 구성요소가 아니다.** Appendix D의 controlled proximal-gate variant로만 다룬다.
+이 variant도 Main과 같은 AReaL식 Decoupled PPO behavior correction과 expert endpoint를 유지하며,
+learner-entry ratio $r$에 적용되는 PPO gate만 CISPO-style detached upper-capped coefficient로
+교체한다. 따라서 이를 `Decoupled PPO 대 CISPO` 또는 `PPO 대 CISPO`로 부르지 않고,
+**PPO-gated 대 CISPO-style-gated Decoupled PPO**로 기록한다. 이 비교는 같은 stack에서 canonical
+PPO-gated realization을 선택한 근거와 그 범위를 보여준다.
+
+Decoupling은 Main에 활성인 realization이지만 StreamWeave의 novelty가 아니며, 이 regime에서
+behavior correction $w$가 대부분 identity 근처였다는 결과 역시 Appendix D의 scope diagnostic에
+둔다. 효율 headline은 §6에 잠근 main-run W&B 원장의 `1.64x`를 사용하며, 기존 CISPO-style arm의
+`1.54x`와 혼용하지 않는다. `entropy/KL 제외`라고 뭉뚱그리지 않고, Main에서는 expert entropy
+exclusion만 활성이고 KL은 전역 비활성이라고 쓴다.
 
 #### 7.5 §3.2와 Generator–Trainer authoritative flow
 
@@ -1739,20 +2162,21 @@ Prompt group
 `requirement → naive failure → StreamWeave design → 보존되는 성질`의 인과로 쓴다. 전체 서술은
 `inherited asynchronous freedom → added group dependency → local reconstruction →
 source-before-queue → trainer-side input conversion → engine-preserving handoff → end-to-end overlap`
-순서를 따르며 별도의 충돌 분류나 contract 명칭을 추가하지 않는다. Independent attempt scheduling,
-bounded queue, backpressure, parameter refresh는 상속한 실행 기반으로 인정하되
-별도 기여로 나열하지 않는다. StreamWeave의 소유 지점은 complete group이 source와 update input까지
-결정하는 환경에서 필요한 context만 국소적으로 복원하고, 그 결정을 learner-ready input construction과
-one-path primary update까지 보존하는 bridge다. Group dependency는 기존 staleness,
+순서를 따른다. §3.2 opening에서는 §3.1이 확립한 `learning contract`를 한 번만 받아 systems problem의
+제약을 분명히 하고, 이후 본문은 waiting의 종료점과 context의 보존을 평이한 architecture 언어로
+설명한다. Independent attempt scheduling, bounded queue, backpressure, parameter refresh는 상속한
+실행 기반으로 인정하되 별도 기여로 나열하지 않는다. StreamWeave의 소유 지점은 complete group이
+source와 update input까지 결정하는 환경에서 필요한 context만 국소적으로 복원하고, source decision의
+waiting scope와 post-queue input construction을 분리하는 architecture다. Group dependency는 기존 staleness,
 backpressure와 parameter-refresh loop를 우회하는 별도 synchronous path가 아니라 해당 flow control에
 편입되어야 한다.
 
 §3.2의 좁고 강한 구성적 성질은 **completion-order-independent interpretation**이다. 고정된 realized
 group, admitted batch, learner-entry parameter 아래에서 attempt의 완료 순서가 달라져도 complete-group
 source decision과 최종 learner-ready input은 달라지지 않는다. 비동기가 update 시점,
-batch membership, 전체 optimizer trajectory까지 보존한다고 주장하지 않는다. 이 대응은 §3.1의
-reference learning specification과 §3.2의 asynchronous realization이 같은 per-sample interpretation으로
-닫힌다는 사실만 보이며, component pipeline을 research claim으로 오인하는 것을 막는다.
+batch membership, 전체 optimizer trajectory까지 보존한다고 주장하지 않는다. 이 성질은 §3.2의
+architecture가 §3.1의 learning contract를 completion order와 무관하게 보존한다는 좁은 확인이며,
+§3.2를 contract의 하위 구현으로 분류하는 근거가 아니다.
 
 Engine 보존은 architecture claim이지 모든 backend에 대한 실증적 범용성 주장이 아니다. 공개 본문은
 composition logic이 backend-specific inference engine 내부에 hard-code되지 않고 기존 async generation과
@@ -1766,46 +2190,53 @@ policy-update interface를 유지한다고 쓴다. 임의의 inference engine, t
 
 #### 7.6 Runtime figure contract
 
-Method의 runtime 그림은 Figure 1의 문제 서사를 반복하거나 component를 나열하지 않는다. §3.1의
-learning-input specification과 §3.2의 asynchronous realization이 어디에서 같은 의미로 합류하는지를
-보이는 correspondence diagram으로 구성한다. 상단은 논리적 학습 경로, 하단은 물리적 실행 경로이며,
-오른쪽에서 같은 learner-ready input과 one-path update로 닫힌다.
+Figure 1은 두 층의 `learning specification 대 asynchronous realization` correspondence diagram이
+아니다. 실제 역할은 queue handoff를 따라 **data object가 어떤 형태로 바뀌는지** 보여주는
+data-state backbone이다. Timing, slot reuse와 다른 group의 진행은 §3.2 산문과 Algorithm 1이
+소유하므로 Figure 1에서 다시 그리지 않는다.
 
 ```text
-Reference learning:  Complete group -> source decision -> learner-ready inputs -> one update
-                           |                 |                    |                 |
-Async realization:  Interleaved attempts -> local reconstruction -> source-fixed stream
-                                                                  -> trainer conversion -> one update
+attempts
+  -> complete-group decision
+  -> one of two source-fixed records
+  -> one shared queue
+  -> source-appropriate training input
+  -> one primary update
+  -> parameter refresh
 ```
 
-이 그림의 상단은 별도의 물리적 pipeline이 아니라 §3.1이 §3.2에 부과하는 의미적 요구사항이다. 하단의
-여러 group은 서로 교차해 진행하며, 한 group이 미완성인 동안 다른 group과 trainer가 계속 전진하는
-모습을 보여준다. 큰 물리 영역은 `Generator`, `Source-fixed stream`, `Learner` 세 개로 제한하고,
-Accumulator는 중심 박스가 아니라 local reconstruction의 실현으로만 표현한다.
+이 그림의 핵심 자산은 stage 이름이 아니라 **두 record와 두 input의 형태**다. Policy route는
+$n$개의 rollout, verifier outcome과 rollout별 generation-policy provenance를 가진다. Expert route는
+하나의 target sequence와 확정된 source를 가진다. 두 record는 별도 pipeline으로 갈라지지 않고 여러
+prompt의 record가 섞인 하나의 queue를 통과한다. Queue 뒤에서는 같은 input schema의
+`sequence / signal / reference / correction` 슬롯을 source에 맞게 채운다. Policy provenance는
+rollout-to-entry correction으로 이어지고, expert input에는 rollout policy가 없으므로 identity
+correction이 들어간다. 두 input은 하나의 primary update로 합류한다.
 
-| Learning Composition의 요구 | Runtime에서의 실현 |
-|---|---|
-| **Complete-group decision** | Attempt를 독립 실행한 뒤 gate 직전에 complete group을 복원하여 source를 결정 |
-| **Learner-ready input construction** | Source-fixed group에 source와 생성 맥락을 유지하고 trainer-side converter에서 signal·reference·policy-lag correction으로 변환 |
-| **One primary update** | Learner-ready inputs가 동일한 primary objective와 averaging rule을 통과하고, batch 구성이 effective mixture를 다시 쓰지 않게 함 |
-
-| 내부 객체 | 공개 그림의 명칭 | 표시할 의미 |
+| Data-state boundary | 그림이 보여줄 변화 | 이 변화가 닫는 주장 |
 |---|---|---|
-| trajectory scheduler + rollout workers | **Independent attempts** | Group을 실행에서만 분해 |
-| `HptPromptGroupAccumulator` | **Complete-group reconstruction** | Gate 전에 semantic context 복원 |
-| `HptRolloutGate` + expert store | **Source decision** | Policy group 또는 expert trajectory 확정 |
-| `MessageQueue` | **Source-fixed group stream** | Source가 확정된 group과 필요한 맥락을 운반; learner row가 아님 |
-| `HptBatchAssembler` + policy-loss adapter | **Trainer-side conversion** | Source가 확정된 group을 learner가 바로 소비할 learner-ready inputs로 변환 |
-| Trainer objective | **One primary update** | Learner-ready inputs를 하나의 primary policy objective와 같은 averaging rule로 소비 |
-| checkpoint/queue budget | **Runtime flow control** | 필요할 때만 낮은 강조도의 dashed path로 표시하며 핵심 mechanism 번호를 부여하지 않음 |
+| **Complete-group decision** | Attempts를 complete group으로 복원하고 outcome에 따라 policy record 또는 expert record 중 하나를 확정 | Source와 record cardinality는 queue 전에 정해진다 |
+| **Training-input construction** | Source-fixed record를 source가 요구하는 sequence·signal·reference·correction으로 변환 | §3.1의 learning contract는 queue 뒤에서 완성되고 source-specific learner control은 여기서 끝난다 |
+| **One primary update** | 두 input이 하나의 learner tail로 합류 | Source 차이는 별도 trainer·optimizer topology로 전파되지 않는다 |
 
-Solid arrow는 data plane, dashed reverse arrow는 parameter refresh와 capacity feedback을 나타낸다.
-Provenance는 별도 계산 모듈이 아니라 routed group에 붙는 `group/source/policy-version` metadata로
-표현한다. 그림 내부에는 CISPO, self-detach 미분, token IS, `beta=0.3`, queue 크기, carryover 절차를
-넣지 않는다. 구체적인 policy label이 필요하면 `Policy update` 또는 `GRPO + vanilla PPO`를 사용한다.
+| 시각 요소 | 표시할 의미 |
+|---|---|
+| 여러 attempt 막대와 version tag | 한 prompt의 rollout cardinality와 per-rollout provenance |
+| $n$-sequence policy card / singleton expert card | One-of-two source decision이 만드는 서로 다른 record 형태 |
+| A--C record가 섞인 shared queue band | 여러 prompt와 두 source가 하나의 transport를 공유함 |
+| Policy/expert input의 같은 네 슬롯 | 공통 schema 안에서 source별 학습 조건이 값으로 표현됨 |
+| Filled correction / identity correction | Policy lag은 policy data에만 적용되고 expert에는 rollout-to-entry correction이 없음 |
+| 하나의 update box와 dashed parameter-refresh arrow | Shared learner tail과 기존 asynchronous feedback loop |
 
-그림은 §3.1의 learning composition 요구를 §3.2 runtime의 구체적인 경계에 대응시키며, source
-decision에 필요한 group completion만 국소적으로 기다리고 나머지 pipeline은 계속 진행됨을 보여준다.
+Figure 1은 attempt, source별 record와 boundary 번호를 하나의 일관된 시각 어휘로 사용한다. 다만
+text table이 아니라 topology를 소유해야 하므로, exact field 정의와 endpoint 유도는 §3.1과 caption에
+맡기고 그림 안의 문자열을 최소화한다. Accumulator, converter, queue 크기, self-detach 미분, token
+IS, `beta=0.3`, carryover와 framework-specific adapter 이름은 넣지 않는다.
+
+Figure 1은 C1과 C2의 공통 witness다. §3.1 관점에서는 source가 선택한 learning role이 어떤 input
+형태로 완성되는지 보여주고, §3.2 관점에서는 그 변환이 queue 양쪽의 두 경계에 배치되어 core engine
+역할을 유지함을 보여준다. 이 공통 사용은 §3.2가 §3.1의 하위 realization이라는 뜻이 아니라, 하나의
+data-state backbone이 두 기여의 접점을 시각적으로 닫는다는 뜻이다.
 
 #### 7.7 Algorithm 1 명세
 
@@ -1870,15 +2301,19 @@ TRAINER:
 | Queue 크기, backpressure, eviction | Appendix B.2 |
 | Exact tensor·mask 구성, self-detach의 미분 | Appendix A.2 |
 
-**세 표현의 역할 분담.** 같은 흐름을 §7.5 pipeline, §7.6 Figure 2, Algorithm 1이 각각 보여주므로
+**세 표현의 역할 분담.** 같은 흐름을 §7.5 pipeline, §7.6 Figure 1, Algorithm 1이 각각 보여주므로
 본문에서 같은 해설을 반복하지 않도록 역할을 나눈다. §7.5의 pipeline은 메모 내부 장치이며 단계별
-귀속을 기록할 뿐 본문 산출물이 아니다. Figure 2는 **대응**을 담당한다 — 학습 명세와 비동기 실현이
-같은 update로 합류한다는 것. Algorithm 1은 **제어 흐름**을 담당한다 — 무엇이 어떤 순서로 동시에
-일어나며 두 경계가 어디인지. 본문 산문은 둘 중 하나만 해설하고 다른 하나는 참조한다.
+귀속을 기록할 뿐 본문 산출물이 아니다. Figure 1은 **data-state topology**를 담당한다 — source
+decision이 서로 다른 record를 만들고, 하나의 queue를 지난 뒤 source-appropriate input과 shared
+learner tail로 이어지는 모양이다. Algorithm 1은 **제어 흐름**을 담당한다 — 무엇이 어떤 순서로
+동시에 일어나며 complete-group waiting이 어디에서 끝나는지. 본문 산문은 도형과 pseudocode를
+순서대로 다시 읽지 않고, 각각이 지지하는 architecture 판단만 해석한다.
 
-**배치.** §3.1이 input semantics를 정의한 뒤, §3.2의 첫 개요 문단 직후에 둔다. 이후 §3.2의 세부
-문단은 Algorithm 1의 independent attempts, accumulator, source-fixed queue와 training-input
-construction을 같은 순서로 해설한다. 최종 폭과 줄 수는 LaTeX 렌더에서 조정한다.
+**배치.** Figure 1은 Introduction에서 미리 선언해 2페이지 최상단에 배치하고, §3은 이를 두 절이
+공유하는 data-state map으로 해석한다. Algorithm 1은 §3.2 opening 직후에 두어 systems problem의
+concurrent solution을 보여준다. 이후 §3.2의 세부 문단은 independent attempts, local reconstruction,
+source-fixed queue와 post-queue input construction을 같은 순서로 설명하되 Figure 1의 field
+semantics와 Algorithm의 줄별 동작을 반복하지 않는다.
 
 ### 8. A--F 분석 원장과 본문 통합 결정
 
@@ -1915,11 +2350,11 @@ Method와 Experiments가 함께 보이게 하는 데 있다.
 |---|---|---|
 | **§4.2 Learning Effectiveness** | **PUBLIC PROSE, APPENDIX EVIDENCE AND FIGURE INTEGRATED** | Table 1의 수학 추론 성능, hard-region census 표, routing persistence·expert-off dynamics, matched repeat-prompt 해석과 benchmark-level cross-domain 표를 하나의 effectiveness 논증으로 통합했다. Appendix C.3은 control matching, 전체 \(k\)-별 결과와 uncertainty, signal accounting과 late-process dynamics를 소유한다. Learning figure는 공통 비교 구간을 normalized progress로 제시해 raw cycle 수를 노출하지 않는다. |
 | **§4.3 Execution Efficiency with Expert Supervision** | **PUBLIC PROSE AND TWO-SIDED INTERACTION EVIDENCE INTEGRATED; FIGURE RENDER/QA COMPLETE** | Async RL (expert-off)과의 비교로 expert-supervised run의 generation workload와 adjacent-version group 변화를 보인다. Synchronous execution comparison은 completion tail, rollout generation과 model training의 overlap, active-GPU coverage, matched-wall-clock cumulative work와 1.64$\times$ prompt-group throughput으로 닫는다. Table 2는 workload와 end-to-end reference를 행 블록으로 분리하고, Appendix는 route별 version span·completion-tail timing·telemetry scope를 소유한다. Framework-specific alignment와 carryover는 논문 범위에서 제외한다. 통합 효율 그림은 본문·caption 연결과 SVG/PDF/PNG export를 완료했으며 최종 번호와 배치 확인만 LaTeX 이관에서 수행한다. |
-| **§4.1 Experimental Setup** | **PUBLIC PROSE UPDATED** | §4.2·§4.3이 실제로 사용하는 training setting, expert-off learning control, fixed-checkpoint evaluation, learning-process analysis와 공통 efficiency work unit을 정의하고 exact hyperparameter는 Appendix로 분리 |
+| **§4.1 Experimental Setup** | **PUBLIC PROSE COMPRESSED AND REASSIGNED** | Training setting, expert-off control, fixed-checkpoint evaluation 범위와 quality reference만 정의한다. Learning-process methods는 §4.2의 각 evidence가, execution reference와 공통 prompt-group work unit은 §4.3과 execution table이 소유하며 exact hyperparameter는 Appendix로 분리한다. |
 | **§4 도입부** | **PUBLIC PROSE UPDATED AND LOCKED** | 완료된 §4.1--§4.3이 답하는 세 질문만 예고하고 결과 수치와 분석 세부를 선행 반복하지 않음 |
 | **Introduction·Conclusion** | **PUBLIC PROSE UPDATED** | §3·§4의 composition thesis, 공동 payoff와 직접 검증한 범위를 상위 서사에서 회수했다. |
 | **Related Work** | **PUBLIC PROSE ALIGNED** | Async의 시간적 비동기와 expert 계보의 source 확장을 담백하게 서술하고, source가 확정된 training record의 composition gap을 마지막 문단에서 회수했다. Citation closure만 남음 |
-| **§3 전체** | **REWRITTEN AND LOCKED** | §3 도입부를 실행·판단·최적화 단위의 분리로 갱신하고, §3.1--§3.2를 `complete-group source decision → source-specific training inputs → one-path update`와 `queue 앞의 source 확정 → queue 뒤의 input construction`으로 정렬했다. Algorithm 1은 같은 구성을 10-line concurrent control flow로 요약한다. |
+| **§3 전체** | **CORE DESIGN LOCKED; ENGLISH PROSE REFINEMENT ACTIVE** | §3 도입부와 §3.1의 learning contract는 정렬됐다. 현재 §3.2 opening과 산문에서 contract를 명시적 제약으로 받되 architecture를 하위 구현으로 낮추지 않는 관계를 정제 중이다. Queue 앞의 source 확정, queue 뒤의 input construction, Figure 1의 data-state backbone과 Algorithm 1의 concurrent control flow는 유지한다. |
 | **Abstract** | **PUBLIC PROSE UPDATED** | A·C 세부 수치 없이 thesis, competitive quality와 `1.64x`를 한 문단으로 압축하고 English Draft와 TL;DR을 동기화했다. |
 
 현재 실행 순서는 `PAPER_PLAN.md`의 P0가 단독으로 소유한다. 이 절은 evidence의 본문 반영 상태만
@@ -2105,8 +2540,9 @@ group당 generation time과 평균 response length가 각각 `7.11초`, `1,429 t
 group 비율만 사용해 **expert input을 사용하는 동안 asynchronous generation의 실행 조건도 달라졌음**을
 보인다. Exact generation time, truncation, parameter-version 수, route별 span, completeness와
 partial-rollout count는 Appendix의 cost ledger가 소유한다. Main의 실제 output length와 generation
-cost는 관측된 end-to-end wall-clock 안에 이미 포함되지만, 두 run의 response length 차이를 제거한
-token-normalized architecture speedup은 측정하지 않았다. Process trajectory는 consumed groups로,
+cost는 관측된 end-to-end wall-clock 안에 이미 포함된다. 두 run의 token volume 차이를 반영한
+재집계는 C.5.2가 소유하며, 트레이너 소비 response token 기준으로 `1.302×`다. 이는 work unit을 바꾸어
+센 결과이고 architecture만의 효과를 분리한 speedup이 아니다. Process trajectory는 consumed groups로,
 repeat-encounter 분석은 prompt encounter로 정렬하므로 `191 대 161`의 version count를 효과의 직접
 원인으로 해석하지 않는다. Response length를 exact compute나 보편적 causal mechanism으로 바꾸어
 말하지 않으며, 통합 Table 2에서도 expert-off workload comparison과 synchronous efficiency comparison의
@@ -2937,9 +3373,10 @@ asset QA·caption·번호 확정만 남아 있다.
 - Cumulative-work 패널은 standalone scalar plot으로 쓰지 않는다. Full-history activity와 결합하여
   높은 concurrent activity가 같은 wall-clock에서 더 많은 고유 prompt-group work로 이어졌음을
   닫는 payoff 패널로만 사용한다.
-- Prompt-group-weighted estimated GPU energy/group ECDF는 **STRONG APPENDIX**로 둔다.
+- Prompt-group-weighted estimated GPU energy/group ECDF는 유지할 경우 **Appendix C.4**에 둔다.
   유효한 보조 결과이지만 별도의 estimator 정의와 power-telemetry caveat를 요구하므로, 본문
-  architecture thesis를 추가 claim surface로 확장하지 않는다.
+  architecture thesis를 추가 claim surface로 확장하지 않는다. Appendix D는 ablation과
+  realization-scope evidence만 소유하므로 energy 자산을 배치하지 않는다.
 - Completion-tail 곡선도 **APPENDIX**에 둔다. 평균 request와 synchronous generation phase의
   차이가 보여주는 핵심 관측만 §4.3 산문에서 회수한다.
 
@@ -2976,7 +3413,7 @@ asset QA·caption·번호 확정만 남아 있다.
 | **Integrated execution-efficiency figure** | Full-history per-GPU activity와 active-GPU coverage를 같은 telemetry에서 제시하고, synchronous full-run `79.7 min`과 같은 시간에 상대 누적 작업량이 `1.00x -> 1.67x`로 벌어지는 과정을 연결 | `LOCKED MAIN; RENDER/VISUAL QA COMPLETE`; §4.3의 선택된 efficiency figure | 공개 범위 계약, 시각적 표현, caption과 본문 연결을 완료했다. `(a)--(b)`는 run별 full history를 독립 정규화하고 `(c)`는 실제 matched wall-clock과 synchronous-normalized work를 사용하며, 총 prompt-group 수를 공개하지 않는다. 최종 번호와 배치만 LaTeX 이관에서 확인한다 |
 | **Standalone active-GPU distribution** | 20% SM-active 기준 zero-above-threshold interval `27.9% -> 4.7%`, 평균 active GPU `5.40 -> 6.92`; 10--50% threshold와 first-cycle exclusion에서 방향 유지 | `SOURCE ASSET`; 통합본의 activity-summary panel에 흡수 | `idle`, `stall`, 독립 반복으로 바꾸어 부르지 않음 |
 | **Trainer--rollouter role concurrency** | 20% mean SM-active 기준 `both 76.1%`, `trainer-only 3.2%`, `rollouter-only 14.6%`, `neither 6.2%`. Both-active share는 10--50% threshold에서 `78.6% -> 69.2%`, training-progress decile에서도 `62.9--89.8%` | `VALIDATED APPENDIX`; async 고유의 sustained overlap을 직접 보여주지만 통합본의 activity evidence와 같은 SM telemetry의 다른 투영 | Appendix에서 role-level overlap을 보조할 때만 사용 |
-| **GPU energy per prompt group** | 완전 관측 cycle의 15초 `powerWatts` telemetry를 cycle duration과 consumed groups로 가중하면 sync `1.504 kJ/group`, StreamWeave `1.066 kJ/group`; groups/kWh 약 `2394 -> 3377` | `STRONG APPENDIX`; 더 높은 순간 전력을 쓰면서도 work당 추정 GPU energy가 약 `24--29%` 낮아 처리량이 단순 power increase만으로 설명되지 않는다는 보조 증거 | Raw power exact-timestamp join, refresh path, startup·validation population과 interval-edge sensitivity를 repository에 고정함. 독립 energy meter나 exact joule integration으로 과장하지 않음 |
+| **GPU energy per prompt group** | 완전 관측 cycle의 15초 `powerWatts` telemetry를 cycle duration과 consumed groups로 가중하면 sync `1.504 kJ/group`, StreamWeave `1.066 kJ/group`; groups/kWh 약 `2394 -> 3377` | `APPENDIX C.4 CANDIDATE; EXCLUDED FROM D`; 더 높은 순간 전력을 쓰면서도 work당 추정 GPU energy가 약 `24--29%` 낮아 처리량이 단순 power increase만으로 설명되지 않는다는 보조 증거 | Raw power exact-timestamp join, refresh path, startup·validation population과 interval-edge sensitivity를 repository에 고정함. 독립 energy meter나 exact joule integration으로 과장하지 않음 |
 | **Power--throughput operating map** | Non-validation cycle을 total GPU power와 prompt-group throughput의 2D operating point로 표시하면 두 run이 다른 iso-energy 영역에 분리됨 | `APPENDIX ALTERNATIVE / REJECTED AS MAIN`; 일반 표의 throughput 축을 다시 그려 정보가 중복됨 | Aggregate marker와 iso-energy 해석이 필요한 추가 분석에만 사용 |
 | **SM activity--NVLink joint state** | StreamWeave telemetry의 `68.6%`가 `8 SM-active GPUs + 2 NVLink-active GPUs`에 집중되고, sync는 `8+0`, `8+8`, `0+0` 상태로 분리됨 | `APPENDIX`; role-separated topology가 sustained work를 만든다는 정보를 주지만 통합본과 병치하면 중복됨 | NVLink threshold와 2/6 topology 설명이 필요하므로 본문에 승격하지 않음 |
 | **Per-device work depth** | 여덟 GPU 평균 `smActive`는 `43.0% -> 63.1%`, `smOccupancy`는 `11.2% -> 25.5%`; first-cycle 제외 시에도 각각 `44.9% -> 63.2%`, `11.7% -> 25.5%` | `STRONG APPENDIX`; 첫 패널의 concurrent device count에 각 device의 work depth를 보완 | DCGM telemetry counter이며 MFU나 FLOP utilization으로 바꾸어 부르지 않음. Run topology와 workload mix의 영향도 함께 소유 |
@@ -3097,8 +3534,9 @@ non-validation cycle을 유지한다. Cycle-edge sample 제거와 trapezoidal/co
 이 결과로 **GPU energy per prompt group** 후보의 coverage gate는 닫혔다. Raw power export,
 cycle points, pooled/cycle-weighted/edge-trimmed sensitivity와 validation coverage를 repository에
 고정했으므로 강한 보조 증거로 사용할 수 있다. 다만 본문 통합본이 activity에서 누적 work까지의
-핵심 chain을 이미 닫으므로 상태는 `STRONG APPENDIX`로 유지한다. Work-weighted ECDF와
-power--throughput operating map은 Appendix에서만 사용한다.
+핵심 chain을 이미 닫으므로 상태는 `APPENDIX C.4 CANDIDATE`로 유지한다. Work-weighted ECDF와
+power--throughput operating map은 유지할 경우 Appendix C.4에서만 사용하며, ablation을 소유하는
+Appendix D에는 배치하지 않는다.
 
 #### 8.6 Cross-domain reasoning 평가
 
@@ -3118,14 +3556,16 @@ Async RL (expert-off), HPT (sync), 외부 비교군과 Base를 포함한 10개 �
 | Model | ARC-C | GPQA-D | MMLU-Pro | Avg. |
 |---|---:|---:|---:|---:|
 | **StreamWeave** | 60.2 | 30.3 | 33.2 | **41.2** |
-| HPT (sync) | 60.5 | 28.8 | 33.9 | **41.1** |
-| Async RL (expert-off) | 60.8 | 30.6 | 31.7 | **41.1** |
+| HPT | 60.5 | 28.8 | 33.9 | **41.1** |
+| Async RL | 60.8 | 30.6 | 31.7 | **41.1** |
 | LUFFY | 56.5 | 27.0 | 34.5 | **39.3** |
 | CISPO | 57.4 | 26.1 | 33.4 | **38.9** |
 | Instruct | 54.6 | 27.7 | 30.3 | **37.5** |
 | ReLIFT | 52.8 | 24.5 | 30.2 | **35.8** |
 | SRFT | 48.0 | 24.2 | 28.0 | **33.4** |
 | Oat-Zero | 41.9 | 13.5 | 21.5 | **25.6** |
+| ExGRPO | 58.7 | 28.3 | 29.2 | **38.7** |
+| EMPO | 24.8 | 12.3 | 16.2 | **17.8** |
 | Base | 5.7 | 3.6 | 3.3 | **4.2** |
 
 Per-cell truncation count는 protocol 이상을 확인하는 내부 진단으로 별도 유지하며 공개 표에는 넣지
@@ -3177,8 +3617,9 @@ Method의 endpoint를 정확히 지칭할 때만 **supervised contribution**을 
 §4.2의 expert-channel dynamics 뒤, §4.3으로 넘어가기 직전에
 **Cross-domain reasoning.** 문단과 benchmark-level 표를 둔다. 수학 benchmark는 Table 1이,
 ARC-C·GPQA-D·MMLU-Pro는 별도 cross-domain 표가 각각 소유하며 Math Avg.를 두 표에서 반복하지
-않는다. 공개 표는 Base, Instruct, Async RL (expert-off), HPT (sync), SRFT, ReLIFT, Oat-Zero, LUFFY와
-StreamWeave를 포함한다. CISPO는 canonical method가 아닌 rejected ablation이므로 Appendix가 소유한다.
+않는다. 공개 표는 Base, Instruct, Async RL (expert-off), HPT (sync), SRFT, ReLIFT, Oat-Zero, ExGRPO,
+EMPO, LUFFY와 StreamWeave를 포함한다. CISPO-style arm은 canonical method가 아닌 controlled
+proximal-gate variant이므로 Appendix D가 소유한다.
 이 결과만을 위한 새 그래프는 만들지 않으며, 본문은 benchmark별 숫자를 다시 나열하기보다 다음
 판단을 회수한다.
 
@@ -3217,6 +3658,15 @@ benchmark-level 표를 다시 잠정 상태로 돌리는 집필 gate로 사용�
 > **변경 규율.** 이 원장은 추천과 재판정만 기록한다. 이 상호작용 중에는 공개 한국어 본문,
 > Appendix 본문, 제출용 TeX/PDF를 수정하지 않는다. 각 제안은 외부 모델의 의견을 그대로
 > 채택하지 않고 `채택 / 보류 / 기각`으로 다시 판정한다.
+>
+> **권한과 현행 판정.** 이 원장은 사고 과정의 이력을 보존하는 historical ledger이며, 각 Round의
+> `최종`, `동결`, `P0` 표시는 당시 snapshot에만 적용된다. 현재 작업 지침은 이 메모의 §0·§1·§7과
+> 최신 공개 원고가 소유한다. 특히 아래 Round 01--08에서 오간 `§3.1 정의 → §3.2 실현`과
+> `C1→C2 위계 완전 금지`는 모두 현행 규칙이 아니다. 현재 관계는 **§3.1이 보존할 learning
+> contract를 확립하고, §3.2가 그 제약 아래 complete-group waiting을 국소화하는 별도의 systems
+> problem을 푼다**는 것이다. 논리적 의존성은 명시하되 C2를 C1의 구현 세부로 낮추지 않는다.
+> 마찬가지로 Round 01--08의 기존 timeline Figure 1 `KEEP`·역할 분담은 historical snapshot이며,
+> 2026-07-28 `Figure retirement lock`에 따라 현행 원고나 figure set으로 복원하지 않는다.
 
 ### Round 01 — 논문의 분류 순서와 최상위 서사 병목
 
@@ -3865,18 +4315,17 @@ ordinary asynchronous flow와 learner path로 되돌아간다. 우아함은 mech
 | 자산 | 실제로 갚는 것 | 갚지 않는 것 |
 |---|---|---|
 | §3.1 구성적 유도 | Source decision 뒤 보존한 정보로 policy/expert의 intended endpoint를 learner input에서 재현하고, source 차이가 input에 표현된 뒤 common objective로 합류할 수 있음 | Architecture 효율, decomposition의 유일성, HPT 밖 empirical generality |
-| Figure 1 | Complete-group decision의 logical waiting span과 계속되는 다른 rollout/training의 physical span이 다름 | Endpoint의 수학적 정확성, speedup 인과 분해 |
-| Figure 2 | Source-resolved record가 source-specific input으로 바뀌고 source-specific control이 common learner tail 전에 끝남 | 실제 concurrency와 alternative 대비 우월성 |
+| Figure 1 | Source-resolved record가 source-specific input으로 바뀌고 source-specific control이 common learner tail 전에 끝남 | 실제 concurrency와 alternative 대비 우월성 |
 | Algorithm 1 | Independent completion, local source resolution, downstream input construction, shared learner tail이 하나의 concurrent control flow에서 함께 성립함 | 최적성이나 유일성 |
 | A | Source decision이 generation pressure가 큰 hard region에서 실제로 필요함 | Expert mechanism의 인과 효과 |
 | C | Source decision이 warm start 뒤 사라지지 않고 online으로 반복되며 learning-relevant함 | 보편적 장기 수렴 |
 | Table 1 quality | Asynchronous realization이 intended learning level을 실용적으로 반납하지 않음 | Novelty나 HPT 대비 우월성 |
 | E | 지속적인 complete-group decision 아래 local waiting이 concurrent work와 end-to-end payoff로 이어짐 | `1.64×`의 정확한 성분별 인과 분해와 architecture optimality |
 
-Figure 1은 **왜 기다림을 분리하는가**, Figure 2는 **source decision 뒤 무엇이 남고 어디서
-사라지는가**, Algorithm 1은 **누가 언제 이를 실행하는가**만 소유한다. Algorithm이 상위 판단보다
-먼저 보이면 implementation recipe로 읽히므로 산문과 두 figure가 decomposition을 먼저 확정해야
-한다.
+Figure 1은 **source decision 뒤 무엇이 남고 어디서 사라지는가**, Algorithm 1은 **누가 언제 이를
+실행하는가**만 소유한다. Local waiting의 범위와 다른 work가 계속된다는 판단은 Introduction과
+§3.2 산문이 담당한다. 삭제된 timeline은 source routing을 중복하면서 별도의
+StreamWeave-specific claim을 더하지 못했으므로 독립 자산으로 복원하지 않는다.
 
 #### 가장 현실적인 reject 문장
 
@@ -4014,14 +4463,14 @@ asynchronous engines의 자유를 함께 유지한다.
 | Contributions | **REWRITE** | 3항 구조 | Umbrella thesis 아래 C1/C2 동등 배치, C3 evidence recovery |
 | Related Work 앞 두 계보 | **KEEP** | 부모 계보의 실제 성과 | 결함 목록이나 과도한 인정문을 추가하지 않음 |
 | Related Work 마지막 문단 | **REWRITE** | 두 계보가 만나는 잔여 문제 | StreamWeave Method recipe 삭제 |
-| §3 intro | **FULL REWRITE** | Figure 2와 Algorithm 예고 | Component inventory와 `§3.1 defines, §3.2 realizes` 제거; 두 질문만 제시 |
+| §3 intro | **FULL REWRITE** | Figure 1과 Algorithm 예고 | Component inventory와 `§3.1 defines, §3.2 realizes` 제거; 두 질문만 제시 |
 | §3.1 | **KEEP CORE + REFRAME** | Source-specific input 식, common objective, endpoint 해석 | HPT-first opening과 마지막 bridge 교정; formalism 추가 금지 |
 | §3.2 | **KEEP CORE + PROSE REORGANIZATION** | Independent completion, reconstruction, source-fixed record, engine roles | Queue chronology보다 waiting 종료와 async flow 재개를 주어로; 반복 결론 압축 |
-| Figure 1 | **KEEP + CAPTION TIGHTEN** | 해당 group만 기다리고 다른 work가 계속됨 | Queue와 input 설명을 Figure 2로 돌림 |
-| Figure 2 | **KEEP + OWNERSHIP TIGHTEN** | Source-specific input과 common learner tail | 시간축·slot reuse를 소유하지 않음 |
+| Figure 1 | **KEEP + OWNERSHIP TIGHTEN** | Source-specific input과 common learner tail | 시간축·slot reuse를 소유하지 않음 |
+| Retired timeline | **REMOVE** | Local waiting 판단은 §3.2와 Algorithm에 보존 | Source routing 중복과 inherited async scheduling 재도식화를 제거 |
 | Algorithm 1 | **KEEP** | Concurrent control flow | §3.1 수식과 source semantics 재설명 금지 |
 | §4 intro | **COMPRESS/ALIGN** | 필요성, learning preservation, execution payoff의 세 질문 | Method mechanism과 결과 수치 선점 삭제 |
-| §4.1 | **KEEP + LIGHT COMPRESS** | Control, evaluation protocol, common work unit | 결과 해석을 넣지 않음 |
+| §4.1 | **COMPRESSED AND REASSIGNED** | Training/control, fixed-checkpoint evaluation, quality references | Learning-analysis roadmap과 efficiency work unit을 다시 넣지 않음 |
 | §4.2 | **KEEP STRUCTURE + COMPRESS** | Quality gate, hard-region asset, dynamics, repeat-prompt 한 문장, cross-domain guardrail | 수치 낭독·원인 재설명 축소, §4.3로 넘기는 질문 강화 |
 | §4.3 | **KEEP STRUCTURE + COMPRESS** | Changed workload, sync exposure, local execution, hardware signature, payoff | One primary update와 §3 pipeline replay 삭제, exact causal decomposition 금지 |
 | Conclusion | **REWRITE/COMPRESS** | Thesis, A/C, quality/E, empirical scope | Mechanism chronology와 component 목록 삭제 |
@@ -4035,8 +4484,8 @@ asynchronous engines의 자유를 함께 유지한다.
    돌려준 뒤 남는 관계를 맡는다.
 3. **§3 도입부를 전면 재작성하고 §3.1/§3.2의 개념적 주어를 교정한다.** 기술 자산은 대부분
    보존하되 contribution hierarchy를 바로잡는다.
-4. **Figure 1--Figure 2--Algorithm의 단일 책임을 잠근다.** 각각 `왜 기다림을 제한하는가`,
-   `무엇이 input으로 변하는가`, `누가 언제 실행하는가`만 소유한다.
+4. **Figure 1--Algorithm--§3.2 산문의 단일 책임을 잠근다.** 각각 `무엇이 input으로
+   변하는가`, `누가 언제 실행하는가`, `왜 기다림이 해당 group에만 머무는가`를 소유한다.
 5. **§4의 기존 강한 구조를 보존하면서 ownership만 정제한다.** Quality는 viability gate, A/C는
    online condition, cross-domain은 guardrail, E는 architecture payoff다.
 
@@ -4071,15 +4520,14 @@ asynchronous engines의 자유를 함께 유지한다.
 `decomposition`도 Abstract·Introduction·Method의 상위 판단에서 제한적으로만 사용한다.
 
 One primary update의 전체 설명은 §3.1 한 곳만 소유한다. Abstract에는 필요하면 종속절 한 번,
-Introduction C1 문단과 Contribution 1에는 결과로 한 번, Figure 2와 Algorithm에는 endpoint로 한
+Introduction C1 문단과 Contribution 1에는 결과로 한 번, Figure 1과 Algorithm에는 endpoint로 한
 번씩만 남긴다. TL;DR, §3 도입부, §4, Conclusion에서는 exact phrase를 제거한다.
 
 #### Claim--asset ownership
 
 | Asset | 단 하나의 소유 주장 |
 |---|---|
-| Figure 1 | 한 incomplete group은 그 group의 source decision만 늦추며 다른 rollout과 ready training은 계속된다. |
-| Figure 2 | Source가 정한 learning role은 source-specific input으로 표현되고 input construction 뒤 common learner tail로 합류한다. |
+| Figure 1 | Source가 정한 learning role은 source-specific input으로 표현되고 input construction 뒤 common learner tail로 합류한다. |
 | Algorithm 1 | 두 종료점이 concurrent Generator--Trainer control flow에서 함께 성립한다. |
 | §3.1 수식 | 주어진 source decision을 source에 맞는 input으로 구성하면 inherited policy/expert endpoint가 같은 objective에서 재현된다. |
 | Table 1 | Fully-asynchronous realization이 competitive reasoning performance와 HPT (sync)의 learning level을 유지한다. |
@@ -4092,14 +4540,19 @@ Introduction C1 문단과 Contribution 1에는 결과로 한 번, Figure 2와 Al
 표와 그림은 exact value와 pattern, caption은 모집단·축·reference·metric 정의, 산문은 그 asset이
 지지하는 한 판단만 소유한다. 산문은 row와 panel을 다시 읽지 않는다.
 
+삭제된 timeline의 local-waiting claim은 Introduction·§3.2 산문과 Algorithm 1에 남아 있다.
+Figure 1의 data-state claim과 겹치면서 상속한 asynchronous scheduling만 별도로 그리던
+자산이므로, historical `KEEP` 기록을 근거로 복원하지 않는다.
+
 #### 최종 revision order와 exit criteria
 
 1. **한 페이지 claim ledger 잠금:** Umbrella thesis, C1/C2/C3, asset별 한 주장, 금지 claim을
    확정한다. 모든 핵심 claim의 primary home이 하나이고 C1→C2의 위계가 없으면 종료한다.
 2. **§3 truth source 정렬:** §3 도입부, §3.1 frame, §3.2 prose를 고친다. HPT·queue 명칭을 가려도
    두 contribution이 구별되면 종료한다.
-3. **Figure 1--2와 Algorithm 역할 분리:** Figure 1=`waiting`, Figure 2=`input transformation`,
-   Algorithm=`concurrent order`가 서로 대체 불가능하면 종료한다.
+3. **Figure 1과 Algorithm 역할 분리:** Figure 1=`input transformation`,
+   Algorithm=`concurrent order`, §3.2 산문=`local waiting`이 서로의 책임을 침범하지 않으면
+   종료한다.
 4. **§4 ownership 정제:** 현재 구조를 보존하면서 §4.2→§4.3 연결, 수치 중복과 mechanism replay만
    정리한다. 각 asset이 한 판단만 소유하면 종료한다.
 5. **Contributions와 Related Work 마지막 문단:** Component subtraction 뒤에도 C1/C2가 남고
@@ -4187,7 +4640,7 @@ delta`를 한 번 더 분리할 필요가 있다. 마지막 라운드는 새로�
 
 Round 07의 `Abstract 전면 재작성`, `§4 intro 재작성`, `§4.1 대폭 압축`,
 `§4.2 재배열/구조적 재작성`, `§4.3 구조적 재작성`, `§3.2 전체 재작성`,
-`Figure 2/Algorithm 역할 재설계`, `Contribution 2 전면 재작성`은 현재 원고에 이미 반영된
+`Figure 1/Algorithm 역할 재설계`, `Contribution 2 전면 재작성`은 현재 원고에 이미 반영된
 작업이므로 최종 backlog에서 삭제한다.
 
 #### 실제로 남은 P0 — 여덟 개
@@ -4205,15 +4658,15 @@ Round 07의 `Abstract 전면 재작성`, `§4 intro 재작성`, `§4.1 대폭 �
 
 #### 남은 P1
 
-1. **Figure 1 caption:** Source-fixed record, shared queue와 training-input construction을 삭제한다.
-   Figure 1은 incomplete group의 local waiting과 그동안 계속되는 다른 rollout/ready training만
-   소유한다.
-2. **§4.2 expert-on/off 문단:** `matched expert contribution을 primary update에 추가한다`는
+> **완료된 figure 결정 (2026-07-28):** 기존 timeline은 제거했고 현행 data-state figure가
+> Figure 1이 되었다. 삭제 이유와 복원 금지는 상단 `Figure retirement lock`이 소유한다.
+
+1. **§4.2 expert-on/off 문단:** `matched expert contribution을 primary update에 추가한다`는
    Method replay를 제거한다. Same-stack control과 초기 유사 이후 quality/failure behavior가 함께
    분리된 empirical meaning만 남긴다.
-3. **§4.3 opening:** `one primary update`를 삭제하고 persistent expert workload 아래의 execution
+2. **§4.3 opening:** `one primary update`를 삭제하고 persistent expert workload 아래의 execution
    question만 남긴다.
-4. **§4.3 immediate-refill 문단:** `record를 §3.1의 primary update로 전달한다`를 삭제한다.
+3. **§4.3 immediate-refill 문단:** `record를 §3.1의 primary update로 전달한다`를 삭제한다.
    Immediate slot refill, group identity/provenance 보존과 다른 generation/ready training의
    계속 진행은 유지한다.
 
@@ -4230,7 +4683,7 @@ Round 07의 `Abstract 전면 재작성`, `§4 intro 재작성`, `§4.1 대폭 �
 - **Front matter:** Abstract 전체, Introduction 2--5문단, Contribution 2와 3.
 - **Related Work:** Fully-asynchronous lineage, expert-trajectory lineage, 마지막 문단 첫 두 문장.
 - **Method:** §3 도입부의 세 단위와 두 종료점, §3.1의 selector/inputs/equations/objective,
-  §3.2 overview와 네 문단의 core flow, Figure 2의 source-specific inputs/common learner tail,
+  §3.2 overview와 네 문단의 core flow, Figure 1의 source-specific inputs/common learner tail,
   Algorithm 1의 immediate refill–group decision–trainer conversion–shared tail 골격.
 - **Experiments:** §4 도입부, §4.1, §4.2/§4.3의 현재 asset 순서, 모든 main table/figure의 수치와
   역할, 현재의 Appendix C handoff.
@@ -4251,9 +4704,10 @@ Round 07의 `Abstract 전면 재작성`, `§4 intro 재작성`, `§4.1 대폭 �
 4. **Definition→realization 제거:** §3 도입부와 §3.1 closing에 §3.1이 정의하고 §3.2가 이를
    실현한다는 위계가 없다.
 5. **One-primary-update 예산:** TL;DR, §3 도입부, §4 전체와 Conclusion에 exact phrase가 없다.
-   전체 설명은 §3.1이 소유하고 Figure 2/Algorithm에는 endpoint로만 남는다.
-6. **Figure ownership:** Figure 1 caption에는 queue, training input과 one primary update가 없다.
-   Figure 2가 source-specific input과 common update를 소유한다.
+   전체 설명은 §3.1이 소유하고 Figure 1/Algorithm에는 endpoint로만 남는다.
+6. **Figure ownership:** Figure 1이 source-specific input과 common update를 소유하고,
+   local waiting과 slot reuse는 §3.2 산문과 Algorithm이 소유한다. Retired timeline은 복원하지
+   않는다.
 7. **§4 무이동:** §4.2와 §4.3의 현재 asset 순서가 그대로이며 새 분석·표·그림이 추가되지 않는다.
 8. **Conclusion chronology:** Conclusion 첫 문단에 accumulator, queue, reconstruction과
    one-primary-update의 pipeline sequence가 없다.

@@ -1,0 +1,116 @@
+% Figure 1 -- Two dependencies, each scoped.
+% Design canvas 1008 x 338 px at 0.498 pt/px  =>  501.98 x 168.32 pt
+%                                            =>  6.972 x 2.338 in
+% Requires: \usepackage{streamweave-figures}
+\begin{tikzpicture}[swfig]
+\useasboundingbox (0,0) rectangle (1008,338);
+\begin{scope}[shift={(20,18)}]
+
+% ---------------------------------------------------------- label column
+\node[lbl,text=figsub] at (0,-2) {ROLLOUT};
+\node[lbl,text=figsub] at (0,20) {SLOTS};
+\node[lbl] at (0,44) {PROMPT A};
+\node[lbl] at (0,107) {PROMPT B};
+\node[lbl,text=figsub] at (0,252) {TRAINING};
+
+\begin{scope}[shift={(136,0)}]   % ---- timeline, 832 px wide -------------
+
+% rollout lanes: dark = prompt A, mid = prompt B, light = other prompts
+\fill[figink]  (0,0) rectangle (58.24,8);
+\fill[fign500] (62.4,0) rectangle (149.76,8);
+\fill[fign300] (153.92,0) rectangle (349.44,8);
+\fill[fign300] (353.6,0) rectangle (582.4,8);
+\fill[fign300] (586.56,0) rectangle (832,8);
+
+\fill[figink]  (0,11) rectangle (116.48,19);
+\fill[fign500] (120.64,11) rectangle (224.64,19);
+\fill[fign300] (228.8,11) rectangle (432.64,19);
+\fill[fign300] (436.8,11) rectangle (648.96,19);
+\fill[fign300] (653.12,11) rectangle (832,19);
+
+\fill[figink]  (0,22) rectangle (183.04,30);
+\fill[fign500] (187.2,22) rectangle (332.8,30);
+\fill[fign300] (336.96,22) rectangle (549.12,30);
+\fill[fign300] (553.28,22) rectangle (832,30);
+
+\fill[figink]  (0,33) rectangle (282.88,41);
+\fill[fign500] (287.04,33) rectangle (457.6,41);
+\fill[fign300] (461.76,33) rectangle (682.24,41);
+\fill[fign300] (686.4,33) rectangle (832,41);
+
+% completion leaders: solid = prompt A, dotted = prompt B
+\draw[figsub,lw075] (58.24,8) -- (58.24,48);
+\draw[figsub,lw075] (116.48,19) -- (116.48,48);
+\draw[figsub,lw075] (183.04,30) -- (183.04,48);
+\draw[fign500,lw075,dotted] (149.76,8) -- (149.76,111);
+\draw[fign500,lw075,dotted] (224.64,19) -- (224.64,111);
+\draw[fign500,lw075,dotted] (332.8,30) -- (332.8,111);
+
+% decision guides: each descends from the bracket that closes its group
+\draw[fign500,lw075,dashed] (282.88,84) -- (282.88,206);
+\draw[fign500,lw075,dashed] (457.6,147) -- (457.6,231);
+
+% ------------------------------------------------- prompt A outcomes
+\figX{58.24}{55}{figink}
+\figX{116.48}{55}{figink}
+\figX{183.04}{55}{figink}
+\figX{282.88}{55}{figink}
+\draw[fign500,lw05] (0,69) -- (832,69);
+
+% dependency 1 for prompt A: waiting for the complete group
+\draw[figowned,lw1] (58.24,80) -- (282.88,80);
+\draw[figowned,lw1] (58.24,72) -- (58.24,82);
+\draw[figowned,lw1] (116.48,75) -- (116.48,82);
+\draw[figowned,lw1] (183.04,75) -- (183.04,82);
+\draw[figowned,lw1] (282.88,72) -- (282.88,84);
+\node[lbl,ko,text=figowned,font=\figmd] at (58.24,84) {gather the complete group};
+\node[lbl,ko,text=figdecide] at (295.36,80) {all failed};
+
+% ------------------------------------------------- prompt B outcomes
+\figX{149.76}{118}{figink}
+\figCheck{224.64}{118}{figink}
+\figX{332.8}{118}{figink}
+\figX{457.6}{118}{figink}
+\draw[fign500,lw05] (0,132) -- (832,132);
+
+% dependency 1 for prompt B
+\draw[figowned,lw1] (149.76,143) -- (457.6,143);
+\draw[figowned,lw1] (149.76,135) -- (149.76,145);
+\draw[figowned,lw1] (224.64,138) -- (224.64,145);
+\draw[figowned,lw1] (332.8,138) -- (332.8,145);
+\draw[figowned,lw1] (457.6,135) -- (457.6,147);
+\node[lbl,ko,text=figowned,font=\figmd] at (174.72,147) {gather the complete group};
+\node[lbl,ko,text=figdecide] at (470.08,143) {at least one succeeded};
+
+% ---------------- A has no passing answer: the expert source is fixed
+\node[lbl,text=figowned,font=\figmd] at (0,180) {training input built};
+\draw[figowned,lw1,arw] (149,191) -- (282.88,191);
+
+\draw[figowned,lw1,fill=figbg,rounded corners=2pt] (282.88,176) rectangle (418.5,206);
+\node[anchor=west,font=\figmd] at (292.88,191) {Expert};
+
+% dependency 2: the fixed source travels the shared queue
+\draw[figowned,lw1] (418.5,187) -- (436.8,187);
+\draw[figowned,lw1] (418.5,195) -- (436.8,195);
+\fill[figowned] (436.8,183) -- (444.8,191) -- (436.8,199) -- (428.8,191) -- cycle;
+\draw[figowned,lw1,arw] (436.8,199) -- (436.8,254);
+
+% ---------------- B has a passing answer: the policy group is the source
+\draw[figowned,lw1] (457.6,231) -- (474.24,231);
+\draw[figowned,lw1,fill=figbg,rounded corners=2pt] (474.24,216) rectangle (609.86,246);
+\node[anchor=west,font=\figmd] at (484.24,231) {Policy};
+
+\draw[figowned,lw1] (609.86,227) -- (628.16,227);
+\draw[figowned,lw1] (609.86,235) -- (628.16,235);
+\fill[figowned] (628.16,223) -- (636.16,231) -- (628.16,239) -- (620.16,231) -- cycle;
+\draw[figowned,lw1,arw] (628.16,239) -- (628.16,254);
+
+% ------------------------------- ready training work keeps running
+\draw[fign500,lw075,fill=fign200] (0,254) rectangle (832,272);
+
+\node[anchor=north east,text=figsub] at (806,280) {TIME};
+\draw[figsub,lw1,arw] (812,289) -- (832,289);
+
+\end{scope}
+\end{scope}
+\end{tikzpicture}

@@ -1,0 +1,59 @@
+% streamweave-figures.sty -- shared setup for Figure 1 and Figure 2
+% All colours are declared in the cmyk model, so they emit DeviceCMYK
+% regardless of how the host document loads xcolor.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{streamweave-figures}[2026/07/27 StreamWeave paper figures]
+
+\RequirePackage{amsmath}
+\RequirePackage{tikz}
+\RequirePackage{xcolor}
+\usetikzlibrary{arrows.meta,patterns.meta,calc}
+
+% ---------------------------------------------------------------- colours
+\definecolor{figbg}{cmyk}{0,0,0,0}            % paper white
+\definecolor{figink}{cmyk}{0,0.031,0.094,0.875}
+\definecolor{figowned}{cmyk}{0.798,0.064,0,0.573}   % deep teal - owned boundaries
+\definecolor{figdecide}{cmyk}{0,0.328,0.864,0.510}  % deep amber - source decision
+\definecolor{figsub}{cmyk}{0,0.031,0.031,0.624}     % substrate labels
+\definecolor{fign500}{cmyk}{0,0.026,0.026,0.392}
+\definecolor{fign400}{cmyk}{0,0.021,0.021,0.271}
+\definecolor{fign300}{cmyk}{0,0.019,0.019,0.157}
+\definecolor{fign200}{cmyk}{0,0.013,0.013,0.082}
+
+% ------------------------------------------------------------------ type
+% The host document supplies Times; these only fix the sizes.
+\newcommand{\figsm}{\fontsize{9}{11}\selectfont}    % 9.0 pt  - body labels
+\newcommand{\figmd}{\fontsize{9.5}{11.5}\selectfont}% 9.5 pt  - key labels
+\newcommand{\figlg}{\fontsize{10}{12}\selectfont}   % 10.0 pt - stage titles
+
+% ------------------------------------------------------------- tikz setup
+% 1 drawing unit = 1 px of the design = 0.498 pt, y positive downwards.
+\tikzset{
+  swfig/.style={
+    x=0.498pt, y=-0.498pt,
+    line cap=butt, line join=miter,
+    every node/.style={inner sep=0pt, outer sep=0pt, font=\figsm, text=figink},
+  },
+  lbl/.style={anchor=north west},
+  ko/.style={fill=figbg, inner xsep=2pt, inner ysep=0.6pt},
+  arw/.style={-{Triangle[length=4pt,width=6.5pt]}},
+  arws/.style={-{Triangle[length=3pt,width=5pt]}},
+  lw1/.style={line width=1pt},          % 1.00 pt - primary strokes
+  lw075/.style={line width=0.75pt},       % 0.75 pt - secondary strokes
+  lw05/.style={line width=0.5pt},       % 0.50 pt - AAAI minimum
+  hatch/.style={pattern={Lines[angle=45,distance=2.2pt,line width=0.5pt]},
+                pattern color=figink},
+}
+
+% ------------------------------------------------------------ mark glyphs
+% Drawn, not typeset: keeps every glyph inside the one embedded text font.
+\newcommand{\figX}[3]{%
+  \begin{scope}[shift={(#1,#2)}]
+    \draw[#3,lw1] (-7,-7) -- (7,7);
+    \draw[#3,lw1] (-7,7) -- (7,-7);
+  \end{scope}}
+\newcommand{\figCheck}[3]{%
+  \begin{scope}[shift={(#1,#2)}]
+    \draw[#3,lw1,line join=round] (-7,0.5) -- (-2,5.5) -- (7,-7);
+  \end{scope}}
+\endinput

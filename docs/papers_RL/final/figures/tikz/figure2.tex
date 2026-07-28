@@ -1,0 +1,154 @@
+% Figure 2 -- Data-state transitions across the three boundaries.
+% Design canvas 1008 x 435 px at 0.498 pt/px  =>  501.98 x 216.63 pt
+%                                            =>  6.972 x 3.009 in
+% Requires: \usepackage{streamweave-figures}
+\begin{tikzpicture}[swfig]
+\useasboundingbox (0,0) rectangle (1008,435);
+\begin{scope}[shift={(20,18)}]
+
+% ------------------------------------------------ the three owned stages
+\draw[fign400,lw075,fill=fign200,rounded corners=2pt] (104,0) rectangle (332,260);
+\draw[fign400,lw075,fill=fign200,rounded corners=2pt] (580,0) rectangle (968,244);
+\draw[fign400,lw075,fill=fign200,rounded corners=2pt] (580,284) rectangle (968,368);
+
+\fill[figowned] (116,12) rectangle (140,36);
+\node[text=figbg] at (128,24) {1};
+\node[lbl,font=\figlg] at (148,12) {Complete-group};
+\node[lbl,font=\figlg] at (148,36) {decision};
+
+\fill[figowned] (592,12) rectangle (616,36);
+\node[text=figbg] at (604,24) {2};
+\node[lbl,font=\figlg] at (624,12) {Training-input construction};
+
+\fill[figowned] (592,296) rectangle (616,320);
+\node[text=figbg] at (604,308) {3};
+\node[lbl,font=\figlg] at (624,296) {One primary update};
+% one objective, spanning exactly the two input columns it replaces;
+% it takes no source argument -- the trainer consumes, it does not re-decide
+\draw[figowned,lw1,fill=figbg,rounded corners=2pt] (716,328) rectangle (948,364);
+\node[font=\fontsize{10}{12}\selectfont] at (832,346) {$\mathcal{L}(\theta;\,\text{training input})$};
+
+% ------------------------------------- inherited: one prompt's attempts
+\node[lbl,text=figsub] at (0,38) {ATTEMPTS};
+\fill[figink] (0,64) rectangle (52,74);
+\fill[figink] (0,88) rectangle (36,98);
+\fill[figink] (0,112) rectangle (44,122);
+\fill[figink] (0,136) rectangle (52,146);
+
+% boundary 1: reconstruct the group, then fix one source
+\draw[figowned,lw1] (56,69) -- (114,69);
+\draw[figowned,lw1] (40,93) -- (114,93);
+\draw[figowned,lw1] (48,117) -- (114,117);
+\draw[figowned,lw1] (56,141) -- (114,141);
+\draw[figowned,lw1] (115,69) -- (115,141);
+\draw[figowned,lw1] (115,109) -- (135,109);
+\draw[figowned,lw1] (135,109) -- (135,205);
+\draw[figowned,lw1,arw] (135,109) -- (184,109);
+\draw[figowned,lw1,arw] (135,205) -- (184,205);
+\node[anchor=west,text=figdecide] at (138,93) {any};
+\figCheck{182}{93}{figdecide}
+\node[anchor=west,text=figdecide] at (138,189) {all};
+\figX{172}{189}{figdecide}
+
+% policy record: the whole group, with per-rollout provenance
+\draw[figowned,lw1,fill=figbg,rounded corners=2pt] (200,64) rectangle (320,154);
+\fill[figink] (209,73) rectangle (253,79);
+\fill[figink] (209,95) rectangle (239,101);
+\fill[figink] (209,117) rectangle (246,123);
+\fill[figink] (209,139) rectangle (253,145);
+\node[anchor=west,text=figsub] at (261,76) {v};
+\node[anchor=west,text=figsub] at (261,98) {v};
+\node[anchor=west,text=figsub] at (261,120) {v};
+\node[anchor=west,text=figsub] at (261,142) {v};
+\node[lbl] at (200,156) {policy record};
+
+% expert record: a single target sequence, no rollout provenance
+\draw[figowned,lw1,fill=figbg,rounded corners=2pt] (200,182) rectangle (320,230);
+\draw[figink,lw075,hatch] (209,200) rectangle (253,212);
+\node[lbl] at (200,232) {expert record};
+
+% ------------------------------------- inherited: one shared record queue
+\draw[fign500,lw1] (320,109) -- (344,109);
+\draw[fign500,lw1] (343,109) -- (343,206);
+\draw[fign500,lw1] (320,206) -- (344,206);
+\draw[fign500,lw1,arw] (344,109) -- (363,109);
+
+\draw[fign500,lw1] (372,64) -- (556,64);
+\draw[fign500,lw1] (372,154) -- (556,154);
+
+\node[anchor=north,text=figsub] at (408,70) {A};
+\fill[figink] (394,100) rectangle (422,104);
+\fill[figink] (394,108) rectangle (413,112);
+\fill[figink] (394,116) rectangle (418,120);
+\fill[figink] (394,124) rectangle (422,128);
+
+\node[anchor=north,text=figsub] at (464,70) {B};
+\draw[figink,lw075,hatch] (450,108) rectangle (478,120);
+
+\node[anchor=north,text=figsub] at (520,70) {C};
+\fill[figink] (506,100) rectangle (534,104);
+\fill[figink] (506,108) rectangle (529,112);
+\fill[figink] (506,116) rectangle (534,120);
+\fill[figink] (506,124) rectangle (526,128);
+
+\node[lbl,text=figsub] at (372,156) {SHARED QUEUE};
+\draw[fign500,lw1,arw] (556,109) -- (575,109);
+
+% ---------------------------- boundary 2: the source-appropriate input
+\node[lbl] at (716,42) {policy input};
+\node[lbl] at (846,42) {expert input};
+\node[anchor=west,text=figsub] at (592,90) {1};
+\node[anchor=west,text=figsub] at (606,90) {sequence};
+\node[anchor=west,text=figsub] at (592,122) {2};
+\node[anchor=west,text=figsub] at (606,122) {signal};
+\node[anchor=west,text=figsub] at (592,154) {3};
+\node[anchor=west,text=figsub] at (606,154) {reference};
+\node[anchor=west,text=figsub] at (592,186) {4};
+\node[anchor=west,text=figsub] at (606,186) {correction};
+
+\draw[figowned,lw1,fill=figbg,rounded corners=2pt] (716,70) rectangle (818,208);
+\fill[figink] (728,80) rectangle (806,100);
+\fill[figink] (728,112) rectangle (806,132);
+\fill[figink] (728,144) rectangle (806,164);
+\draw[figink,lw075,fill=figbg] (752,176) rectangle (782,196);
+\node at (767,186) {$w$};
+
+\draw[figowned,lw1,fill=figbg,rounded corners=2pt] (846,70) rectangle (948,208);
+\draw[figink,lw075,hatch] (858,80) rectangle (936,100);
+\draw[figink,lw075,hatch] (858,112) rectangle (936,132);
+\draw[figink,lw075,hatch] (858,144) rectangle (936,164);
+\draw[figink,lw075,fill=figbg] (882,176) rectangle (912,196);
+\node at (897,186) {$1$};
+
+% ------------------------------ boundary 3: both inputs, one update path
+% the four fields gather onto one trunk, which feeds both input cards
+\draw[fign500,lw1] (695,90) -- (695,233);
+\draw[fign500,lw1] (695,233) -- (769,233);
+\draw[fign500,lw1] (685,90) -- (694,90);
+\draw[fign500,lw1] (653,122) -- (694,122);
+\draw[fign500,lw1] (679,154) -- (694,154);
+\draw[fign500,lw1] (683,186) -- (694,186);
+
+\draw[figowned,lw1] (767,208) -- (767,233);
+\draw[figowned,lw1] (897,208) -- (897,233);
+\draw[figowned,lw1] (767,233) -- (897,233);
+\draw[figowned,lw1,arw] (832,233) -- (832,328);
+\node[lbl,text=figowned] at (842,250) {either source};
+
+% -------------------------------- inherited: parameter refresh closes it
+\draw[fign500,lw1,dashed,arw] (580,326) -- (160,326);
+\node[lbl,text=figsub] at (196,301) {PARAMETER REFRESH};
+\draw[fign500,lw075,fill=figbg,rounded corners=2pt] (0,308) rectangle (158,344);
+\node[anchor=west] at (12,326) {updated policy};
+\draw[fign500,lw1,arw] (41,308) -- (41,159);
+
+% ------------------------------------------------------ ownership bands
+\draw[fign400,lw075] (0,372) -- (332,372);
+\draw[fign400,lw075,dashed] (372,372) -- (556,372);
+\draw[fign400,lw075] (580,372) -- (968,372);
+\node[lbl,text=figsub] at (0,377) {ROLLOUT SIDE};
+\node[lbl,text=figsub] at (372,377) {HANDOFF};
+\node[lbl,text=figsub] at (580,377) {TRAINER SIDE};
+
+\end{scope}
+\end{tikzpicture}

@@ -1,5 +1,5 @@
 # Publication PDFs are binary assets even when their generators emit ASCII PDF.
-docs/papers_RL/final/*.pdf binary
+docs/papers_RL/**/*.pdf binary
 
 # Keep the upstream AAAI author-kit files verbatim.
 docs/papers_RL/final/aaai2027.sty -whitespace
