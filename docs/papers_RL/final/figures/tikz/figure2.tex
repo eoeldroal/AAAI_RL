@@ -1,12 +1,11 @@
-% Figure 2 -- Data-state transitions across the three boundaries.
-% Design canvas 1008 x 435 px at 0.498 pt/px  =>  501.98 x 216.63 pt
-%                                            =>  6.972 x 3.009 in
+% Figure 2 -- Data-state transitions across two boundaries and one shared update.
+% Export artboard: 486.678 x 199.822 bp = 6.759 x 2.775 in.
 % Requires: \usepackage{streamweave-figures}
 \begin{tikzpicture}[swfig]
-\useasboundingbox (0,0) rectangle (1008,435);
+\useasboundingbox (14.039,12.093) rectangle (989.947,414.846);
 \begin{scope}[shift={(20,18)}]
 
-% ------------------------------------------------ the three owned stages
+% ---------------------------------------------- the two boundaries and update
 \draw[fign400,lw075,fill=fign200,rounded corners=2pt] (104,0) rectangle (332,260);
 \draw[fign400,lw075,fill=fign200,rounded corners=2pt] (580,0) rectangle (968,244);
 \draw[fign400,lw075,fill=fign200,rounded corners=2pt] (580,284) rectangle (968,368);
@@ -14,11 +13,11 @@
 \fill[figowned] (116,12) rectangle (140,36);
 \node[text=figbg] at (128,24) {1};
 \node[lbl,font=\figlg] at (148,12) {Complete-group};
-\node[lbl,font=\figlg] at (148,36) {decision};
+\node[lbl,font=\figlg] at (148,36) {source decision};
 
 \fill[figowned] (592,12) rectangle (616,36);
 \node[text=figbg] at (604,24) {2};
-\node[lbl,font=\figlg] at (624,12) {Training-input construction};
+\node[lbl,font=\figmd] at (624,12) {Training-input construction at learner entry};
 
 \fill[figowned] (592,296) rectangle (616,320);
 \node[text=figbg] at (604,308) {3};
@@ -120,7 +119,7 @@
 \draw[figink,lw075,fill=figbg] (882,176) rectangle (912,196);
 \node at (897,186) {$1$};
 
-% ------------------------------ boundary 3: both inputs, one update path
+% ------------------------------- both inputs enter one shared update path
 % the four fields gather onto one trunk, which feeds both input cards
 \draw[fign500,lw1] (695,90) -- (695,233);
 \draw[fign500,lw1] (695,233) -- (769,233);

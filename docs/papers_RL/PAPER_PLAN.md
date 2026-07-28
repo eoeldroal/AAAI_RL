@@ -313,7 +313,7 @@ run length가 headline을 부풀리지 않는다. 이 equal-work 분석은 Appen
 
 | Asset | 역할 | 상태 |
 |---|---|---|
-| **Table 1: Fixed-checkpoint reasoning performance** | Async execution과 external expert 사용 여부를 함께 표시하여 StreamWeave, HPT (sync), RL/expert baselines 비교 | 수치와 본문 잠김; checkpoint/artifact provenance만 확정 필요 |
+| **Table 1: Fixed-checkpoint reasoning performance** | Async execution과 external expert 사용 여부를 함께 표시하여 StreamWeave, HPT, RL/expert baselines 비교 | 수치와 본문 잠김; checkpoint/artifact provenance만 확정 필요 |
 | **Hard-region table (§4.2)** | All-failure 영역의 signal scarcity와 generation workload·completion spread 집중 | **PUBLIC CONTENT INTEGRATED**; 최종 LaTeX 번호·폭만 미정 |
 | **Learning-dynamics figure (§4.2)** | Expert 수요의 지속성과 expert-off learning consequence | **LOCKED MAIN; RENDER AND VISUAL QA COMPLETE**; normalized progress와 scale 비노출 export 완료, 최종 번호만 남음 |
 | **Cross-domain reasoning table (§4.2)** | 수학 중심 학습과 cross-domain reasoning 유지의 동시 성립 | **PUBLIC CONTENT INTEGRATED**; benchmark-level 결과를 본문에 두고 CISPO는 Appendix 유지 |
@@ -365,7 +365,7 @@ claim을 설명하지 않으므로 공개 Appendix에도 넣지 않는다. Start
 | 번호 | 목적 | 핵심 메시지 |
 |---|---|---|
 | **Figure 1** | Queue handoff의 data-state backbone | Complete-group decision → one-of-two source-fixed records → shared queue → source-appropriate inputs → one primary update |
-| **Table 1** | 최종 reasoning performance | StreamWeave 38.5, HPT (sync) 37.7, 주요 baseline landscape |
+| **Table 1** | 최종 reasoning performance | StreamWeave 38.5, HPT 37.7, 주요 baseline landscape |
 | **Hard-region table (§4.2, 번호 미정)** | Compute--signal concentration | All-failure 영역에 response length와 completion spread가 함께 집중됨 |
 | **Figure 2** | Learning dynamics와 expert routing | Residual hard region이 후반에도 남고 expert channel이 지속적으로 작동함 |
 | **Cross-domain table (§4.2, 번호 미정)** | Cross-domain reasoning scope | 수학 benchmark와 분리된 ARC-C·GPQA-D·MMLU-Pro 결과로 target specialization과 retention을 확인 |

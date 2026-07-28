@@ -1,7 +1,7 @@
 % figure4.tex -- Execution efficiency. Generated from data/manifest.json inputs.
-% 1 unit = 1 px of the design = 0.498 pt. Canvas 1008 x 320 px = 501.98 x 159.36 pt.
+% Export artboard: 493.646 x 149.765 bp = 6.856 x 2.080 in.
 \begin{tikzpicture}[swfig]
-  \useasboundingbox (-20,-18) rectangle (988,302);
+  \useasboundingbox (-9.973,-5.907) rectangle (979.979,295.954);
   % ================= (a) full-history GPU activity =================
   \node[lbl,font=\figlg,text=figink] at (0,0) {(a) Full-history GPU activity};
   \heatcell{64}{26}{32}{27.27}{44}
@@ -8720,15 +8720,14 @@
   \draw[ax] (802,232) -- (802,238);
   \node[anchor=north,text=figsub] at (802,241) {0};
   \draw[ax] (843.5,232) -- (843.5,238);
-  \node[anchor=north,text=figsub] at (843.5,241) {20};
+  \node[anchor=north,text=figsub] at (843.5,241) {25};
   \draw[ax] (885,232) -- (885,238);
-  \node[anchor=north,text=figsub] at (885,241) {40};
+  \node[anchor=north,text=figsub] at (885,241) {50};
   \draw[ax] (926.5,232) -- (926.5,238);
-  \node[anchor=north,text=figsub] at (926.5,241) {60};
+  \node[anchor=north,text=figsub] at (926.5,241) {75};
   \draw[ax] (968,232) -- (968,238);
-  \node[anchor=north,text=figsub] at (968,241) {80};
-  \node[anchor=south east,ko,text=figowned] at (962,49.7) {1.67$\times$};
+  \node[anchor=north,text=figsub] at (968,241) {100};
   \node[anchor=north east,ko,text=figsub] at (962,135.56) {1.00$\times$};
   \node[rotate=90,anchor=south,font=\figmd] at (744,138) {Relative cumulative work};
-  \node[anchor=north,font=\figmd] at (885,266) {Elapsed wall-clock (min)};
+  \node[anchor=north,font=\figsm] at (885,258) {\shortstack{Matched wall-clock\\progress (\%)}};
 \end{tikzpicture}

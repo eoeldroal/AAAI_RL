@@ -21,7 +21,7 @@ The standalone class with border=0pt makes MediaBox = CropBox = the artwork
 box, so no trim/clip is needed at inclusion time:
 
     figure1.pdf   501.98 x 168.32 pt   =  6.972 x 2.338 in
-    figure2.pdf   501.98 x 216.63 pt   =  6.972 x 3.009 in
+    figure2.pdf   486.678 x 199.822 bp =  6.759 x 2.775 in
 
 AAAI full text width is 3.3 + 0.375 + 3.3 = 6.975 in, so the current
 data-state asset (`figure2.pdf`) drops in at natural size. The retired
@@ -66,13 +66,11 @@ Files
                             ADDITIVE block only; Figure 1-2 output is unchanged.
 
 Geometry
-  Both use the same 1 unit = 1 px = 0.498 pt grid as Figures 1-2. Figure 3
-  carries a 477 x 296 px one-column bounding box; Figure 4 retains the
-  1008 x 320 px full-width bounding box:
+  Both use the same 1 unit = 1 px = 0.498 pt grid as Figures 1-2 and export
+  directly to their final artwork boxes:
 
-    figure3.pdf   nominal canvas: 237.55 x 147.41 pt
-                  rendered CropBox: 239.15 x 146.86 pt
-    figure4.pdf   501.98 x 159.36 pt  =  6.972 x 2.213 in
+    figure3.pdf   233.212 x 127.858 bp
+    figure4.pdf   493.646 x 149.765 bp = 6.856 x 2.080 in
 
   Use a one-column `figure` and `width=\columnwidth` for Figure 3. The
   resulting sub-percent fit absorbs text and stroke extents beyond the nominal
@@ -86,7 +84,7 @@ Line      0.5 pt grid and raw observations, 0.75 pt axis spines and ticks,
 Colour    figowned teal = StreamWeave (solid, filled marker)
           figsub grey   = synchronous / expert-off control (dashed, open marker)
           figdecide amber = expert routing, and its own right-hand axis
-          figownedlt / figdecidelt / fign400 = raw observations only
+          figownedlt / figdecidelt / figrawgray = raw observations only
           Every series is separated by line pattern AND marker fill, so the
           plates survive greyscale conversion.
 
@@ -121,9 +119,11 @@ Figure 4 (b) -- data/figure4_active_gpu_coverage.csv
 Figure 4 (c) -- data/figure4_cumulative_sync.csv,
                 data/figure4_cumulative_streamweave.csv,
                 data/figure4_cumulative_fill_grid.csv (fill only)
-  x  wall_clock_min, 0 to the common horizon 79.6698 min
+  x  matched wall-clock progress, 0-100% over the common horizon
   y  relative_cumulative_work, normalised to the synchronous endpoint
-  endpoints labelled 1.00x and 1.67x and nothing else.
+  the synchronous endpoint is labelled 1.00x; the matched-prefix ratio is
+  intentionally left unlabelled so that 1.64x remains the sole main-text
+  throughput headline.
 
 Withheld by construction: absolute cycles, total training groups, the full
 StreamWeave run length, and the 1.64x full-history throughput (Table 2 owns it).
@@ -133,8 +133,8 @@ StreamWeave run length, and the 1.64x full-history throughput (Table 2 owns it).
   pdflatex -interaction=nonstopmode -halt-on-error build-figure3.tex
   pdflatex -interaction=nonstopmode -halt-on-error build-figure4.tex
 
-  [x] Figure 3 MediaBox = CropBox = 239.15 x 146.86 pt; include at column width
-  [ ] Figure 4 MediaBox = CropBox = 501.98 x 159.36 pt
+  [x] Figure 3 MediaBox = CropBox = 233.212 x 127.858 bp; include at column width
+  [x] Figure 4 MediaBox = CropBox = 493.646 x 149.765 bp
   [ ] pdffonts: Times embedded, no Type 3, no CID
   [ ] all colour operators DeviceCMYK
   [ ] smallest visible type measures 9 pt at natural size
